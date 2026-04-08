@@ -1,0 +1,8 @@
+/* Minimal overrides for the engine test bench */
+input[type='range'] {
+  accent-color: #4488ff;
+}
+
+button:hover {
+  filter: brightness(1.2);
+}

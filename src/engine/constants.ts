@@ -1,0 +1,110 @@
+import type { HemodynamicParams, HemodynamicState } from './types';
+
+/** Default tuning for a healthy 70 kg adult at rest. */
+export const DEFAULT_PARAMS: HemodynamicParams = {
+  // --- LV Frank-Starling ---
+  svMax: 130,   // mL — physiologic ceiling
+  v0: 20,       // mL — dead volume
+  km: 80,       // mL — half-max constant
+  emaxRef: 2.0, // normalized LV reference contractility
+
+  // LV overdistension
+  edvCritBase: 250,
+  overdistensionSteepness: 0.001,
+
+  // --- RV Frank-Starling ---
+  // Tuned so RVSV ≈ LVSV at baseline (both ~72 mL at resting HR=70)
+  // RVEDV=150 → effectiveEDV=130 → rvSvBase = 120×130/210 = 74 mL ≈ 72 ✓
+  rvSvMax: 120,
+  rvV0: 20,
+  rvKm: 80,
+  rvEmaxRef: 0.5,      // RV operates at much lower systolic pressure than LV
+  rvEdvCritBase: 280,  // RV is more distensible — threshold reached at higher volume
+  rvOverdistensionSteepness: 0.001,
+
+  // --- LV EDPVR (PCWP derivation) ---
+  // LVEDP = (EDV - V0) × stiffness / emax
+  // Normal: (120-20) × 0.2 / 2.0 = 10 mmHg  ✓
+  // Cardiogenic (EDV=160, emax=0.8): (140) × 0.2 / 0.8 = 35 mmHg ✓
+  lvEdpvrStiffness: 0.2,
+
+  // --- Baroreflex ---
+  mapSetpoint: 90,
+  hrBaseline: 70,
+  svrBaseline: 17,
+  gainHr: 1.5,
+  gainSvr: 0.45,
+  tauHr: 3.0,
+  tauSvr: 8.0,
+
+  // --- Oxygenation / Fick ---
+  vo2: 250,     // mL O2/min — resting O2 consumption
+  hgb: 15,      // g/dL — normal hemoglobin
+  paCO2: 40,    // mmHg — normal arterial CO2
+  rq: 0.8,      // respiratory quotient
+  p50: 26.8,    // mmHg — standard P50 (normal pH/temp/2,3-DPG)
+  hillN: 2.7,   // Hill curve cooperativity coefficient
+
+  // --- Layer A: Instantaneous feedback couplings ---
+  hpvSpO2Threshold: 0.93,    // HPV onset below SpO2 93%
+  hpvGain: 15,               // +1.95 WU PVR at SpO2=0.80 (15 × 0.13)
+  hypoxicVasoSpO2Threshold: 0.90,
+  hypoxicVasoGain: 20,       // −2.0 WU SVR at SpO2=0.80 (20 × 0.10)
+  rvlvRvedvThreshold: 195,   // mL — 130% of 150 mL baseline
+  rvlvGain: 0.45,            // 0.45 mL LV EDV penalty per mL excess RVEDV
+
+  // --- Layer B: Vasoactive mediator dynamics ---
+  tauNoTone: 300,            // 5 min — NO mediators build up over minutes
+  noToneSpO2Threshold: 0.93,
+  noToneSpO2Gain: 4,         // noTone target = 0.52 at SpO2=0.80 (4 × 0.13)
+  noToneSvrGain: 12,         // −8.4 WU SVR at noTone=0.7 (sepsis); −12 at max
+  noTonePvrGain: 0.5,        // mild pulmonary vasodilation
+  noToneEmaxGain: 0.5,       // −0.35 Emax at noTone=0.7 (17% depression)
+  tauEt1Tone: 600,           // 10 min — ET-1 slower (chronic remodeling)
+  et1ToneMpapThreshold: 18,  // mmHg — above upper limit of normal mPAP
+  et1ToneMpapGain: 0.04,     // target=0.88 at mPAP=40 (0.04 × 22)
+  et1TonePvrGain: 2.5,       // +2.5 WU PVR at full ET-1 saturation
+  et1ToneSvrGain: 1.5,       // mild systemic vasoconstriction
+  rvDilationSensitivity: 15, // mL RVEDV per WU PVR above pvrRef
+  pvrRef: 1.5,               // baseline PVR reference (matches DEFAULT_STATE.pvr)
+  rvedvRef: 150,             // resting RVEDV (matches DEFAULT_STATE.rvedv)
+  tauRvAdaptation: 120,      // 2 min for acute RV dilation
+
+  // --- Physiologic clamps ---
+  hrMin: 30,
+  hrMax: 220,
+  svrMin: 4,
+  svrMax: 40,
+  edvMin: 30,
+  edvMax: 300,
+  pvrMin: 0.5,
+  pvrMax: 20,   // severe PH
+  rvedvMin: 30,
+  rvedvMax: 350,
+};
+
+/** Resting hemodynamic state for a healthy adult. */
+export const DEFAULT_STATE: HemodynamicState = {
+  // Systemic
+  hr: 70,
+  svr: 17,
+  edv: 120,
+  emax: 2.0,
+  cvp: 5,
+  hrMod: 0,
+
+  // Pulmonary
+  rvEmax: 0.5,   // matches rvEmaxRef → RV contractility scale = 1.0
+  pvr: 1.5,      // WU — normal PVR (~120 dynes·s/cm⁵)
+  rvedv: 150,    // mL — normal RVEDV (larger than LVEDV, RV more compliant)
+
+  // Gas exchange
+  qsQt: 0.02,    // 2% normal anatomic shunt
+  fiO2: 0.21,    // room air
+
+  // Vasoactive mediators
+  noTone: 0,     // no excess NO/PGI2 at baseline
+  et1Tone: 0,    // no ET-1 activation at baseline
+
+  time: 0,
+};
