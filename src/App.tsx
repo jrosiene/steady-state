@@ -237,90 +237,95 @@ function App() {
           <StateSlider label="SVR (override)" value={snap.svr} min={4} max={40} step={0.5} unit="WU" onChange={(v) => setParam('svr', v)} disabled={running} hint={running ? 'Baroreflex-driven while running' : undefined} />
         </div>
 
-        {/* Scenarios & Treatments */}
-        <div style={styles.panel}>
-          <h2 style={styles.panelTitle}>Clinical Scenarios</h2>
-          <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>
-            Scenarios evolve over minutes. Run at 10-60x to watch.
+        {/* Scenarios — spans 2 grid columns, buttons in 2-column internal grid */}
+        <div style={{ ...styles.panel, gridColumn: 'span 2' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <h2 style={{ ...styles.panelTitle, marginBottom: 0 }}>Clinical Scenarios</h2>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: '#666' }}>Run at 10–60x to watch</span>
+              <button onClick={() => clearByCategory('scenario')} style={styles.clearBtn}>Stop All</button>
+            </div>
           </div>
-          <ScenarioButton label="Hemorrhage (Class II)" description="EDV −30 mL over ~2 min"
-            onClick={() => addIntervention('Hemorrhage II', 'scenario', 'edv', -30, 60, 600)} />
-          <ScenarioButton label="Hemorrhage (Class IV)" description="EDV −70 mL over ~3 min"
-            onClick={() => addIntervention('Hemorrhage IV', 'scenario', 'edv', -70, 90, 600)} />
-          <ScenarioButton label="Septic Shock" description="NO↑ → SVR↓ + Emax↓; third-spacing → EDV↓. Watch noTone rise."
-            onClick={() => {
-              addIntervention('Sepsis: NO↑', 'scenario', 'noTone', 0.7, 300, 900);
-              addIntervention('Sepsis: third-spacing', 'scenario', 'edv', -20, 180, 600);
-            }} />
-          <ScenarioButton label="Cardiogenic Shock" description="Emax −1.2 over ~3 min (acute MI)"
-            onClick={() => addIntervention('Acute MI', 'scenario', 'emax', -1.2, 90, 1800)} />
-          <ScenarioButton label="Tension Pneumothorax" description="EDV −50 mL, CVP +12 over ~2 min"
-            onClick={() => {
-              addIntervention('Tension PTX: tamponade', 'scenario', 'edv', -50, 60, 30);
-              addIntervention('Tension PTX: CVP rise', 'scenario', 'cvp', 12, 60, 30);
-            }} />
-          <button onClick={() => clearByCategory('scenario')} style={{ ...styles.clearBtn, marginTop: 4 }}>
-            Stop All Scenarios
-          </button>
 
-          <h3 style={{ ...styles.panelTitle, fontSize: 14, marginTop: 16 }}>Pulmonary Hypertension Scenarios</h3>
-          <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>
-            PH defined as mPAP &gt; 20 mmHg. Run 60x to watch progression.
+          {/* Section: Acute */}
+          <div style={styles.scenarioSection}>Acute</div>
+          <div style={styles.scenarioGrid}>
+            <ScenarioButton label="Hemorrhage II" description="EDV −30 mL over ~2 min"
+              onClick={() => addIntervention('Hemorrhage II', 'scenario', 'edv', -30, 60, 600)} />
+            <ScenarioButton label="Hemorrhage IV" description="EDV −70 mL over ~3 min"
+              onClick={() => addIntervention('Hemorrhage IV', 'scenario', 'edv', -70, 90, 600)} />
+            <ScenarioButton label="Septic Shock" description="NO↑ → SVR↓ + Emax↓; third-spacing → EDV↓"
+              onClick={() => {
+                addIntervention('Sepsis: NO↑', 'scenario', 'noTone', 0.7, 300, 900);
+                addIntervention('Sepsis: third-spacing', 'scenario', 'edv', -20, 180, 600);
+              }} />
+            <ScenarioButton label="Cardiogenic Shock" description="Emax −1.2 over ~3 min (acute MI)"
+              onClick={() => addIntervention('Acute MI', 'scenario', 'emax', -1.2, 90, 1800)} />
+            <ScenarioButton label="Tension Pneumothorax" description="EDV −50 mL, CVP +12 over ~2 min"
+              onClick={() => {
+                addIntervention('Tension PTX: tamponade', 'scenario', 'edv', -50, 60, 30);
+                addIntervention('Tension PTX: CVP rise', 'scenario', 'cvp', 12, 60, 30);
+              }} />
+            <ScenarioButton label="Massive PE" description="PVR +5 WU acutely → RV crisis → ↓CO → shock"
+              onClick={() => {
+                addIntervention('PE: PVR↑', 'scenario', 'pvr', 5, 120, 3600);
+                addIntervention('PE: shunt↑', 'scenario', 'qsQt', 0.15, 120, 3600);
+              }} />
           </div>
-          <ScenarioButton label="Class I — PAH (Idiopathic)" description="PVR +4 WU over ~10 min. No LV disease."
-            onClick={() => addIntervention('PAH: PVR↑', 'scenario', 'pvr', 4, 600, 1800)} />
-          <ScenarioButton label="Class II — LV Failure (PVH)" description="Emax −1.0 over ~5 min → PCWP↑ → mPAP↑"
-            onClick={() => addIntervention('PVH: LV failure', 'scenario', 'emax', -1.0, 300, 1800)} />
-          <ScenarioButton label="Class III — Hypoxic (HPV)" description="Qs/Qt +0.15 (shunt) → SpO2↓, reflex PVR +2 WU"
-            onClick={() => {
-              addIntervention('HPV: shunt↑', 'scenario', 'qsQt', 0.15, 300, 1800);
-              addIntervention('HPV: PVR↑', 'scenario', 'pvr', 2, 600, 1800);
-            }} />
-          <ScenarioButton label="Class IV — CTEPH (Mechanical)" description="PVR +6 WU over ~15 min. Large fixed obstruction."
-            onClick={() => addIntervention('CTEPH: PVR↑', 'scenario', 'pvr', 6, 900, 3600)} />
 
-          <h3 style={{ ...styles.panelTitle, fontSize: 14, marginTop: 16 }}>Respiratory Scenarios</h3>
-          <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>
-            COPD: V/Q mismatch → SpO2↓ → hypoxic PVR↑ → cor pulmonale. Watch PaO2 + mPAP.
+          {/* Section: Pulmonary Hypertension */}
+          <div style={styles.scenarioSection}>Pulmonary Hypertension <span style={{ fontWeight: 400, color: '#666' }}>— mPAP &gt; 20 mmHg</span></div>
+          <div style={styles.scenarioGrid}>
+            <ScenarioButton label="Class I — PAH" description="PVR +4 WU over ~10 min. ET-1 loop activates."
+              onClick={() => addIntervention('PAH: PVR↑', 'scenario', 'pvr', 4, 600, 1800)} />
+            <ScenarioButton label="Class II — LV Failure" description="Emax −1.0 → PCWP↑ → mPAP↑"
+              onClick={() => addIntervention('PVH: LV failure', 'scenario', 'emax', -1.0, 300, 1800)} />
+            <ScenarioButton label="Class III — Hypoxic" description="Qs/Qt +0.15 → SpO2↓ → HPV → PVR +2 WU"
+              onClick={() => {
+                addIntervention('HPV: shunt↑', 'scenario', 'qsQt', 0.15, 300, 1800);
+                addIntervention('HPV: PVR↑', 'scenario', 'pvr', 2, 600, 1800);
+              }} />
+            <ScenarioButton label="Class IV — CTEPH" description="PVR +6 WU over ~15 min. Fixed obstruction."
+              onClick={() => addIntervention('CTEPH: PVR↑', 'scenario', 'pvr', 6, 900, 3600)} />
           </div>
-          <ScenarioButton label="COPD (Stable)" description="Qs/Qt +0.12, PVR +2 WU over ~10 min. Chronic V/Q mismatch."
-            onClick={() => {
-              addIntervention('COPD: V/Q mismatch', 'scenario', 'qsQt', 0.12, 600, 3600);
-              addIntervention('COPD: HPV/PVR↑', 'scenario', 'pvr', 2.0, 900, 3600);
-            }} />
-          <ScenarioButton label="COPD Exacerbation" description="Qs/Qt +0.25 over ~3 min. Acute bronchospasm/mucus plugging."
-            onClick={() => {
-              addIntervention('COPD-E: shunt↑', 'scenario', 'qsQt', 0.25, 180, 1800);
-              addIntervention('COPD-E: PVR↑', 'scenario', 'pvr', 1.5, 300, 1800);
-            }} />
-          <ScenarioButton label="Pulmonary Embolism (Massive)" description="PVR +5 WU acutely → RV afterload → ↓CO → shock"
-            onClick={() => {
-              addIntervention('PE: PVR↑', 'scenario', 'pvr', 5, 120, 3600);
-              addIntervention('PE: shunt↑', 'scenario', 'qsQt', 0.15, 120, 3600);
-            }} />
 
-          <h3 style={{ ...styles.panelTitle, fontSize: 14, marginTop: 16 }}>Heart Failure Scenarios</h3>
-          <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>
-            LV failure → PCWP↑ → pulmonary congestion. RV failure → CVP↑ → low CO. Watch both panels.
+          {/* Section: Respiratory */}
+          <div style={styles.scenarioSection}>Respiratory</div>
+          <div style={styles.scenarioGrid}>
+            <ScenarioButton label="COPD (Stable)" description="Qs/Qt +0.12, PVR +2 WU. Chronic V/Q mismatch."
+              onClick={() => {
+                addIntervention('COPD: V/Q mismatch', 'scenario', 'qsQt', 0.12, 600, 3600);
+                addIntervention('COPD: HPV/PVR↑', 'scenario', 'pvr', 2.0, 900, 3600);
+              }} />
+            <ScenarioButton label="COPD Exacerbation" description="Qs/Qt +0.25 over ~3 min. Acute bronchospasm."
+              onClick={() => {
+                addIntervention('COPD-E: shunt↑', 'scenario', 'qsQt', 0.25, 180, 1800);
+                addIntervention('COPD-E: PVR↑', 'scenario', 'pvr', 1.5, 300, 1800);
+              }} />
           </div>
-          <ScenarioButton label="Acute Decompensated LV Failure" description="Emax −0.9, EDV +50 mL over ~5 min. PCWP↑, mPAP↑, SpO2↓."
-            onClick={() => {
-              addIntervention('ADHF: LV↓', 'scenario', 'emax', -0.9, 300, 3600);
-              addIntervention('ADHF: volume overload', 'scenario', 'edv', 50, 600, 3600);
-            }} />
-          <ScenarioButton label="Cor Pulmonale (RV Failure)" description="PVR +2.5 WU → RVEDV auto-dilates → septal shift → MAP↓. RV Emax↓, CVP↑."
-            onClick={() => {
-              addIntervention('CorPulm: PVR↑', 'scenario', 'pvr', 2.5, 600, 3600);
-              addIntervention('CorPulm: RV↓', 'scenario', 'rvEmax', -0.3, 600, 3600);
-              addIntervention('CorPulm: CVP↑', 'scenario', 'cvp', 10, 600, 3600);
-            }} />
-          <ScenarioButton label="Biventricular Failure" description="Emax −0.8, RV Emax −0.25, EDV +40, CVP +8. End-stage HF."
-            onClick={() => {
-              addIntervention('BiV HF: LV↓', 'scenario', 'emax', -0.8, 600, 3600);
-              addIntervention('BiV HF: RV↓', 'scenario', 'rvEmax', -0.25, 600, 3600);
-              addIntervention('BiV HF: LV dilation', 'scenario', 'edv', 40, 900, 3600);
-              addIntervention('BiV HF: CVP↑', 'scenario', 'cvp', 8, 600, 3600);
-            }} />
+
+          {/* Section: Heart Failure */}
+          <div style={styles.scenarioSection}>Heart Failure</div>
+          <div style={styles.scenarioGrid}>
+            <ScenarioButton label="Acute Decompensated LVF" description="Emax −0.9, EDV +50 mL → PCWP↑, SpO2↓"
+              onClick={() => {
+                addIntervention('ADHF: LV↓', 'scenario', 'emax', -0.9, 300, 3600);
+                addIntervention('ADHF: volume overload', 'scenario', 'edv', 50, 600, 3600);
+              }} />
+            <ScenarioButton label="Cor Pulmonale" description="PVR +2.5 → RVEDV dilates → septal shift → MAP↓"
+              onClick={() => {
+                addIntervention('CorPulm: PVR↑', 'scenario', 'pvr', 2.5, 600, 3600);
+                addIntervention('CorPulm: RV↓', 'scenario', 'rvEmax', -0.3, 600, 3600);
+                addIntervention('CorPulm: CVP↑', 'scenario', 'cvp', 10, 600, 3600);
+              }} />
+            <ScenarioButton label="Biventricular Failure" description="LV + RV both fail. EDV +40, CVP +8."
+              onClick={() => {
+                addIntervention('BiV HF: LV↓', 'scenario', 'emax', -0.8, 600, 3600);
+                addIntervention('BiV HF: RV↓', 'scenario', 'rvEmax', -0.25, 600, 3600);
+                addIntervention('BiV HF: LV dilation', 'scenario', 'edv', 40, 900, 3600);
+                addIntervention('BiV HF: CVP↑', 'scenario', 'cvp', 8, 600, 3600);
+              }} />
+          </div>
         </div>
 
         {/* Treatments — full-width row, 4-column button grid */}
@@ -713,8 +718,15 @@ const styles: Record<string, React.CSSProperties> = {
   },
   scenarioBtn: {
     display: 'flex', flexDirection: 'column' as const, alignItems: 'flex-start',
-    width: '100%', padding: '8px 12px', marginBottom: 6, background: '#2a2a2a',
-    color: '#e0e0e0', border: '1px solid #444', borderRadius: 6, cursor: 'pointer', fontSize: 13,
+    width: '100%', padding: '6px 10px', marginBottom: 0, background: '#2a2a2a',
+    color: '#e0e0e0', border: '1px solid #444', borderRadius: 6, cursor: 'pointer', fontSize: 12,
+  },
+  scenarioGrid: {
+    display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10,
+  },
+  scenarioSection: {
+    fontSize: 11, fontWeight: 600, color: '#888', textTransform: 'uppercase' as const,
+    letterSpacing: '0.06em', marginBottom: 6, marginTop: 4,
   },
 };
 
