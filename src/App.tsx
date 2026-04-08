@@ -237,8 +237,8 @@ function App() {
           <StateSlider label="SVR (override)" value={snap.svr} min={4} max={40} step={0.5} unit="WU" onChange={(v) => setParam('svr', v)} disabled={running} hint={running ? 'Baroreflex-driven while running' : undefined} />
         </div>
 
-        {/* Scenarios — spans 2 grid columns, buttons in 2-column internal grid */}
-        <div style={{ ...styles.panel, gridColumn: 'span 2' }}>
+        {/* Scenarios — occupies the 2fr column, buttons in 2-column internal grid */}
+        <div style={styles.panel}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <h2 style={{ ...styles.panelTitle, marginBottom: 0 }}>Clinical Scenarios</h2>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -687,7 +687,7 @@ function formatTime(seconds: number): string {
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
-    maxWidth: 1100, margin: '0 auto', padding: 20,
+    maxWidth: 1600, margin: '0 auto', padding: 20,
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     color: '#e0e0e0', background: '#1a1a1a', minHeight: '100vh',
   },
@@ -706,7 +706,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   label: { fontSize: 13, color: '#aaa', display: 'flex', alignItems: 'center', gap: 8 },
   select: { padding: '4px 8px', background: '#333', color: '#e0e0e0', border: '1px solid #555', borderRadius: 4 },
-  mainGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 16 },
+  mainGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr', gap: 16 },
   panel: { background: '#222', borderRadius: 8, padding: 16, border: '1px solid #333' },
   panelTitle: { fontSize: 15, fontWeight: 600, marginBottom: 12, color: '#ccc' },
   vitalsGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
