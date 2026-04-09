@@ -29,11 +29,11 @@ describe('rk4Step', () => {
     // We repurpose the solver with a custom derivative function.
     const decayState: HemodynamicState = {
       hr: 100, svr: 0, edv: 0, emax: 0, cvp: 0, hrMod: 0,
-      rvEmax: 0, pvr: 0, rvedv: 0, qsQt: 0, fiO2: 0, noTone: 0, et1Tone: 0, time: 0,
+      rvEmax: 0, pvr: 0, rvedv: 0, qsQt: 0, fiO2: 0, noTone: 0, et1Tone: 0, lactate: 1, time: 0,
     };
     const decayDeriv = (s: HemodynamicState, _p: HemodynamicParams): HemodynamicState => ({
       hr: -s.hr, svr: 0, edv: 0, emax: 0, cvp: 0, hrMod: 0,
-      rvEmax: 0, pvr: 0, rvedv: 0, qsQt: 0, fiO2: 0, noTone: 0, et1Tone: 0, time: 1,
+      rvEmax: 0, pvr: 0, rvedv: 0, qsQt: 0, fiO2: 0, noTone: 0, et1Tone: 0, lactate: 0, time: 1,
     });
 
     const dt = 0.1;

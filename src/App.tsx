@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, memo } from 'react';
 import type { Snapshot, HemodynamicState, Intervention } from './engine/types';
 import type { PatientProfile } from './engine/patient';
 import { interventionEffect } from './engine/hemodynamics';
@@ -22,6 +22,7 @@ function App() {
   const loopRef = useRef<SimulationLoop | null>(null);
   const historyRef = useRef<Snapshot[]>([]);
   const lastHistoryTime = useRef(0);
+  const lastUiUpdateMs = useRef(0);
 
   useEffect(() => {
     const clock = new SimClock(timeScale);
@@ -33,12 +34,29 @@ function App() {
     };
 
     const loop = new SimulationLoop(simState, (s) => {
-      setSnap(s);
-      setInterventions([...simState.interventions]);
-      if (s.time - lastHistoryTime.current >= 0.5) {
+      // Accumulate history at physics speed (every 2 sim-sec) — chart only reads historyRef
+      if (s.time - lastHistoryTime.current >= 2.0) {
         lastHistoryTime.current = s.time;
         historyRef.current = [...historyRef.current.slice(-599), s];
-        setHistory(historyRef.current);
+      }
+
+      // Throttle React state updates to ~20 fps regardless of time scale.
+      // Physics runs at full speed; UI just doesn't need to repaint at 60+ fps.
+      const now = performance.now();
+      if (now - lastUiUpdateMs.current < 50) return;
+      lastUiUpdateMs.current = now;
+
+      setSnap(s);
+      setHistory(historyRef.current);
+
+      // Prune interventions that have fully decayed so applyInterventions stays O(active)
+      const t = s.time;
+      const pruned = simState.interventions.filter((iv) =>
+        iv.stopTime === undefined || Math.abs(interventionEffect(iv, t)) > 0.001,
+      );
+      if (pruned.length !== simState.interventions.length) {
+        simState.interventions = pruned;
+        setInterventions([...pruned]);
       }
     });
     loopRef.current = loop;
@@ -227,28 +245,22 @@ function App() {
           </div>
         </div>
 
-        {/* Blood Gas / Chemistry */}
-        <div style={{ ...styles.panel, gridColumn: '1 / 3' }}>
-          <h2 style={styles.panelTitle}>Blood Gas</h2>
-          <div style={styles.vitalsGrid}>
-            <VitalDisplay label="pH" value={snap.pH} unit="" color="#ff88aa" decimals={2}
-              warn={snap.pH < 7.35 || snap.pH > 7.45} />
-            <VitalDisplay label="HCO₃" value={snap.hco3} unit="mEq/L" color="#88ccff"
-              warn={snap.hco3 < 18 || snap.hco3 > 26} />
-            <VitalDisplay label="Base Excess" value={snap.be} unit="mEq/L" color="#aaaacc"
-              warn={snap.be < -4 || snap.be > 2} />
-            <VitalDisplay label="PaO₂" value={snap.paO2} unit="mmHg" color="#44aaff"
-              warn={snap.paO2 < 60} />
-            <VitalDisplay label="Lactate" value={snap.lactate} unit="mmol/L" color="#ffcc44"
-              warn={snap.lactate > 2.0} />
-          </div>
-          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 12, color: '#666' }}>Cardiovascular Status</span>
+        {/* Blood Gas / Chemistry — col 3, completes the top row */}
+        <div style={styles.panel}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <h2 style={{ ...styles.panelTitle, marginBottom: 0 }}>Blood Gas</h2>
             <CardiovascularStatusBadge status={snap.cardiovascularStatus} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <BgRow label="pH"          value={snap.pH}      unit=""        color="#ff88aa" decimals={2} warn={snap.pH < 7.35 || snap.pH > 7.45} />
+            <BgRow label="HCO₃"        value={snap.hco3}    unit="mEq/L"  color="#88ccff" warn={snap.hco3 < 18 || snap.hco3 > 26} />
+            <BgRow label="Base Excess" value={snap.be}      unit="mEq/L"  color="#aaaacc" warn={snap.be < -4 || snap.be > 2} />
+            <BgRow label="PaO₂"        value={snap.paO2}    unit="mmHg"   color="#44aaff" warn={snap.paO2 < 60} />
+            <BgRow label="Lactate"     value={snap.lactate} unit="mmol/L" color="#ffcc44" warn={snap.lactate > 2.0} />
           </div>
         </div>
 
-        {/* State Sliders */}
+        {/* State Sliders — row 2, col 1 */}
         <div style={styles.panel}>
           <h2 style={styles.panelTitle}>Direct State Control</h2>
           <StateSlider label="EDV (Preload)" value={snap.edv} min={30} max={300} unit="mL" onChange={(v) => setParam('edv', v)} />
@@ -258,8 +270,8 @@ function App() {
           <StateSlider label="SVR (override)" value={snap.svr} min={4} max={40} step={0.5} unit="WU" onChange={(v) => setParam('svr', v)} disabled={running} hint={running ? 'Baroreflex-driven while running' : undefined} />
         </div>
 
-        {/* Scenarios — occupies the 2fr column, buttons in 2-column internal grid */}
-        <div style={styles.panel}>
+        {/* Scenarios — row 2, cols 2-3 */}
+        <div style={{ ...styles.panel, gridColumn: '2 / 4' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <h2 style={{ ...styles.panelTitle, marginBottom: 0 }}>Clinical Scenarios</h2>
             <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
@@ -439,6 +451,24 @@ function VitalDisplay({ label, value, unit, color, warn, decimals = 1 }: {
   );
 }
 
+function BgRow({ label, value, unit, color, warn, decimals = 1 }: {
+  label: string; value: number; unit: string; color: string; warn?: boolean; decimals?: number;
+}) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+      padding: '6px 10px', background: '#1a1a1a', borderRadius: 6,
+      border: `1px solid ${warn ? '#ff0000' : '#2a2a2a'}`,
+    }}>
+      <span style={{ color: '#888', fontSize: 13, minWidth: 90 }}>{label}</span>
+      <span style={{ color, fontSize: 22, fontWeight: 'bold', fontFamily: 'monospace' }}>
+        {value.toFixed(decimals)}
+      </span>
+      <span style={{ color: '#555', fontSize: 11, minWidth: 52, textAlign: 'right' }}>{unit}</span>
+    </div>
+  );
+}
+
 function CardiovascularStatusBadge({ status }: { status: string }) {
   const config: Record<string, { color: string; label: string }> = {
     compensated:    { color: '#44ff88', label: 'Compensated' },
@@ -519,12 +549,12 @@ function InterventionList({ interventions, currentTime, onRemove }: {
         const pct = rep.delta !== 0 ? Math.round((Math.abs(totalEffect) / (Math.abs(rep.delta) * count)) * 100) : 0;
         const color = rep.category === 'scenario' ? '#ff6666' : '#66bb66';
 
-        // "remove one": stop the most recent non-stopped member
-        const removable = [...group].reverse().find((g) => !g.intervention.stopTime);
+        // All non-stopped members of this group — for "stop all" action
+        const removableAll = group.filter((g) => !g.intervention.stopTime);
 
         return (
           <div key={label} style={{
-            display: 'flex', alignItems: 'center', gap: 6,
+            display: 'flex', alignItems: 'center', gap: 5,
             padding: '4px 8px', background: '#2a2a2a', borderRadius: 4,
             border: `1px solid ${isStopping ? '#555' : color}`,
             opacity: isStopping ? 0.6 : 1,
@@ -543,20 +573,21 @@ function InterventionList({ interventions, currentTime, onRemove }: {
             <span style={{ color: '#888', fontFamily: 'monospace', fontSize: 11 }}>
               {totalEffect >= 0 ? '+' : ''}{totalEffect.toFixed(1)} {rep.target} ({pct}%)
             </span>
-            {removable && (
-              <button
-                onClick={() => onRemove(removable.index)}
-                style={{
-                  background: 'none', border: 'none', color: '#888',
-                  cursor: 'pointer', fontSize: 14, padding: '0 2px',
-                }}
-                title={count > 1 ? `Remove one dose (${count - 1} remain)` : 'Stop this intervention'}
-              >
-                ×
-              </button>
-            )}
             {isStopping && (
-              <span style={{ color: '#888', fontSize: 10, fontStyle: 'italic' }}>wearing off</span>
+              <span style={{ color: '#555', fontSize: 10, fontStyle: 'italic' }}>wearing off</span>
+            )}
+            {removableAll.length > 0 && (
+              <button
+                onClick={() => removableAll.forEach((g) => onRemove(g.index))}
+                style={{
+                  background: 'none', border: `1px solid ${color}`, color: color,
+                  cursor: 'pointer', fontSize: 11, padding: '1px 5px',
+                  borderRadius: 3, lineHeight: 1, marginLeft: 2,
+                }}
+                title={`Stop ${removableAll.length > 1 ? `all ${removableAll.length} stacks` : 'this intervention'}`}
+              >
+                ✕
+              </button>
             )}
           </div>
         );
@@ -637,7 +668,7 @@ function VitalsChart({ history, traces, title }: {
   );
 }
 
-function SystemicTrendChart({ history }: { history: Snapshot[] }) {
+const SystemicTrendChart = memo(function SystemicTrendChart({ history }: { history: Snapshot[] }) {
   const traces: ChartTrace[] = [
     { label: 'MAP',  getValue: (s) => s.map,  color: '#ff4444', min: 30,  max: 140 },
     { label: 'HR',   getValue: (s) => s.hr,   color: '#44ff44', min: 30,  max: 180 },
@@ -646,9 +677,9 @@ function SystemicTrendChart({ history }: { history: Snapshot[] }) {
     { label: 'SVR',  getValue: (s) => s.svr,  color: '#ff88ff', min: 4,   max: 32  },
   ];
   return <VitalsChart history={history} traces={traces} title="Systemic: MAP (red) · HR (green) · CO (orange) · SV (blue) · SVR (pink)" />;
-}
+});
 
-function PulmonaryTrendChart({ history }: { history: Snapshot[] }) {
+const PulmonaryTrendChart = memo(function PulmonaryTrendChart({ history }: { history: Snapshot[] }) {
   const traces: ChartTrace[] = [
     { label: 'SpO2%', getValue: (s) => s.spO2 * 100,   color: '#00ccff', min: 70, max: 100 },
     { label: 'mPAP',  getValue: (s) => s.mPAP,          color: '#ffcc44', min: 8,  max: 60  },
@@ -657,9 +688,9 @@ function PulmonaryTrendChart({ history }: { history: Snapshot[] }) {
     { label: 'ET1%',  getValue: (s) => s.et1Tone * 100, color: '#ff6644', min: 0,  max: 100 },
   ];
   return <VitalsChart history={history} traces={traces} title="Pulmonary: SpO2% (cyan) · mPAP (yellow) · PCWP (orange) · NO% (green) · ET-1% (red-orange)" />;
-}
+});
 
-function InterventionTimeline({ history, interventions }: { history: Snapshot[]; interventions: Intervention[] }) {
+const InterventionTimeline = memo(function InterventionTimeline({ history, interventions }: { history: Snapshot[]; interventions: Intervention[] }) {
   if (history.length < 2) return null;
 
   const tMin = history[0].time;
@@ -715,7 +746,7 @@ function InterventionTimeline({ history, interventions }: { history: Snapshot[];
       </text>
     </svg>
   );
-}
+});
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -746,7 +777,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   label: { fontSize: 13, color: '#aaa', display: 'flex', alignItems: 'center', gap: 8 },
   select: { padding: '4px 8px', background: '#333', color: '#e0e0e0', border: '1px solid #555', borderRadius: 4 },
-  mainGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr', gap: 16 },
+  mainGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 },
   panel: { background: '#222', borderRadius: 8, padding: 16, border: '1px solid #333' },
   panelTitle: { fontSize: 15, fontWeight: 600, marginBottom: 12, color: '#ccc' },
   vitalsGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
@@ -762,7 +793,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#e0e0e0', border: '1px solid #444', borderRadius: 6, cursor: 'pointer', fontSize: 12,
   },
   scenarioGrid: {
-    display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10,
+    display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 6, marginBottom: 10,
   },
   scenarioSection: {
     fontSize: 11, fontWeight: 600, color: '#888', textTransform: 'uppercase' as const,
