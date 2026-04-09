@@ -60,9 +60,9 @@ function iv(
   target: keyof HemodynamicState,
   delta: number,
   tauOn = 1,
-  tauOff = 600,
+  eliminationHalfLife = 415,
 ): Intervention {
-  return { label, category, target, delta, tauOn, tauOff, startTime: 0 };
+  return { label, category, kind: 'scenario', target, delta, tauOn, eliminationHalfLife, startTime: 0 };
 }
 
 // ─── 1. Hemorrhagic Shock → Fluid Resuscitation ───────────────────────────

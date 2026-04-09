@@ -323,24 +323,57 @@ export interface HemodynamicParams {
 }
 
 /**
+ * Kinetic class of an intervention.
+ *
+ * 'scenario'  — Disease/clinical event. Stoppable; uses physiological reversal t½.
+ * 'infusion'  — Titratable IV drug. Stoppable; uses pharmacological elimination t½.
+ * 'bolus'     — One-time irreversible dose (IV fluid, oral drug, procedure).
+ *               Cannot be stopped. Follows Bateman absorption-elimination curve
+ *               (rises with tauOn, decays with eliminationHalfLife).
+ */
+export type InterventionKind = 'scenario' | 'infusion' | 'bolus';
+
+/**
  * An active intervention modifying a single parameter over time.
- * Models first-order pharmacokinetics: exponential approach to target.
+ *
+ * Kinetics:
+ *   infusion/scenario:  effect = delta × (1 − e^{−t/tauOn})  while running
+ *                                levelAtStop × e^{−ke × elapsedSinceStop}  after stop
+ *   bolus:              effect = delta × Bateman(ka, ke, t)   (normalized to peak = delta)
+ *                                where ka = 1/tauOn, ke = ln2/eliminationHalfLife
+ *
+ * Future clearance module hook: scale eliminationHalfLife per patient
+ * (e.g., renally impaired → ×2; hepatic failure → ×3) to model accumulation.
  */
 export interface Intervention {
   /** Human-readable label for UI display. */
   label: string;
   /** Category: 'scenario' for clinical events, 'treatment' for player actions. */
   category: 'scenario' | 'treatment';
+  /** Kinetic class: determines onset shape and whether the intervention is reversible. */
+  kind: InterventionKind;
   /** Which state variable this intervention targets. */
   target: keyof HemodynamicState;
-  /** The delta to apply at steady-state (added to baseline). */
+  /** The peak delta (bolus) or steady-state delta (infusion/scenario). */
   delta: number;
-  /** Time constant for onset (seconds). */
+  /** Onset / absorption time constant (seconds). Controls rise rate for all kinds. */
   tauOn: number;
-  /** Time constant for offset (seconds). */
-  tauOff: number;
+  /**
+   * Elimination half-life (seconds).
+   *
+   * For infusions/scenarios: t½ after stopTime.
+   * For boluses: t½ of the terminal elimination phase (onset phase controlled by tauOn).
+   *
+   * Design hook for clearance module: a hepatic/renal impairment factor can be applied
+   * to this field at effect-computation time without mutating the intervention record.
+   */
+  eliminationHalfLife: number;
   /** Sim-time when the intervention was started. */
   startTime: number;
-  /** Sim-time when the intervention was stopped (undefined = still running). */
+  /**
+   * Sim-time when the intervention was stopped.
+   * Undefined for still-running infusions/scenarios.
+   * Always undefined for bolus (cannot be recalled).
+   */
   stopTime?: number;
 }

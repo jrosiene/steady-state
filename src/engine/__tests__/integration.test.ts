@@ -52,7 +52,7 @@ function iv(
   label: string, category: 'scenario' | 'treatment',
   target: keyof HemodynamicState, delta: number, tauOn = 60,
 ): Intervention {
-  return { label, category, target, delta, tauOn, tauOff: 600, startTime: 0 };
+  return { label, category, kind: 'scenario', target, delta, tauOn, eliminationHalfLife: 415, startTime: 0 };
 }
 
 // ─── Baseline stability ────────────────────────────────────────────────────
@@ -110,8 +110,8 @@ describe('Integration: vasopressor intervention', () => {
     const shocked = simulate(DEFAULT_STATE, 120, sepsis);
 
     const norepi: Intervention = {
-      label: 'Norepinephrine', category: 'treatment', target: 'svr',
-      delta: 8, tauOn: 1, tauOff: 60, startTime: 0, // startTime=0 → fully on by t=120s
+      label: 'Norepinephrine', category: 'treatment', kind: 'infusion', target: 'svr',
+      delta: 8, tauOn: 1, eliminationHalfLife: 150, startTime: 0, // startTime=0 → fully on by t=120s
     };
 
     const mapBefore = derive(clampEffective(applyInterventions(shocked, sepsis), p), p).map;

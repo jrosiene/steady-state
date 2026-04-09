@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, memo } from 'react';
-import type { Snapshot, HemodynamicState, Intervention } from './engine/types';
+import type { Snapshot, HemodynamicState, Intervention, InterventionKind } from './engine/types';
 import type { PatientProfile } from './engine/patient';
 import { interventionEffect } from './engine/hemodynamics';
 import { DEFAULT_PARAMS, DEFAULT_STATE } from './engine/constants';
@@ -119,15 +119,24 @@ function App() {
   );
 
   const addIntervention = useCallback(
-    (label: string, category: 'scenario' | 'treatment', target: keyof HemodynamicState, delta: number, tauOn: number, tauOff: number) => {
+    (
+      label: string,
+      category: 'scenario' | 'treatment',
+      kind: InterventionKind,
+      target: keyof HemodynamicState,
+      delta: number,
+      tauOn: number,
+      eliminationHalfLife: number,
+    ) => {
       if (!loopRef.current) return;
       const intervention: Intervention = {
         label,
         category,
+        kind,
         target,
         delta,
         tauOn,
-        tauOff,
+        eliminationHalfLife,
         startTime: loopRef.current.state.hemodynamics.time,
       };
       loopRef.current.state.interventions.push(intervention);
@@ -138,9 +147,9 @@ function App() {
 
   const removeIntervention = useCallback((index: number) => {
     if (!loopRef.current) return;
-    // Stop the intervention (triggers offset decay) rather than removing instantly
     const intervention = loopRef.current.state.interventions[index];
-    if (intervention && !intervention.stopTime) {
+    // Bolus interventions cannot be recalled — drug is already in the body
+    if (intervention && intervention.kind !== 'bolus' && !intervention.stopTime) {
       intervention.stopTime = loopRef.current.state.hemodynamics.time;
       setInterventions([...loopRef.current.state.interventions]);
     }
@@ -150,7 +159,8 @@ function App() {
     if (!loopRef.current) return;
     const time = loopRef.current.state.hemodynamics.time;
     for (const i of loopRef.current.state.interventions) {
-      if (i.category === category && !i.stopTime) {
+      // Bolus drugs cannot be recalled; only stop infusions and scenarios
+      if (i.category === category && i.kind !== 'bolus' && !i.stopTime) {
         i.stopTime = time;
       }
     }
@@ -284,25 +294,25 @@ function App() {
           <div style={styles.scenarioSection}>Acute</div>
           <div style={styles.scenarioGrid}>
             <ScenarioButton label="Hemorrhage II" description="EDV −30 mL over ~2 min"
-              onClick={() => addIntervention('Hemorrhage II', 'scenario', 'edv', -30, 60, 600)} />
+              onClick={() => addIntervention('Hemorrhage II', 'scenario', 'scenario', 'edv', -30, 60, 415)} />
             <ScenarioButton label="Hemorrhage IV" description="EDV −70 mL over ~3 min"
-              onClick={() => addIntervention('Hemorrhage IV', 'scenario', 'edv', -70, 90, 600)} />
+              onClick={() => addIntervention('Hemorrhage IV', 'scenario', 'scenario', 'edv', -70, 90, 415)} />
             <ScenarioButton label="Septic Shock" description="NO↑ → SVR↓ + Emax↓; third-spacing → EDV↓"
               onClick={() => {
-                addIntervention('Sepsis: NO↑', 'scenario', 'noTone', 0.7, 300, 900);
-                addIntervention('Sepsis: third-spacing', 'scenario', 'edv', -20, 180, 600);
+                addIntervention('Sepsis: NO↑', 'scenario', 'scenario', 'noTone', 0.7, 300, 625);
+                addIntervention('Sepsis: third-spacing', 'scenario', 'scenario', 'edv', -20, 180, 415);
               }} />
             <ScenarioButton label="Cardiogenic Shock" description="Emax −1.2 over ~3 min (acute MI)"
-              onClick={() => addIntervention('Acute MI', 'scenario', 'emax', -1.2, 90, 1800)} />
+              onClick={() => addIntervention('Acute MI', 'scenario', 'scenario', 'emax', -1.2, 90, 1250)} />
             <ScenarioButton label="Tension Pneumothorax" description="EDV −50 mL, CVP +12 over ~2 min"
               onClick={() => {
-                addIntervention('Tension PTX: tamponade', 'scenario', 'edv', -50, 60, 30);
-                addIntervention('Tension PTX: CVP rise', 'scenario', 'cvp', 12, 60, 30);
+                addIntervention('Tension PTX: tamponade', 'scenario', 'scenario', 'edv', -50, 60, 21);
+                addIntervention('Tension PTX: CVP rise', 'scenario', 'scenario', 'cvp', 12, 60, 21);
               }} />
             <ScenarioButton label="Massive PE" description="PVR +5 WU acutely → RV crisis → ↓CO → shock"
               onClick={() => {
-                addIntervention('PE: PVR↑', 'scenario', 'pvr', 5, 120, 3600);
-                addIntervention('PE: shunt↑', 'scenario', 'qsQt', 0.15, 120, 3600);
+                addIntervention('PE: PVR↑', 'scenario', 'scenario', 'pvr', 5, 120, 2500);
+                addIntervention('PE: shunt↑', 'scenario', 'scenario', 'qsQt', 0.15, 120, 2500);
               }} />
           </div>
 
@@ -310,16 +320,16 @@ function App() {
           <div style={styles.scenarioSection}>Pulmonary Hypertension <span style={{ fontWeight: 400, color: '#666' }}>— mPAP &gt; 20 mmHg</span></div>
           <div style={styles.scenarioGrid}>
             <ScenarioButton label="Class I — PAH" description="PVR +4 WU over ~10 min. ET-1 loop activates."
-              onClick={() => addIntervention('PAH: PVR↑', 'scenario', 'pvr', 4, 600, 1800)} />
+              onClick={() => addIntervention('PAH: PVR↑', 'scenario', 'scenario', 'pvr', 4, 600, 1250)} />
             <ScenarioButton label="Class II — LV Failure" description="Emax −1.0 → PCWP↑ → mPAP↑"
-              onClick={() => addIntervention('PVH: LV failure', 'scenario', 'emax', -1.0, 300, 1800)} />
+              onClick={() => addIntervention('PVH: LV failure', 'scenario', 'scenario', 'emax', -1.0, 300, 1250)} />
             <ScenarioButton label="Class III — Hypoxic" description="Qs/Qt +0.15 → SpO2↓ → HPV → PVR +2 WU"
               onClick={() => {
-                addIntervention('HPV: shunt↑', 'scenario', 'qsQt', 0.15, 300, 1800);
-                addIntervention('HPV: PVR↑', 'scenario', 'pvr', 2, 600, 1800);
+                addIntervention('HPV: shunt↑', 'scenario', 'scenario', 'qsQt', 0.15, 300, 1250);
+                addIntervention('HPV: PVR↑', 'scenario', 'scenario', 'pvr', 2, 600, 1250);
               }} />
             <ScenarioButton label="Class IV — CTEPH" description="PVR +6 WU over ~15 min. Fixed obstruction."
-              onClick={() => addIntervention('CTEPH: PVR↑', 'scenario', 'pvr', 6, 900, 3600)} />
+              onClick={() => addIntervention('CTEPH: PVR↑', 'scenario', 'scenario', 'pvr', 6, 900, 2500)} />
           </div>
 
           {/* Section: Respiratory */}
@@ -327,13 +337,13 @@ function App() {
           <div style={styles.scenarioGrid}>
             <ScenarioButton label="COPD (Stable)" description="Qs/Qt +0.12, PVR +2 WU. Chronic V/Q mismatch."
               onClick={() => {
-                addIntervention('COPD: V/Q mismatch', 'scenario', 'qsQt', 0.12, 600, 3600);
-                addIntervention('COPD: HPV/PVR↑', 'scenario', 'pvr', 2.0, 900, 3600);
+                addIntervention('COPD: V/Q mismatch', 'scenario', 'scenario', 'qsQt', 0.12, 600, 2500);
+                addIntervention('COPD: HPV/PVR↑', 'scenario', 'scenario', 'pvr', 2.0, 900, 2500);
               }} />
             <ScenarioButton label="COPD Exacerbation" description="Qs/Qt +0.25 over ~3 min. Acute bronchospasm."
               onClick={() => {
-                addIntervention('COPD-E: shunt↑', 'scenario', 'qsQt', 0.25, 180, 1800);
-                addIntervention('COPD-E: PVR↑', 'scenario', 'pvr', 1.5, 300, 1800);
+                addIntervention('COPD-E: shunt↑', 'scenario', 'scenario', 'qsQt', 0.25, 180, 1250);
+                addIntervention('COPD-E: PVR↑', 'scenario', 'scenario', 'pvr', 1.5, 300, 1250);
               }} />
           </div>
 
@@ -342,21 +352,21 @@ function App() {
           <div style={styles.scenarioGrid}>
             <ScenarioButton label="Acute Decompensated LVF" description="Emax −0.9, EDV +50 mL → PCWP↑, SpO2↓"
               onClick={() => {
-                addIntervention('ADHF: LV↓', 'scenario', 'emax', -0.9, 300, 3600);
-                addIntervention('ADHF: volume overload', 'scenario', 'edv', 50, 600, 3600);
+                addIntervention('ADHF: LV↓', 'scenario', 'scenario', 'emax', -0.9, 300, 2500);
+                addIntervention('ADHF: volume overload', 'scenario', 'scenario', 'edv', 50, 600, 2500);
               }} />
             <ScenarioButton label="Cor Pulmonale" description="PVR +2.5 → RVEDV dilates → septal shift → MAP↓"
               onClick={() => {
-                addIntervention('CorPulm: PVR↑', 'scenario', 'pvr', 2.5, 600, 3600);
-                addIntervention('CorPulm: RV↓', 'scenario', 'rvEmax', -0.3, 600, 3600);
-                addIntervention('CorPulm: CVP↑', 'scenario', 'cvp', 10, 600, 3600);
+                addIntervention('CorPulm: PVR↑', 'scenario', 'scenario', 'pvr', 2.5, 600, 2500);
+                addIntervention('CorPulm: RV↓', 'scenario', 'scenario', 'rvEmax', -0.3, 600, 2500);
+                addIntervention('CorPulm: CVP↑', 'scenario', 'scenario', 'cvp', 10, 600, 2500);
               }} />
             <ScenarioButton label="Biventricular Failure" description="LV + RV both fail. EDV +40, CVP +8."
               onClick={() => {
-                addIntervention('BiV HF: LV↓', 'scenario', 'emax', -0.8, 600, 3600);
-                addIntervention('BiV HF: RV↓', 'scenario', 'rvEmax', -0.25, 600, 3600);
-                addIntervention('BiV HF: LV dilation', 'scenario', 'edv', 40, 900, 3600);
-                addIntervention('BiV HF: CVP↑', 'scenario', 'cvp', 8, 600, 3600);
+                addIntervention('BiV HF: LV↓', 'scenario', 'scenario', 'emax', -0.8, 600, 2500);
+                addIntervention('BiV HF: RV↓', 'scenario', 'scenario', 'rvEmax', -0.25, 600, 2500);
+                addIntervention('BiV HF: LV dilation', 'scenario', 'scenario', 'edv', 40, 900, 2500);
+                addIntervention('BiV HF: CVP↑', 'scenario', 'scenario', 'cvp', 8, 600, 2500);
               }} />
           </div>
         </div>
@@ -366,47 +376,50 @@ function App() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <h2 style={{ ...styles.panelTitle, marginBottom: 0 }}>Treatments</h2>
             <button onClick={() => clearByCategory('treatment')} style={styles.clearBtn}>
-              Stop All Treatments
+              Stop All Infusions
             </button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-            <ScenarioButton label="Norepinephrine" description="α1: SVR +8 WU; mild β1: HR +5 bpm. Onset ~2 min."
+            {/* ── Infusions (titratable, stoppable) ── */}
+            <ScenarioButton label="Norepinephrine" description="Infusion · α1: SVR +8 WU; β1: HR +5 bpm. t½ 2.5 min."
               onClick={() => {
-                addIntervention('Norepi: SVR', 'treatment', 'svr', 8, 120, 300);
-                addIntervention('Norepi: chrono', 'treatment', 'hrMod', 5, 120, 300);
+                addIntervention('Norepi: SVR',   'treatment', 'infusion', 'svr',   8, 120, 150);
+                addIntervention('Norepi: chrono','treatment', 'infusion', 'hrMod', 5, 120, 150);
               }} />
-            <ScenarioButton label="Phenylephrine" description="Pure α1: SVR +5 WU. Reflex brady automatic. Onset ~30s."
-              onClick={() => addIntervention('Phenylephrine', 'treatment', 'svr', 5, 30, 180)} />
-            <ScenarioButton label="Epinephrine" description="α1+β1: SVR +6, Emax +1.5, HR +40 bpm. Onset ~2 min."
+            <ScenarioButton label="Phenylephrine" description="Infusion · Pure α1: SVR +5 WU. t½ 5 min."
+              onClick={() => addIntervention('Phenylephrine', 'treatment', 'infusion', 'svr', 5, 30, 300)} />
+            <ScenarioButton label="Epinephrine" description="Infusion · α1+β1: SVR +6, Emax +1.5, HR +40. t½ 2 min."
               onClick={() => {
-                addIntervention('Epi: SVR', 'treatment', 'svr', 6, 120, 300);
-                addIntervention('Epi: inotropy', 'treatment', 'emax', 1.5, 120, 300);
-                addIntervention('Epi: chronotropy', 'treatment', 'hrMod', 40, 120, 300);
+                addIntervention('Epi: SVR',        'treatment', 'infusion', 'svr',   6,   120, 120);
+                addIntervention('Epi: inotropy',   'treatment', 'infusion', 'emax',  1.5, 120, 120);
+                addIntervention('Epi: chronotropy','treatment', 'infusion', 'hrMod', 40,  120, 120);
               }} />
-            <ScenarioButton label="Dobutamine" description="β1: Emax +1.0, HR +25 bpm. Onset ~2 min."
+            <ScenarioButton label="Dobutamine" description="Infusion · β1: Emax +1.0, HR +25 bpm. t½ 2.5 min."
               onClick={() => {
-                addIntervention('Dobut: inotropy', 'treatment', 'emax', 1.0, 120, 300);
-                addIntervention('Dobut: chronotropy', 'treatment', 'hrMod', 25, 120, 300);
+                addIntervention('Dobut: inotropy',   'treatment', 'infusion', 'emax',  1.0, 120, 150);
+                addIntervention('Dobut: chronotropy','treatment', 'infusion', 'hrMod', 25,  120, 150);
               }} />
-            <ScenarioButton label="Vasopressin" description="Pure V1: SVR +6 WU. No chronotropy. Ideal for NO-driven shock."
-              onClick={() => addIntervention('Vasopressin', 'treatment', 'svr', 6, 30, 180)} />
-            <ScenarioButton label="Fluid Bolus (1L NS)" description="EDV +40 mL over ~10 min."
-              onClick={() => addIntervention('1L NS bolus', 'treatment', 'edv', 40, 600, 3600)} />
-            <ScenarioButton label="Needle Decompression" description="CVP −10, onset ~10s."
-              onClick={() => addIntervention('Needle decompression', 'treatment', 'cvp', -10, 10, 30)} />
-            <ScenarioButton label="Supplemental O2 (40%)" description="FiO2 +0.19. Onset ~30s."
-              onClick={() => addIntervention('Supp O2 40%', 'treatment', 'fiO2', 0.19, 30, 120)} />
-            <ScenarioButton label="Inhaled iNO" description="PVR −0.8 WU, ~5 min onset. Selective — no SVR drop."
-              onClick={() => addIntervention('iNO/PGI2', 'treatment', 'pvr', -0.8, 300, 600)} />
-            <ScenarioButton label="Sildenafil (PDE5i)" description="PVR −1.5, SVR −0.5 WU. Onset ~30 min. Watch MAP."
+            <ScenarioButton label="Vasopressin" description="Infusion · V1: SVR +6 WU. No chronotropy. t½ 18 min."
+              onClick={() => addIntervention('Vasopressin', 'treatment', 'infusion', 'svr', 6, 30, 1080)} />
+            <ScenarioButton label="Inhaled iNO" description="Infusion · PVR −0.8 WU, ~5 min onset. t½ 1 min."
+              onClick={() => addIntervention('iNO/PGI2', 'treatment', 'infusion', 'pvr', -0.8, 300, 60)} />
+            <ScenarioButton label="Supplemental O2 (40%)" description="Infusion · FiO2 +0.19. Onset ~30s. t½ 1 min washout."
+              onClick={() => addIntervention('Supp O2 40%', 'treatment', 'infusion', 'fiO2', 0.19, 30, 60)} />
+
+            {/* ── Bolus (irreversible once given) ── */}
+            <ScenarioButton label="Fluid Bolus (1L NS)" description="Bolus · EDV +40 mL. Distributes ~10 min. t½ ~1h (renal)."
+              onClick={() => addIntervention('1L NS bolus', 'treatment', 'bolus', 'edv', 40, 600, 3600)} />
+            <ScenarioButton label="Needle Decompression" description="Bolus · CVP −10. Immediate. Effect sustained (t½ 24h)."
+              onClick={() => addIntervention('Needle decompression', 'treatment', 'bolus', 'cvp', -10, 10, 86400)} />
+            <ScenarioButton label="Methylprednisolone" description="Bolus · noTone −0.4. Onset ~30 min. t½ 80 min."
+              onClick={() => addIntervention('Steroids: NO↓', 'treatment', 'bolus', 'noTone', -0.4, 1800, 4800)} />
+            <ScenarioButton label="Sildenafil (PDE5i)" description="Oral bolus · PVR −1.5, SVR −0.5 WU. Onset ~30 min. t½ 4h."
               onClick={() => {
-                addIntervention('Sildenafil: PVR↓', 'treatment', 'pvr', -1.5, 1800, 14400);
-                addIntervention('Sildenafil: SVR↓', 'treatment', 'svr', -0.5, 1800, 14400);
+                addIntervention('Sildenafil: PVR↓', 'treatment', 'bolus', 'pvr', -1.5, 1800, 14400);
+                addIntervention('Sildenafil: SVR↓', 'treatment', 'bolus', 'svr', -0.5, 1800, 14400);
               }} />
-            <ScenarioButton label="Bosentan (ET-1 blocker)" description="et1Tone −0.6 → PVR + SVR both fall. Watch MAP."
-              onClick={() => addIntervention('Bosentan: ET-1↓', 'treatment', 'et1Tone', -0.6, 3600, 28800)} />
-            <ScenarioButton label="Methylprednisolone" description="noTone −0.4. Counters NO vasodilation in sepsis."
-              onClick={() => addIntervention('Steroids: NO↓', 'treatment', 'noTone', -0.4, 1800, 21600)} />
+            <ScenarioButton label="Bosentan (ET-1 blocker)" description="Oral bolus · et1Tone −0.6. Onset ~1h. t½ 5h."
+              onClick={() => addIntervention('Bosentan: ET-1↓', 'treatment', 'bolus', 'et1Tone', -0.6, 3600, 18000)} />
           </div>
         </div>
 
@@ -542,26 +555,27 @@ function InterventionList({ interventions, currentTime, onRemove }: {
       {groupOrder.map((label) => {
         const group = groups.get(label)!;
         const count = group.length;
-        // Use the most-recently-started member's category/target for display
+        // Use the most-recently-started member's representative fields
         const rep = group[group.length - 1].intervention;
-        const isStopping = group.every((g) => g.intervention.stopTime !== undefined);
+        const isBolus = rep.kind === 'bolus';
+        const isDecaying = isBolus || group.every((g) => g.intervention.stopTime !== undefined);
         const totalEffect = group.reduce((sum, g) => sum + interventionEffect(g.intervention, currentTime), 0);
         const pct = rep.delta !== 0 ? Math.round((Math.abs(totalEffect) / (Math.abs(rep.delta) * count)) * 100) : 0;
-        const color = rep.category === 'scenario' ? '#ff6666' : '#66bb66';
+        const color = rep.category === 'scenario' ? '#ff6666' : (isBolus ? '#aabb66' : '#66bb66');
 
-        // All non-stopped members of this group — for "stop all" action
-        const removableAll = group.filter((g) => !g.intervention.stopTime);
+        // Only infusions/scenarios can be stopped — boluses cannot be recalled
+        const stoppable = group.filter((g) => g.intervention.kind !== 'bolus' && !g.intervention.stopTime);
 
         return (
           <div key={label} style={{
             display: 'flex', alignItems: 'center', gap: 5,
             padding: '4px 8px', background: '#2a2a2a', borderRadius: 4,
-            border: `1px solid ${isStopping ? '#555' : color}`,
-            opacity: isStopping ? 0.6 : 1,
+            border: `1px solid ${isDecaying && !isBolus ? '#555' : color}`,
+            opacity: isDecaying && !isBolus ? 0.6 : 1,
             fontSize: 12,
           }}>
             <span style={{ color, fontWeight: 600 }}>
-              {rep.category === 'scenario' ? '!' : '+'}
+              {rep.category === 'scenario' ? '!' : isBolus ? '◉' : '~'}
             </span>
             <span>{label}</span>
             {count > 1 && (
@@ -573,18 +587,21 @@ function InterventionList({ interventions, currentTime, onRemove }: {
             <span style={{ color: '#888', fontFamily: 'monospace', fontSize: 11 }}>
               {totalEffect >= 0 ? '+' : ''}{totalEffect.toFixed(1)} {rep.target} ({pct}%)
             </span>
-            {isStopping && (
+            {isBolus && (
+              <span style={{ color: '#777', fontSize: 10, fontStyle: 'italic' }}>given</span>
+            )}
+            {!isBolus && isDecaying && (
               <span style={{ color: '#555', fontSize: 10, fontStyle: 'italic' }}>wearing off</span>
             )}
-            {removableAll.length > 0 && (
+            {stoppable.length > 0 && (
               <button
-                onClick={() => removableAll.forEach((g) => onRemove(g.index))}
+                onClick={() => stoppable.forEach((g) => onRemove(g.index))}
                 style={{
                   background: 'none', border: `1px solid ${color}`, color: color,
                   cursor: 'pointer', fontSize: 11, padding: '1px 5px',
                   borderRadius: 3, lineHeight: 1, marginLeft: 2,
                 }}
-                title={`Stop ${removableAll.length > 1 ? `all ${removableAll.length} stacks` : 'this intervention'}`}
+                title={`Stop ${stoppable.length > 1 ? `all ${stoppable.length} stacks` : 'this intervention'}`}
               >
                 ✕
               </button>
@@ -696,9 +713,11 @@ const InterventionTimeline = memo(function InterventionTimeline({ history, inter
   const tMin = history[0].time;
   const tMax = history[history.length - 1].time;
 
-  // Only interventions visible in current window
+  // Only interventions visible in current window.
+  // Tail duration ≈ 3 elimination half-lives (captures ~87.5% of washout)
   const visible = interventions.filter((i) => {
-    const end = i.stopTime != null ? i.stopTime + i.tauOff * 3 : tMax;
+    const tail = i.eliminationHalfLife * 3;
+    const end = i.stopTime != null ? i.stopTime + tail : tMax;
     return end >= tMin && i.startTime <= tMax;
   });
 
@@ -717,7 +736,7 @@ const InterventionTimeline = memo(function InterventionTimeline({ history, inter
         const lineColor = INTERVENTION_LINE_COLORS[iv.category];
         const barColor  = INTERVENTION_COLORS[iv.category];
         const x1 = x(iv.startTime);
-        const endT = iv.stopTime != null ? Math.min(iv.stopTime + iv.tauOff * 3, tMax) : tMax;
+        const endT = iv.stopTime != null ? Math.min(iv.stopTime + iv.eliminationHalfLife * 3, tMax) : tMax;
         const x2 = x(endT);
         const yTop = pad.top + i * rowH;
 

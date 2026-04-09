@@ -210,15 +210,47 @@ export function derivative(
 
 /**
  * Compute the effective delta from an intervention at a given sim-time.
- * First-order exponential onset/offset kinetics.
+ *
+ * Bolus kinetics — Bateman absorption-elimination model:
+ *   C(t) = delta × [exp(−ke×t) − exp(−ka×t)] / [exp(−ke×tMax) − exp(−ka×tMax)]
+ *   where ka = 1/tauOn  (absorption/distribution rate)
+ *         ke = ln2/eliminationHalfLife  (elimination rate)
+ *         tMax = ln(ka/ke)/(ka−ke)  (time of peak effect)
+ *   Normalization ensures peak effect = delta.
+ *
+ * Infusion/scenario kinetics — first-order onset, exponential elimination:
+ *   while running: delta × (1 − exp(−elapsed/tauOn))
+ *   after stop:    levelAtStop × exp(−ke × elapsedSinceStop)
+ *
+ * Hook: pass clearanceMultiplier > 1 (e.g. renal/hepatic impairment) to
+ * stretch eliminationHalfLife without mutating the intervention record.
  */
 export function interventionEffect(
   intervention: Intervention,
   time: number,
+  clearanceMultiplier = 1.0,
 ): number {
   const elapsed = time - intervention.startTime;
   if (elapsed < 0) return 0;
 
+  const ke = Math.LN2 / (intervention.eliminationHalfLife * clearanceMultiplier);
+
+  // ── Bolus: Bateman absorption-elimination, normalized to peak = delta ────
+  if (intervention.kind === 'bolus') {
+    const ka = 1 / intervention.tauOn;
+    if (ka <= ke) {
+      // Pathological case (absorption slower than elimination — never happens in practice).
+      // Fall back to simple elimination from peak.
+      return intervention.delta * Math.exp(-ke * elapsed);
+    }
+    // tMax where d/dt [exp(-ke×t) - exp(-ka×t)] = 0
+    const tMax = Math.log(ka / ke) / (ka - ke);
+    const peakNorm = Math.exp(-ke * tMax) - Math.exp(-ka * tMax);
+    const current  = Math.exp(-ke * elapsed) - Math.exp(-ka * elapsed);
+    return intervention.delta * (current / peakNorm);
+  }
+
+  // ── Infusion / scenario: onset then elimination ──────────────────────────
   const onsetFraction = 1 - Math.exp(-elapsed / intervention.tauOn);
 
   if (intervention.stopTime === undefined) {
@@ -233,7 +265,7 @@ export function interventionEffect(
   const levelAtStop =
     intervention.delta *
     (1 - Math.exp(-(intervention.stopTime - intervention.startTime) / intervention.tauOn));
-  return levelAtStop * Math.exp(-elapsedSinceStop / intervention.tauOff);
+  return levelAtStop * Math.exp(-ke * elapsedSinceStop);
 }
 
 /**

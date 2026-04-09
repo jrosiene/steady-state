@@ -76,51 +76,93 @@ describe('derivative', () => {
   });
 });
 
-describe('interventionEffect', () => {
-  const baseIntervention: Intervention = {
+describe('interventionEffect — infusion', () => {
+  const infusion: Intervention = {
     label: 'test',
     category: 'treatment',
+    kind: 'infusion',
     target: 'svr',
     delta: 5,
     tauOn: 10,
-    tauOff: 20,
+    eliminationHalfLife: 693, // ln2/0.001 — very slow elimination, equivalent to old tauOff=1000
     startTime: 0,
   };
 
   it('returns 0 before start time', () => {
-    expect(interventionEffect(baseIntervention, -1)).toBe(0);
+    expect(interventionEffect(infusion, -1)).toBe(0);
   });
 
   it('returns 0 at start time', () => {
-    expect(interventionEffect(baseIntervention, 0)).toBeCloseTo(0, 5);
+    expect(interventionEffect(infusion, 0)).toBeCloseTo(0, 5);
   });
 
   it('approaches full delta over time', () => {
-    // After 5 time constants, should be ~99.3% of delta
-    const effect = interventionEffect(baseIntervention, 50);
+    // After 5 onset time constants (50s), should be ~99.3% of delta
+    const effect = interventionEffect(infusion, 50);
     expect(effect).toBeCloseTo(5, 0);
   });
 
   it('increases monotonically during onset', () => {
-    const e1 = interventionEffect(baseIntervention, 5);
-    const e2 = interventionEffect(baseIntervention, 10);
-    const e3 = interventionEffect(baseIntervention, 20);
+    const e1 = interventionEffect(infusion, 5);
+    const e2 = interventionEffect(infusion, 10);
+    const e3 = interventionEffect(infusion, 20);
     expect(e1).toBeLessThan(e2);
     expect(e2).toBeLessThan(e3);
   });
 
   it('decays after stop time', () => {
-    const stopped: Intervention = { ...baseIntervention, stopTime: 50 };
+    const stopped: Intervention = { ...infusion, eliminationHalfLife: 14, stopTime: 50 };
     const atStop = interventionEffect(stopped, 50);
     const afterStop = interventionEffect(stopped, 100);
     expect(afterStop).toBeLessThan(atStop);
   });
 
   it('decays toward zero after stop', () => {
-    const stopped: Intervention = { ...baseIntervention, stopTime: 50 };
-    // Long after stopping
-    const effect = interventionEffect(stopped, 500);
+    const stopped: Intervention = { ...infusion, eliminationHalfLife: 14, stopTime: 50 };
+    // Long after stopping (10× t½)
+    const effect = interventionEffect(stopped, 190);
     expect(effect).toBeCloseTo(0, 1);
+  });
+});
+
+describe('interventionEffect — bolus (Bateman curve)', () => {
+  const bolus: Intervention = {
+    label: 'fluid',
+    category: 'treatment',
+    kind: 'bolus',
+    target: 'edv',
+    delta: 40,
+    tauOn: 600,           // absorption ~10 min
+    eliminationHalfLife: 3600, // renal elimination t½ 1h
+    startTime: 0,
+  };
+
+  it('returns 0 before start', () => {
+    expect(interventionEffect(bolus, -1)).toBe(0);
+  });
+
+  it('peaks at delta (±5%) and then declines', () => {
+    // tMax = ln(ka/ke)/(ka-ke) where ka=1/600, ke=ln2/3600
+    const ka = 1 / bolus.tauOn;
+    const ke = Math.LN2 / bolus.eliminationHalfLife;
+    const tMax = Math.log(ka / ke) / (ka - ke);
+    const peak = interventionEffect(bolus, tMax);
+    expect(peak).toBeCloseTo(bolus.delta, 0);
+  });
+
+  it('declines after peak', () => {
+    const ka = 1 / bolus.tauOn;
+    const ke = Math.LN2 / bolus.eliminationHalfLife;
+    const tMax = Math.log(ka / ke) / (ka - ke);
+    const atPeak = interventionEffect(bolus, tMax);
+    const afterPeak = interventionEffect(bolus, tMax * 3);
+    expect(afterPeak).toBeLessThan(atPeak);
+  });
+
+  it('decays toward zero long after dosing', () => {
+    // At 5 elimination half-lives, effect should be < 3% of delta
+    const effect = interventionEffect(bolus, 5 * bolus.eliminationHalfLife);
+    expect(Math.abs(effect)).toBeLessThan(bolus.delta * 0.05);
   });
 });
 
@@ -130,17 +172,18 @@ describe('applyInterventions', () => {
     expect(result).toEqual(DEFAULT_STATE);
   });
 
-  it('adds intervention effect to target variable', () => {
+  it('adds infusion effect to target variable at steady state', () => {
     const intervention: Intervention = {
       label: 'test',
       category: 'treatment',
+      kind: 'infusion',
       target: 'svr',
       delta: 5,
       tauOn: 1,
-      tauOff: 1,
+      eliminationHalfLife: 693, // very slow elimination
       startTime: 0,
     };
-    // At time=10, effect should be nearly full (5)
+    // At time=10 (10× tauOn), effect should be nearly full (5)
     const state = { ...DEFAULT_STATE, time: 10 };
     const result = applyInterventions(state, [intervention]);
     expect(result.svr).toBeGreaterThan(state.svr);
@@ -148,8 +191,8 @@ describe('applyInterventions', () => {
   });
 
   it('stacks multiple interventions additively', () => {
-    const i1: Intervention = { label: 'a', category: 'treatment', target: 'svr', delta: 3, tauOn: 1, tauOff: 1, startTime: 0 };
-    const i2: Intervention = { label: 'b', category: 'treatment', target: 'svr', delta: 2, tauOn: 1, tauOff: 1, startTime: 0 };
+    const i1: Intervention = { label: 'a', category: 'treatment', kind: 'infusion', target: 'svr', delta: 3, tauOn: 1, eliminationHalfLife: 693, startTime: 0 };
+    const i2: Intervention = { label: 'b', category: 'treatment', kind: 'infusion', target: 'svr', delta: 2, tauOn: 1, eliminationHalfLife: 693, startTime: 0 };
     const state = { ...DEFAULT_STATE, time: 10 };
     const result = applyInterventions(state, [i1, i2]);
     expect(result.svr).toBeCloseTo(state.svr + 5, 0);
