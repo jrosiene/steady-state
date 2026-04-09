@@ -85,8 +85,12 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   tauLactateRise: 180,        // 3 min to develop (anaerobic metabolism is rapid)
   tauLactateClear: 900,       // 15 min to clear (hepatic lactate clearance is slower)
   acidosisPhThreshold: 7.35,  // myocardial depression starts at mild acidosis
-  acidosisEmaxGain: 3.5,      // pH=7.2 → penalty 0.525; pH=7.0 → penalty 1.225; pH=6.9 → 1.575
-                               // at pH=7.0: emaxEffective = 0.775 → SV ~6 mL → CO ~0.9 → decompensating
+  acidosisEmaxGain: 7.0,      // pH=7.24 → penalty 0.77 → emaxEff=1.23 (38% ↓); unstable with SvO2<40%
+                               // pH=7.20 → penalty 1.05 → emaxEff=0.95 (53% ↓); CO collapses → spiral
+                               // pH=7.10 → penalty 1.75 → emaxEff=0.25 (88% ↓); near arrest
+                               // pH=7.00 → penalty 2.45 → emaxEff=0.05 (clamped); full failure
+                               // Raised from 3.5: prior gain allowed stable equilibrium at SvO2=36%
+                               // (lactate=8, pH=7.24) — clinically incompatible with sustained life.
   acidosisSvrPhThreshold: 7.3, // vasoplegia onset: pH < 7.3 → SVR begins to fall
   acidosisSvrGain: 15,         // pH=7.1 → −3 WU; pH=7.0 → −4.5 WU; pH=6.9 → −6 WU
                                 // baroreflex SVR maxes at 40 WU; penalty overcomes it below pH~7.0
