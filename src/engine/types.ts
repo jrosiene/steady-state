@@ -307,6 +307,30 @@ export interface HemodynamicParams {
   /** Additional Qs/Qt per L/min CO deficit below lowFlowCoThreshold. */
   lowFlowQsQtGain: number;
 
+  // --- Afterload-sensitive SV (ESPVR) ---
+  /**
+   * MAP threshold above which arterial afterload begins reducing SV.
+   * Below this pressure, ejection is preload/contractility-limited as normal.
+   * At MAP > threshold: LV cannot fully empty against the elevated end-systolic
+   * pressure — ESV rises, SV falls (ESPVR constraint).
+   *
+   * Set to 140 mmHg (onset of hypertensive emergency). Below this, even multiple
+   * vasopressors at moderate dose have no direct SV penalty.
+   */
+  afterloadMapThreshold: number;
+  /**
+   * Afterload gain (mmHg × dimensionless Emax⁻¹ → SV fraction).
+   * SV penalty fraction = (MAP − threshold) / (emaxEffective × afterloadSvGain)
+   *
+   * Higher value = more tolerant of elevated afterload (flatter ESPVR slope).
+   * Normal heart (Emax=2): at MAP=240, penalty = 100/500 = 20% SV reduction.
+   * Failing heart (Emax=0.5): at MAP=190, penalty = 50/125 = 40% SV reduction.
+   *
+   * Inverse relationship with Emax captures the clinical reality that a stronger
+   * ventricle tolerates high afterload better than a failing one.
+   */
+  afterloadSvGain: number;
+
   // --- Physiologic clamps ---
   hrMin: number;
   hrMax: number;

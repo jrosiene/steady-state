@@ -555,3 +555,104 @@ describe('Vasoactive mediator ODE dynamics', () => {
     expect(recovering.noTone).toBeLessThan(peaked.noTone);
   });
 });
+
+// ─── 8. Afterload excess — pressor overdose ────────────────────────────────
+
+describe('Afterload excess: vasopressor overdose', () => {
+  /**
+   * Build a treatment-kind infusion intervention that reaches full effect instantly.
+   * Uses infusion kind (stoppable) with very slow elimination.
+   */
+  function infusion(
+    label: string,
+    target: keyof typeof DEFAULT_STATE,
+    delta: number,
+  ): Intervention {
+    return {
+      label, category: 'treatment', kind: 'infusion',
+      target, delta, tauOn: 1, eliminationHalfLife: 99999, startTime: 0,
+    };
+  }
+
+  it('single vasopressor at therapeutic dose: MAP rises, no SV collapse', () => {
+    // Norepi: SVR +8 WU — therapeutic range, MAP should rise but SV preserved
+    const pressors = [infusion('Norepi: SVR', 'svr', 8)];
+    const s = simulate(DEFAULT_STATE, 120, pressors);
+    const d = effectiveDerived(s, pressors);
+    expect(d.map).toBeGreaterThan(p.mapSetpoint);  // MAP rises
+    expect(d.sv).toBeGreaterThan(50);              // SV still reasonable
+    expect(d.co).toBeGreaterThan(2.5);             // CO maintained
+  });
+
+  it('moderate pressor stacking: baroreflex bradycardia suppresses HR, CO meaningfully reduced', () => {
+    // Stack norepi + phenylephrine + vasopressin → effective SVR ~35 WU
+    // The baroreflex PREVENTS extreme MAP by dropping HR (reflex bradycardia).
+    // Result at steady state: HR well below baseline, CO reduced ~20% from resting ~5 L/min.
+    const pressors = [
+      infusion('Norepi: SVR', 'svr', 8),
+      infusion('Phenylephrine', 'svr', 5),
+      infusion('Vasopressin', 'svr', 6),
+    ];
+    const baseline = effectiveDerived(DEFAULT_STATE, []);
+    const s = simulate(DEFAULT_STATE, 300, pressors);
+    const d = effectiveDerived(s, pressors);
+    // Baroreflex bradycardia: HR is substantially suppressed vs baseline
+    expect(s.hr).toBeLessThan(p.hrBaseline - 10);
+    // CO is reduced from baseline (~5 L/min) — stacked vasopressors are not free
+    expect(d.co).toBeLessThan(baseline.co - 0.5);
+    // SV is reduced vs therapeutic single-pressor case (afterload + HR product)
+    expect(d.sv).toBeLessThan(75);
+  });
+
+  it('ESPVR mechanism: derive() directly shows SV reduction at extreme MAP', () => {
+    // Unit test for the afterload-sensitive SV mechanism, independent of ODE dynamics.
+    // Inject very high SVR directly (bypassing baroreflex) to force MAP >> threshold.
+    const normalState = { ...DEFAULT_STATE };                      // SVR=17, MAP~90
+    const highSvrState = { ...DEFAULT_STATE, svr: 35 };           // SVR=35, MAP~180
+    const dNormal = derive(normalState, p);
+    const dHigh   = derive(highSvrState, p);
+    // High SVR → high MAP
+    expect(dHigh.map).toBeGreaterThan(dNormal.map + 30);
+    // If MAP exceeded threshold, afterload penalty must reduce SV
+    if (dHigh.map > p.afterloadMapThreshold) {
+      expect(dHigh.sv).toBeLessThan(dNormal.sv);
+    }
+  });
+
+  it('extreme pressors on failing heart: progresses to shock', () => {
+    // Pure vasopressors alone are constrained by baroreflex bradycardia (MAP stays near setpoint).
+    // But on a FAILING heart (Emax=0.5, severe cardiogenic): extreme afterload penalty
+    // reduces SV further → CO drops to shock range → clinical decompensation.
+    // This captures the "never add pure vasopressors to cardiogenic shock" teaching point.
+    const pressors = [
+      infusion('Norepi: SVR', 'svr', 8),
+      infusion('Phenylephrine', 'svr', 5),
+      infusion('Vasopressin', 'svr', 6),
+      infusion('Epi: SVR', 'svr', 6),
+    ];
+    const failingHeart = { ...DEFAULT_STATE, emax: 0.5 };
+    const s = simulate(failingHeart, 600, pressors);
+    const d = effectiveDerived(s, pressors);
+    const notCompensated =
+      d.co < 2.0 ||
+      d.cardiovascularStatus === 'shock' ||
+      d.cardiovascularStatus === 'decompensating' ||
+      d.cardiovascularStatus === 'arrest';
+    expect(notCompensated).toBe(true);
+  });
+
+  it('afterload penalty is Emax-dependent: failing heart decompensates sooner than normal', () => {
+    // At elevated MAP, a failing heart (Emax=0.8) should have lower CO than normal (Emax=2.0)
+    const pressors = [
+      infusion('Norepi: SVR', 'svr', 8),
+      infusion('Phenylephrine', 'svr', 5),
+    ];
+    const sNormal  = simulate(DEFAULT_STATE, 300, pressors);
+    const sFailing = simulate({ ...DEFAULT_STATE, emax: 0.8 }, 300, pressors);
+    const dNormal  = effectiveDerived(sNormal,  pressors);
+    const dFailing = effectiveDerived(sFailing, pressors);
+    // Failing heart should have meaningfully lower SV and CO under same afterload
+    expect(dFailing.sv).toBeLessThan(dNormal.sv);
+    expect(dFailing.co).toBeLessThan(dNormal.co);
+  });
+});

@@ -98,6 +98,14 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
                                 // → effective qsQt ≈ 0.80 → SpO2 ≈ 27% (deeply cyanotic arrest) ✓
                                 // at CO=1.0 → extra_shunt = 0.4×1.0 = 0.40 → SpO2 drops to ~60%
 
+  // --- Afterload-sensitive SV (ESPVR) ---
+  // SV penalty fraction = max(0, MAP − threshold) / (emaxEffective × gain)
+  // Normal (Emax=2, MAP=190): (190−140)/(2×250) = 10% penalty
+  // Failing (Emax=0.5, MAP=190): (190−140)/(0.5×250) = 40% penalty → rapid decompensation ✓
+  // Vasopressor excess (Emax=2, MAP=240): 100/500 = 20% penalty → SV↓, CO↓, shock spiral ✓
+  afterloadMapThreshold: 140,
+  afterloadSvGain: 250,
+
   // --- Physiologic clamps ---
   hrMin: 30,
   hrMax: 220,

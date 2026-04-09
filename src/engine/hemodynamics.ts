@@ -102,8 +102,21 @@ export function derive(
       + hpvBoost,
   );
 
-  // Final hemodynamics with corrected SVR/PVR
-  const map = co * svrEffective + state.cvp;
+  // ── Pass 3: afterload-sensitive SV (ESPVR constraint) ────────────────────
+  // High arterial pressure raises end-systolic pressure → LV cannot empty fully.
+  // Mechanism: ESP ≈ MAP; ESV = ESP/Emax (ESPVR) → SV = EDV − ESV falls.
+  // Model as multiplicative penalty above a threshold, scaled by Emax so
+  // a stronger ventricle tolerates high afterload better than a failing one.
+  // Uses preliminary MAP (co × svrEffective) — one pass is sufficient since
+  // the afterload feedback is stabilizing: SV↓ → CO↓ → MAP↓ → less penalty.
+  const mapPrelim = co * svrEffective + state.cvp;
+  const afterloadExcess = Math.max(0, mapPrelim - params.afterloadMapThreshold);
+  const afterloadPenaltyFrac = afterloadExcess / (emaxEffective * params.afterloadSvGain);
+  const svFinal = sv * Math.max(0, 1 - afterloadPenaltyFrac);
+  const coFinal = (state.hr * svFinal) / 1000;
+
+  // Final hemodynamics with corrected SVR/PVR and afterload-adjusted CO
+  const map = coFinal * svrEffective + state.cvp;
   const pcwp = computePCWP(edvEffective, emaxEffective, params);
   const { rvSv, rvCo } = computeRVOutput(state.rvedv, state.rvEmax, state.hr, params);
   const mPAP = computeMPAP(rvCo, pvrEffective, pcwp);
@@ -117,7 +130,7 @@ export function derive(
     map < 50 || co < 2.0 || pH < 7.2 ? 'shock' :
     'compensated';
 
-  return { emaxEffective, sv, co, map, rvSv, rvCo, mPAP, pcwp, spO2, paO2, svO2, pH, hco3, be, cardiovascularStatus };
+  return { emaxEffective, sv: svFinal, co: coFinal, map, rvSv, rvCo, mPAP, pcwp, spO2, paO2, svO2, pH, hco3, be, cardiovascularStatus };
 }
 
 /** Build a full snapshot (state + derived) for the UI layer. */
