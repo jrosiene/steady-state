@@ -75,27 +75,33 @@ export class SimulationLoop {
   }
 
   private frame(wallTimeMs: number) {
-    const simDt = this.state.clock.tick(wallTimeMs);
-    this.accumulator += simDt;
+    try {
+      const simDt = this.state.clock.tick(wallTimeMs);
+      this.accumulator += simDt;
 
-    // Cap accumulator to prevent spiral-of-death at high time scales
-    this.accumulator = Math.min(this.accumulator, PHYSICS_DT * MAX_STEPS_PER_FRAME);
+      // Cap accumulator to prevent spiral-of-death at high time scales
+      this.accumulator = Math.min(this.accumulator, PHYSICS_DT * MAX_STEPS_PER_FRAME);
 
-    // Step physics in fixed increments
-    while (this.accumulator >= PHYSICS_DT) {
-      this.physicsStep();
-      this.accumulator -= PHYSICS_DT;
+      // Step physics in fixed increments
+      while (this.accumulator >= PHYSICS_DT) {
+        this.physicsStep();
+        this.accumulator -= PHYSICS_DT;
+      }
+
+      // Emit snapshot with intervention overlay for UI display.
+      // clampEffective guards against out-of-range values from stacked interventions.
+      const effective = clampEffective(
+        applyInterventions(this.state.hemodynamics, this.state.interventions),
+        this.state.params,
+      );
+      this.onSnapshot(snapshot(effective, this.state.params));
+    } catch (err) {
+      // Log the error but keep the RAF loop alive — a single bad frame should not
+      // permanently freeze the simulation. State is left unchanged for this frame.
+      console.error('[SimulationLoop] frame error:', err);
     }
 
-    // Emit snapshot with intervention overlay for UI display.
-    // clampEffective guards against out-of-range values from stacked interventions.
-    const effective = clampEffective(
-      applyInterventions(this.state.hemodynamics, this.state.interventions),
-      this.state.params,
-    );
-    this.onSnapshot(snapshot(effective, this.state.params));
-
-    // Continue loop
+    // Continue loop regardless of frame errors
     if (this.state.clock.running) {
       this.scheduleFrame();
     }

@@ -1,6 +1,17 @@
 import type { HemodynamicParams, HemodynamicState } from './types';
 
 /**
+ * NaN-safe clamp. Math.min/Math.max propagate NaN silently — if a non-finite
+ * value ever appears (e.g. 0/0 in an intermediate RK4 stage), it would be
+ * preserved by a naive clamp and corrupt all downstream calculations.
+ * This returns the fallback value when v is not finite.
+ */
+function safeClamp(v: number, min: number, max: number, fallback: number): number {
+  if (!Number.isFinite(v)) return fallback;
+  return Math.min(max, Math.max(min, v));
+}
+
+/**
  * Generic state derivative function signature.
  * Takes current state + params, returns dState/dt.
  */
@@ -86,20 +97,20 @@ export function clampEffective(
 ): HemodynamicState {
   return {
     ...state,
-    hr:     Math.min(params.hrMax,    Math.max(params.hrMin,    state.hr)),
-    svr:    Math.min(params.svrMax,   Math.max(params.svrMin,   state.svr)),
-    edv:    Math.min(params.edvMax,   Math.max(params.edvMin,   state.edv)),
-    emax:   Math.max(0.05,  state.emax),
-    cvp:    Math.max(0,     state.cvp),
-    hrMod:  state.hrMod,
-    rvEmax: Math.max(0.05,  state.rvEmax),
-    pvr:    Math.min(params.pvrMax,   Math.max(params.pvrMin,   state.pvr)),
-    rvedv:  Math.min(params.rvedvMax, Math.max(params.rvedvMin, state.rvedv)),
-    qsQt:    Math.min(0.95,  Math.max(0,    state.qsQt)),
-    fiO2:    Math.min(1.0,   Math.max(0.21, state.fiO2)),
-    noTone:  Math.min(1.0,   Math.max(0,    state.noTone)),
-    et1Tone: Math.min(1.0,   Math.max(0,    state.et1Tone)),
-    lactate: Math.min(params.lactateMax, Math.max(params.lactateMin, state.lactate)),
+    hr:      safeClamp(state.hr,      params.hrMin,    params.hrMax,    params.hrBaseline),
+    svr:     safeClamp(state.svr,     params.svrMin,   params.svrMax,   params.svrBaseline),
+    edv:     safeClamp(state.edv,     params.edvMin,   params.edvMax,   params.edvRef),
+    emax:    safeClamp(state.emax,    0.05, 10, params.emaxRef),
+    cvp:     safeClamp(state.cvp,     0,    30, 5),
+    hrMod:   Number.isFinite(state.hrMod)   ? state.hrMod   : 0,
+    rvEmax:  safeClamp(state.rvEmax,  0.05, 5,  params.rvEmaxRef),
+    pvr:     safeClamp(state.pvr,     params.pvrMin,   params.pvrMax,   params.pvrRef),
+    rvedv:   safeClamp(state.rvedv,   params.rvedvMin, params.rvedvMax, params.rvedvRef),
+    qsQt:    safeClamp(state.qsQt,    0,    0.95, 0.02),
+    fiO2:    safeClamp(state.fiO2,    0.21, 1.0,  0.21),
+    noTone:  safeClamp(state.noTone,  0,    1.0,  0),
+    et1Tone: safeClamp(state.et1Tone, 0,    1.0,  0),
+    lactate: safeClamp(state.lactate, params.lactateMin, params.lactateMax, 1.0),
   };
 }
 
@@ -114,23 +125,23 @@ export function clampState(
   return {
     ...state,
     // Systemic
-    hr:    Math.min(params.hrMax,  Math.max(params.hrMin,  state.hr)),
-    svr:   Math.min(params.svrMax, Math.max(params.svrMin, state.svr)),
-    edv:   Math.min(params.edvMax, Math.max(params.edvMin, state.edv)),
-    emax:  Math.max(0.1, state.emax),
-    cvp:   Math.max(0, state.cvp),
-    hrMod: Math.max(0, state.hrMod),
+    hr:    safeClamp(state.hr,    params.hrMin,  params.hrMax,  params.hrBaseline),
+    svr:   safeClamp(state.svr,   params.svrMin, params.svrMax, params.svrBaseline),
+    edv:   safeClamp(state.edv,   params.edvMin, params.edvMax, params.edvRef),
+    emax:  safeClamp(state.emax,  0.1, 10, params.emaxRef),
+    cvp:   safeClamp(state.cvp,   0, 30, 5),
+    hrMod: safeClamp(state.hrMod, 0, 100, 0),
     // Pulmonary
-    rvEmax: Math.max(0.05, state.rvEmax),
-    pvr:    Math.min(params.pvrMax,   Math.max(params.pvrMin,   state.pvr)),
-    rvedv:  Math.min(params.rvedvMax, Math.max(params.rvedvMin, state.rvedv)),
+    rvEmax: safeClamp(state.rvEmax, 0.05, 5,  params.rvEmaxRef),
+    pvr:    safeClamp(state.pvr,    params.pvrMin,   params.pvrMax,   params.pvrRef),
+    rvedv:  safeClamp(state.rvedv,  params.rvedvMin, params.rvedvMax, params.rvedvRef),
     // Gas exchange
-    qsQt:    Math.min(0.95, Math.max(0,    state.qsQt)),
-    fiO2:    Math.min(1.0,  Math.max(0.21, state.fiO2)),
+    qsQt:    safeClamp(state.qsQt,    0,    0.95, 0.02),
+    fiO2:    safeClamp(state.fiO2,    0.21, 1.0,  0.21),
     // Vasoactive tones
-    noTone:  Math.min(1.0,  Math.max(0,    state.noTone)),
-    et1Tone: Math.min(1.0,  Math.max(0,    state.et1Tone)),
+    noTone:  safeClamp(state.noTone,  0, 1.0, 0),
+    et1Tone: safeClamp(state.et1Tone, 0, 1.0, 0),
     // Acid-base
-    lactate: Math.min(params.lactateMax, Math.max(params.lactateMin, state.lactate)),
+    lactate: safeClamp(state.lactate, params.lactateMin, params.lactateMax, 1.0),
   };
 }
