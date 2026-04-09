@@ -11,6 +11,12 @@
  *   Rates: bpm (HR)
  */
 
+/**
+ * Cardiovascular failure status — derived each tick from MAP, CO, and pH.
+ * Used by the game loop to trigger scenario outcomes and failure modes.
+ */
+export type CardiovascularStatus = 'compensated' | 'shock' | 'decompensating' | 'arrest';
+
 /** Dynamic state variables — these change over time via the ODE system. */
 export interface HemodynamicState {
   // --- Systemic circuit ---
@@ -56,6 +62,14 @@ export interface HemodynamicState {
    */
   et1Tone: number;
 
+  /**
+   * Blood lactate (mmol/L). First-order ODE driven by SvO2 deficit.
+   * Rises when oxygen delivery is insufficient (anaerobic threshold ~SvO2 < 0.65).
+   * Clears slowly via hepatic metabolism when perfusion is restored.
+   * Feeds back into pH → acidosis-driven myocardial depression → failure spiral.
+   */
+  lactate: number;
+
   /** Current simulation time (seconds). */
   time: number;
 }
@@ -87,6 +101,24 @@ export interface DerivedValues {
   paO2: number;
   /** Mixed venous O2 saturation (0–1). Estimated from Fick equation. */
   svO2: number;
+
+  // --- Blood gases / acid-base ---
+  /** Arterial pH. Derived from lactate (metabolic component) + paCO2 (constant) via Henderson-Hasselbalch. */
+  pH: number;
+  /** Bicarbonate (mEq/L). Falls ~1 mEq/L per 1 mmol/L lactate rise above 1 (pure anion-gap acidosis). */
+  hco3: number;
+  /** Base excess (mEq/L). Negative in metabolic acidosis. */
+  be: number;
+
+  // --- Failure status ---
+  /**
+   * Cardiovascular failure status derived from MAP, CO, and pH each tick.
+   * 'compensated': MAP ≥ 50, CO ≥ 2, pH ≥ 7.2
+   * 'shock':       MAP < 50 or CO < 2 or pH < 7.2
+   * 'decompensating': MAP < 35 or CO < 1 or pH < 7.1
+   * 'arrest':      MAP < 20 or pH < 6.9 — irreversible without intervention
+   */
+  cardiovascularStatus: CardiovascularStatus;
 }
 
 /** Full snapshot = dynamic state + derived values. */
@@ -206,6 +238,20 @@ export interface HemodynamicParams {
   /** Time constant for RVEDV adaptation to PVR changes (seconds). */
   tauRvAdaptation: number;
 
+  // --- Lactate / acid-base ---
+  /** SvO2 below which anaerobic metabolism begins and lactate rises (0–1). */
+  lactateSvO2Threshold: number;
+  /** Gain mapping SvO2 deficit to lactate target (mmol/L per unit SvO2 deficit). */
+  lactateSvO2Gain: number;
+  /** Time constant for lactate rise when DO2 is inadequate (seconds). */
+  tauLactateRise: number;
+  /** Time constant for lactate clearance when DO2 is restored (seconds). Hepatic clearance is slower. */
+  tauLactateClear: number;
+  /** pH threshold below which acidosis begins depressing myocardial contractility. */
+  acidosisPhThreshold: number;
+  /** Emax penalty per unit pH deficit below acidosisPhThreshold. */
+  acidosisEmaxGain: number;
+
   // --- Physiologic clamps ---
   hrMin: number;
   hrMax: number;
@@ -217,6 +263,8 @@ export interface HemodynamicParams {
   pvrMax: number;
   rvedvMin: number;
   rvedvMax: number;
+  lactateMin: number;
+  lactateMax: number;
 }
 
 /**

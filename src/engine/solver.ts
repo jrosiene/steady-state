@@ -14,6 +14,7 @@ const STATE_KEYS: (keyof HemodynamicState)[] = [
   'hr', 'svr', 'edv', 'emax', 'cvp', 'hrMod',
   'rvEmax', 'pvr', 'rvedv', 'qsQt', 'fiO2',
   'noTone', 'et1Tone',
+  'lactate',
   'time',
 ];
 
@@ -98,6 +99,7 @@ export function clampEffective(
     fiO2:    Math.min(1.0,   Math.max(0.21, state.fiO2)),
     noTone:  Math.min(1.0,   Math.max(0,    state.noTone)),
     et1Tone: Math.min(1.0,   Math.max(0,    state.et1Tone)),
+    lactate: Math.min(params.lactateMax, Math.max(params.lactateMin, state.lactate)),
   };
 }
 
@@ -128,5 +130,7 @@ export function clampState(
     // Vasoactive tones
     noTone:  Math.min(1.0,  Math.max(0,    state.noTone)),
     et1Tone: Math.min(1.0,  Math.max(0,    state.et1Tone)),
+    // Acid-base
+    lactate: Math.min(params.lactateMax, Math.max(params.lactateMin, state.lactate)),
   };
 }

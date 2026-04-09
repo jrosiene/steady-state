@@ -70,6 +70,15 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   rvedvRef: 150,             // resting RVEDV (matches DEFAULT_STATE.rvedv)
   tauRvAdaptation: 120,      // 2 min for acute RV dilation
 
+  // --- Lactate / acid-base ---
+  lactateSvO2Threshold: 0.65, // anaerobic threshold: SvO2 < 65% → lactate starts rising
+  lactateSvO2Gain: 15,        // at SvO2=0.30: target = 1 + 15×0.35 = 6.25 mmol/L (severe)
+                               // at SvO2=0.50: target = 1 + 15×0.15 = 3.25 (moderate)
+  tauLactateRise: 180,        // 3 min to develop (anaerobic metabolism is rapid)
+  tauLactateClear: 900,       // 15 min to clear (hepatic lactate clearance is slower)
+  acidosisPhThreshold: 7.35,  // depression starts at mild acidosis
+  acidosisEmaxGain: 1.5,      // pH=7.2 → penalty 0.225; pH=7.0 → penalty 0.525; pH=6.9 → 0.675
+
   // --- Physiologic clamps ---
   hrMin: 30,
   hrMax: 220,
@@ -81,6 +90,8 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   pvrMax: 20,   // severe PH
   rvedvMin: 30,
   rvedvMax: 350,
+  lactateMin: 0.5,
+  lactateMax: 25,
 };
 
 /** Resting hemodynamic state for a healthy adult. */
@@ -105,6 +116,9 @@ export const DEFAULT_STATE: HemodynamicState = {
   // Vasoactive mediators
   noTone: 0,     // no excess NO/PGI2 at baseline
   et1Tone: 0,    // no ET-1 activation at baseline
+
+  // Acid-base
+  lactate: 1.0,  // mmol/L — normal resting lactate
 
   time: 0,
 };

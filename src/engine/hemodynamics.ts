@@ -1,4 +1,5 @@
 import type {
+  CardiovascularStatus,
   DerivedValues,
   HemodynamicParams,
   HemodynamicState,
@@ -33,9 +34,25 @@ export function derive(
   state: HemodynamicState,
   params: HemodynamicParams,
 ): DerivedValues {
+  // ── Blood gases: derived from lactate (state var) + constant paCO2 ─────────
+  // Pure anion-gap metabolic acidosis model: each mmol/L lactate above 1 consumes 1 mEq/L HCO3.
+  // Henderson-Hasselbalch: pH = 6.1 + log10(HCO3 / (0.0307 × paCO2))
+  // Normal: HCO3=24, paCO2=40 → pH = 6.1 + log10(24/1.228) = 7.39 ✓
+  // Lactate=10: HCO3=15 → pH = 6.1 + log10(15/1.228) = 7.19 ✓
+  const hco3 = Math.max(5, 24 - Math.max(0, state.lactate - 1));
+  const pH = 6.1 + Math.log10(hco3 / (0.0307 * params.paCO2));
+  const be = hco3 - 24;
+
   // ── Vasoactive tone effects (Layer B: state variables → algebraic corrections) ──
-  // These apply before pass 1 since they don't depend on SpO2
-  const emaxEffective = Math.max(0.05, state.emax - state.noTone * params.noToneEmaxGain);
+  // Acidosis-driven myocardial depression: pH < 7.35 → progressive emax penalty.
+  // Mechanism: intracellular acidosis reduces myofilament Ca²⁺ sensitivity and SR function.
+  // Combined with noTone depression (septic cardiomyopathy) — independent mechanisms.
+  const acidosisEmaxPenalty = Math.max(0, (params.acidosisPhThreshold - pH) * params.acidosisEmaxGain);
+  const emaxEffective = Math.max(0.05,
+    state.emax
+    - state.noTone * params.noToneEmaxGain
+    - acidosisEmaxPenalty,
+  );
 
   // RV-LV septal interdependence (Layer A: mechanical, no SpO2 dependency)
   const rvlvPenalty = computeRVLVInterdependence(state.rvedv, params);
@@ -78,7 +95,16 @@ export function derive(
   const { rvSv, rvCo } = computeRVOutput(state.rvedv, state.rvEmax, state.hr, params);
   const mPAP = computeMPAP(rvCo, pvrEffective, pcwp);
 
-  return { sv, co, map, rvSv, rvCo, mPAP, pcwp, spO2, paO2, svO2 };
+  // ── Cardiovascular failure status ────────────────────────────────────────
+  // Composite of perfusion pressure, output, and metabolic reserve.
+  // Each tier represents a clinically distinct decision point.
+  const cardiovascularStatus: CardiovascularStatus =
+    map < 20 || pH < 6.9 ? 'arrest' :
+    map < 35 || co < 1.0 || pH < 7.1 ? 'decompensating' :
+    map < 50 || co < 2.0 || pH < 7.2 ? 'shock' :
+    'compensated';
+
+  return { sv, co, map, rvSv, rvCo, mPAP, pcwp, spO2, paO2, svO2, pH, hco3, be, cardiovascularStatus };
 }
 
 /** Build a full snapshot (state + derived) for the UI layer. */
@@ -106,7 +132,7 @@ export function derivative(
   params: HemodynamicParams,
 ): HemodynamicState {
   const derived = derive(state, params);
-  const { map, spO2, mPAP } = derived;
+  const { map, spO2, mPAP, svO2 } = derived;
 
   // Baroreflex
   const { dHr, dSvr } = computeBaroreflex(state.hr, state.svr, map, state.hrMod, params);
@@ -115,6 +141,12 @@ export function derivative(
   const { noToneTarget, et1ToneTarget } = computeVasoactiveToneTargets(spO2, mPAP, params);
   const dNoTone  = (noToneTarget  - state.noTone)  / params.tauNoTone;
   const dEt1Tone = (et1ToneTarget - state.et1Tone) / params.tauEt1Tone;
+
+  // Lactate ODE: rises when SvO2 falls below anaerobic threshold (DO2 < demand).
+  // Asymmetric time constants: rapid rise (anaerobic metabolism) vs slow clearance (hepatic).
+  const lactateTarget = 1 + params.lactateSvO2Gain * Math.max(0, params.lactateSvO2Threshold - svO2);
+  const tauLactate = lactateTarget > state.lactate ? params.tauLactateRise : params.tauLactateClear;
+  const dLactate = (lactateTarget - state.lactate) / tauLactate;
 
   // RVEDV adapts to effective PVR (RV dilates under high afterload)
   // Use pvrEffective from the derived values path — derived mPAP already accounts for it.
@@ -139,6 +171,7 @@ export function derivative(
     fiO2: 0,
     noTone: dNoTone,
     et1Tone: dEt1Tone,
+    lactate: dLactate,
     time: 1,
   };
 }
