@@ -243,6 +243,14 @@ export interface HemodynamicParams {
   lactateSvO2Threshold: number;
   /** Gain mapping SvO2 deficit to lactate target (mmol/L per unit SvO2 deficit). */
   lactateSvO2Gain: number;
+  /**
+   * MAP below which microvascular maldistribution independently drives lactate accumulation.
+   * Even at maximum O2 extraction (SvO2 floor), low perfusion pressure causes regional
+   * hypoperfusion — lactate rises faster than the SvO2 model can capture.
+   */
+  lactateMAPThreshold: number;
+  /** Gain mapping MAP deficit below lactateMAPThreshold to additional lactate target (mmol/L per mmHg). */
+  lactateMAPGain: number;
   /** Time constant for lactate rise when DO2 is inadequate (seconds). */
   tauLactateRise: number;
   /** Time constant for lactate clearance when DO2 is restored (seconds). Hepatic clearance is slower. */
@@ -251,6 +259,15 @@ export interface HemodynamicParams {
   acidosisPhThreshold: number;
   /** Emax penalty per unit pH deficit below acidosisPhThreshold. */
   acidosisEmaxGain: number;
+  /**
+   * pH threshold below which acidosis causes progressive SVR reduction (vasoplegia).
+   * Mechanism: acidosis impairs vascular smooth muscle Ca²⁺ sensitivity and
+   * reduces catecholamine receptor responsiveness — the baroreflex cannot fully
+   * compensate once this penalty exceeds the available SVR headroom.
+   */
+  acidosisSvrPhThreshold: number;
+  /** SVR reduction per unit pH deficit below acidosisSvrPhThreshold (WU). */
+  acidosisSvrGain: number;
 
   // --- Physiologic clamps ---
   hrMin: number;

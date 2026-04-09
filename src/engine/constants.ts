@@ -72,12 +72,19 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
 
   // --- Lactate / acid-base ---
   lactateSvO2Threshold: 0.65, // anaerobic threshold: SvO2 < 65% → lactate starts rising
-  lactateSvO2Gain: 15,        // at SvO2=0.30: target = 1 + 15×0.35 = 6.25 mmol/L (severe)
-                               // at SvO2=0.50: target = 1 + 15×0.15 = 3.25 (moderate)
+  lactateSvO2Gain: 25,        // at SvO2=0.10 (floor): target = 1 + 25×0.55 = 14.75 mmol/L
+                               // at SvO2=0.50: target = 1 + 25×0.15 = 4.75 (moderate shock)
+  lactateMAPThreshold: 50,    // MAP < 50 → microvascular maldistribution adds to lactate target
+  lactateMAPGain: 0.3,        // at MAP=40: +3 mmol/L; at MAP=30: +6 mmol/L
+                               // → at MAP=40, total target ≈ 17.75 → pH ≈ 6.88 → arrest cascade
   tauLactateRise: 180,        // 3 min to develop (anaerobic metabolism is rapid)
   tauLactateClear: 900,       // 15 min to clear (hepatic lactate clearance is slower)
-  acidosisPhThreshold: 7.35,  // depression starts at mild acidosis
-  acidosisEmaxGain: 1.5,      // pH=7.2 → penalty 0.225; pH=7.0 → penalty 0.525; pH=6.9 → 0.675
+  acidosisPhThreshold: 7.35,  // myocardial depression starts at mild acidosis
+  acidosisEmaxGain: 3.5,      // pH=7.2 → penalty 0.525; pH=7.0 → penalty 1.225; pH=6.9 → 1.575
+                               // at pH=7.0: emaxEffective = 0.775 → SV ~6 mL → CO ~0.9 → decompensating
+  acidosisSvrPhThreshold: 7.3, // vasoplegia onset: pH < 7.3 → SVR begins to fall
+  acidosisSvrGain: 15,         // pH=7.1 → −3 WU; pH=7.0 → −4.5 WU; pH=6.9 → −6 WU
+                                // baroreflex SVR maxes at 40 WU; penalty overcomes it below pH~7.0
 
   // --- Physiologic clamps ---
   hrMin: 30,

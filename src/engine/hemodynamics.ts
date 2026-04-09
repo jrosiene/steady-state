@@ -71,13 +71,20 @@ export function derive(
   // Hypoxic systemic vasodilation (Layer A): severe hypoxemia → peripheral vasodilation
   const hypoxicVasoDelta = computeHypoxicVasodilation(spO2, params);
 
-  // Effective SVR: baroreflex base − noTone vasodilation + et1 vasoconstriction − hypoxic dilation
+  // Acidosis-driven SVR reduction (vasoplegia): pH < 7.3 → direct SVR penalty.
+  // Mechanism: H⁺ competes with Ca²⁺ on vascular smooth muscle contractile proteins
+  // and reduces α-receptor sensitivity — the baroreflex response is overwhelmed at
+  // severe acidosis even when state.svr is at its maximum clamped value.
+  const acidosisSvrPenalty = Math.max(0, (params.acidosisSvrPhThreshold - pH) * params.acidosisSvrGain);
+
+  // Effective SVR: baroreflex base − noTone vasodilation + et1 vasoconstriction − hypoxic dilation − acidosis vasoplegia
   const svrEffective = Math.max(
     params.svrMin,
     state.svr
       - state.noTone  * params.noToneSvrGain
       + state.et1Tone * params.et1ToneSvrGain
-      - hypoxicVasoDelta,
+      - hypoxicVasoDelta
+      - acidosisSvrPenalty,
   );
 
   // Effective PVR: base + ET-1 constriction − noTone dilation + HPV reflex
@@ -142,9 +149,13 @@ export function derivative(
   const dNoTone  = (noToneTarget  - state.noTone)  / params.tauNoTone;
   const dEt1Tone = (et1ToneTarget - state.et1Tone) / params.tauEt1Tone;
 
-  // Lactate ODE: rises when SvO2 falls below anaerobic threshold (DO2 < demand).
-  // Asymmetric time constants: rapid rise (anaerobic metabolism) vs slow clearance (hepatic).
-  const lactateTarget = 1 + params.lactateSvO2Gain * Math.max(0, params.lactateSvO2Threshold - svO2);
+  // Lactate ODE: two independent drivers.
+  // 1. SvO2 deficit: anaerobic metabolism when O2 delivery < demand
+  // 2. MAP deficit: microvascular maldistribution at low perfusion pressure —
+  //    even at max O2 extraction (SvO2 floor), regional hypoperfusion continues to generate lactate
+  const lactateTarget = 1
+    + params.lactateSvO2Gain * Math.max(0, params.lactateSvO2Threshold - svO2)
+    + params.lactateMAPGain  * Math.max(0, params.lactateMAPThreshold  - map);
   const tauLactate = lactateTarget > state.lactate ? params.tauLactateRise : params.tauLactateClear;
   const dLactate = (lactateTarget - state.lactate) / tauLactate;
 

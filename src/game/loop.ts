@@ -149,6 +149,13 @@ export class SimulationLoop {
       const rvedvTarget = computeRvedvTarget(pvrEffective, p.rvedvRef, p);
       const dRvedv = (rvedvTarget - state.rvedv) / p.tauRvAdaptation;
 
+      // Lactate ODE: SvO2 deficit + MAP-driven microvascular maldistribution
+      const lactateTarget = 1
+        + p.lactateSvO2Gain * Math.max(0, p.lactateSvO2Threshold - derived.svO2)
+        + p.lactateMAPGain  * Math.max(0, p.lactateMAPThreshold  - derived.map);
+      const tauLactate = lactateTarget > state.lactate ? p.tauLactateRise : p.tauLactateClear;
+      const dLactate = (lactateTarget - state.lactate) / tauLactate;
+
       return {
         hr: dHr,
         svr: dSvr,
@@ -163,6 +170,7 @@ export class SimulationLoop {
         fiO2: 0,
         noTone: dNoTone,
         et1Tone: dEt1Tone,
+        lactate: dLactate,
         time: 1,
       };
     };
