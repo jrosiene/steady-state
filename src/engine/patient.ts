@@ -92,9 +92,9 @@ export function samplePatient(): PatientProfile {
     edvCritBase,
     rvEmaxRef,
     hgb,
-    // RVEDV reference matches the patient's sampled resting RVEDV
+    // RVEDV/EDV references match the patient's sampled resting volumes
     rvedvRef: rvedvBaseline,
-    // PVR reference matches the patient's sampled resting PVR
+    edvRef: edvBaseline,
     pvrRef: pvrBaseline,
   };
 

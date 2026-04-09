@@ -68,6 +68,10 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   rvDilationSensitivity: 15, // mL RVEDV per WU PVR above pvrRef
   pvrRef: 1.5,               // baseline PVR reference (matches DEFAULT_STATE.pvr)
   rvedvRef: 150,             // resting RVEDV (matches DEFAULT_STATE.rvedv)
+  edvRef: 120,               // resting EDV (matches DEFAULT_STATE.edv)
+  rvVrGain: 1.25,            // mL RVEDV per mL EDV deviation; ≈ rvedvRef/edvRef = 150/120
+                              // EDV=30 → RVEDV target = 150 + 1.25×(30−120) = 37 mL ✓
+                              // EDV=160 (volume overload) → RVEDV target = 150 + 1.25×40 = 200 mL ✓
   tauRvAdaptation: 120,      // 2 min for acute RV dilation
 
   // --- Lactate / acid-base ---

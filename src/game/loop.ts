@@ -142,11 +142,12 @@ export class SimulationLoop {
       const dNoTone  = (noToneTarget  - state.noTone)  / p.tauNoTone;
       const dEt1Tone = (et1ToneTarget - state.et1Tone) / p.tauEt1Tone;
 
-      // RVEDV adapts to effective PVR — back-calculate from mPAP = rvCo × pvrEff + pcwp
+      // RVEDV adapts to effective PVR (afterload) and effective EDV (venous return coupling).
+      // Back-calculate pvrEffective from mPAP = rvCo × pvrEff + pcwp.
       const pvrEffective = derived.rvCo > 0
         ? (derived.mPAP - derived.pcwp) / derived.rvCo
         : p.pvrRef;
-      const rvedvTarget = computeRvedvTarget(pvrEffective, p.rvedvRef, p);
+      const rvedvTarget = computeRvedvTarget(pvrEffective, effective.edv, p.rvedvRef, p);
       const dRvedv = (rvedvTarget - state.rvedv) / p.tauRvAdaptation;
 
       // Lactate ODE: type A (SvO2/MAP) + type B (noTone/inflammatory).

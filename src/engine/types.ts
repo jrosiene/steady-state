@@ -235,6 +235,15 @@ export interface HemodynamicParams {
   pvrRef: number;
   /** Resting RVEDV around which dilation is calculated (mL). */
   rvedvRef: number;
+  /** Reference EDV for venous return coupling (mL). Should match patient's resting EDV. */
+  edvRef: number;
+  /**
+   * Venous return coupling gain: mL RVEDV change per mL EDV deviation from edvRef.
+   * Reflects that both ventricles fill from the same venous return.
+   * At baseline rvVrGain ≈ rvedvRef/edvRef ≈ 1.25 (RV slightly more compliant than LV).
+   * With EDV=30 (severe hemorrhage): RVEDV target drops to ~37 mL (5:1 ratio → 1.25:1) ✓
+   */
+  rvVrGain: number;
   /** Time constant for RVEDV adaptation to PVR changes (seconds). */
   tauRvAdaptation: number;
 

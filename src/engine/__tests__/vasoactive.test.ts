@@ -83,23 +83,38 @@ describe('computeRVLVInterdependence (Septal Shift)', () => {
   });
 });
 
-describe('computeRvedvTarget (RV Afterload Dilation)', () => {
-  it('returns rvedvRef at pvrRef (no dilation at rest)', () => {
-    expect(computeRvedvTarget(p.pvrRef, p.rvedvRef, p)).toBeCloseTo(p.rvedvRef, 5);
+describe('computeRvedvTarget (RV Afterload Dilation + Venous Return Coupling)', () => {
+  it('returns rvedvRef at pvrRef and edvRef (no perturbations at rest)', () => {
+    // PVR at ref, EDV at ref → no afterload term, no VR term → returns rvedvRef exactly
+    expect(computeRvedvTarget(p.pvrRef, p.edvRef, p.rvedvRef, p)).toBeCloseTo(p.rvedvRef, 5);
   });
 
-  it('increases RVEDV target when PVR exceeds reference', () => {
-    expect(computeRvedvTarget(3.0, p.rvedvRef, p)).toBeGreaterThan(p.rvedvRef);
+  it('increases RVEDV target when PVR exceeds reference (EDV held at ref)', () => {
+    expect(computeRvedvTarget(3.0, p.edvRef, p.rvedvRef, p)).toBeGreaterThan(p.rvedvRef);
   });
 
   it('exceeds interdependence threshold (195 mL) at moderate PH (PVR = 4.5 WU)', () => {
-    // +3 WU above ref: 150 + 15 × 3 = 195 mL exactly at threshold
-    expect(computeRvedvTarget(4.5, p.rvedvRef, p)).toBeCloseTo(195, 0);
+    // +3 WU above ref, EDV at ref: 150 + 15×3 + 0 = 195 mL
+    expect(computeRvedvTarget(4.5, p.edvRef, p.rvedvRef, p)).toBeCloseTo(195, 0);
   });
 
   it('produces significant dilation at severe PH (PVR = 7 WU)', () => {
-    // +5.5 WU above ref: 150 + 15 × 5.5 = 232.5 mL → well above threshold
-    expect(computeRvedvTarget(7.0, p.rvedvRef, p)).toBeCloseTo(232.5, 1);
+    // +5.5 WU above ref, EDV at ref: 150 + 15×5.5 + 0 = 232.5 mL
+    expect(computeRvedvTarget(7.0, p.edvRef, p.rvedvRef, p)).toBeCloseTo(232.5, 1);
+  });
+
+  it('reduces RVEDV target proportionally when EDV falls (hemorrhage)', () => {
+    // EDV=30 (-90 from ref=120): VR term = 1.25 × (-90) = -112.5 → target = 37.5 mL
+    const target = computeRvedvTarget(p.pvrRef, 30, p.rvedvRef, p);
+    expect(target).toBeLessThan(p.rvedvRef);
+    expect(target).toBeCloseTo(37.5, 0);
+  });
+
+  it('afterload and venous return terms are additive', () => {
+    // PVR=4.5 (+3 WU), EDV=30 (-90 mL): 150 + 45 - 112.5 = 82.5 mL
+    const target = computeRvedvTarget(4.5, 30, p.rvedvRef, p);
+    expect(target).toBeGreaterThan(computeRvedvTarget(p.pvrRef, 30, p.rvedvRef, p)); // PVR adds
+    expect(target).toBeLessThan(computeRvedvTarget(4.5, p.edvRef, p.rvedvRef, p));   // VR subtracts
   });
 });
 

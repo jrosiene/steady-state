@@ -68,25 +68,31 @@ export function computeRVLVInterdependence(
 }
 
 /**
- * RVEDV equilibrium driven by RV afterload.
+ * RVEDV equilibrium driven by RV afterload AND venous return.
  *
- * The RV naturally dilates under elevated PVR (Frank-Starling compensation
- * for increased afterload). This is the dilation that eventually triggers
- * RVLV interdependence and cor pulmonale physiology.
+ * Two independent terms:
  *
- * rvedvTarget = rvedvBaseline + rvDilationSensitivity × max(0, effectivePVR − pvrRef)
- * At PVR=4 WU (PAH scenario, +2.5 above ref): RVEDV target ≈ 187 mL (near threshold)
- * At PVR=7 WU (+5.5 above ref): RVEDV target ≈ 232 mL (well above threshold)
+ * 1. Afterload (PVR): RV dilates under elevated PVR (Frank-Starling compensation).
+ *    At PVR=4 WU (+2.5 above ref): +37 mL → RVEDV ≈ 187 mL (near interdependence threshold)
+ *    At PVR=7 WU (+5.5 above ref): +82 mL → RVEDV ≈ 232 mL (cor pulmonale range)
+ *
+ * 2. Venous return (EDV coupling): both ventricles fill from the same venous reservoir.
+ *    EDV deviations from edvRef scale RVEDV proportionally via rvVrGain (≈1.25).
+ *    Hemorrhage: EDV=30 → RVEDV target = 150 + 1.25×(30−120) = 37 mL ✓
+ *    Volume overload: EDV=160 → RVEDV target = 150 + 1.25×(40) = 200 mL ✓
+ *
+ * Without this coupling, RVEDV stays at 150 mL during severe hemorrhage while
+ * effective EDV drops to 30 mL — a physiologically impossible 5:1 ratio.
  */
 export function computeRvedvTarget(
   effectivePVR: number,
+  effectiveEDV: number,
   rvedvBaseline: number,
   params: HemodynamicParams,
 ): number {
-  return (
-    rvedvBaseline +
-    params.rvDilationSensitivity * Math.max(0, effectivePVR - params.pvrRef)
-  );
+  const afterloadTerm = params.rvDilationSensitivity * Math.max(0, effectivePVR - params.pvrRef);
+  const venousReturnTerm = params.rvVrGain * (effectiveEDV - params.edvRef);
+  return Math.max(params.rvedvMin, rvedvBaseline + afterloadTerm + venousReturnTerm);
 }
 
 // ─── Layer B: Vasoactive mediator tone targets ───────────────────────────────

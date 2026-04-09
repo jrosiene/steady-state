@@ -162,13 +162,12 @@ export function derivative(
   const tauLactate = lactateTarget > state.lactate ? params.tauLactateRise : params.tauLactateClear;
   const dLactate = (lactateTarget - state.lactate) / tauLactate;
 
-  // RVEDV adapts to effective PVR (RV dilates under high afterload)
-  // Use pvrEffective from the derived values path — derived mPAP already accounts for it.
-  // Approximate pvrEffective: back-calculate from mPAP = rvCo × pvrEff + pcwp
+  // RVEDV adapts to effective PVR (afterload) and effective EDV (venous return coupling).
+  // Back-calculate pvrEffective from mPAP = rvCo × pvrEff + pcwp.
   const pvrEffective = derived.rvCo > 0
     ? (derived.mPAP - derived.pcwp) / derived.rvCo
     : params.pvrRef;
-  const rvedvTarget = computeRvedvTarget(pvrEffective, params.rvedvRef, params);
+  const rvedvTarget = computeRvedvTarget(pvrEffective, state.edv, params.rvedvRef, params);
   const dRvedv = (rvedvTarget - state.rvedv) / params.tauRvAdaptation;
 
   return {
