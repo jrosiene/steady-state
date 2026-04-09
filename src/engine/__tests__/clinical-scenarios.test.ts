@@ -584,10 +584,9 @@ describe('Afterload excess: vasopressor overdose', () => {
     expect(d.co).toBeGreaterThan(2.5);             // CO maintained
   });
 
-  it('moderate pressor stacking: baroreflex bradycardia suppresses HR, CO meaningfully reduced', () => {
-    // Stack norepi + phenylephrine + vasopressin → effective SVR ~35 WU
-    // The baroreflex PREVENTS extreme MAP by dropping HR (reflex bradycardia).
-    // Result at steady state: HR well below baseline, CO reduced ~20% from resting ~5 L/min.
+  it('moderate pressor stacking: baroreflex bradycardia suppresses HR and CO', () => {
+    // Stack norepi + phenylephrine + vasopressin → effective SVR ~36 WU (now above old svrMax=40)
+    // Both mechanisms fire: baroreflex bradycardia + afterload SV penalty.
     const pressors = [
       infusion('Norepi: SVR', 'svr', 8),
       infusion('Phenylephrine', 'svr', 5),
@@ -596,11 +595,11 @@ describe('Afterload excess: vasopressor overdose', () => {
     const baseline = effectiveDerived(DEFAULT_STATE, []);
     const s = simulate(DEFAULT_STATE, 300, pressors);
     const d = effectiveDerived(s, pressors);
-    // Baroreflex bradycardia: HR is substantially suppressed vs baseline
+    // Baroreflex bradycardia: HR substantially below baseline
     expect(s.hr).toBeLessThan(p.hrBaseline - 10);
-    // CO is reduced from baseline (~5 L/min) — stacked vasopressors are not free
+    // CO meaningfully reduced from baseline
     expect(d.co).toBeLessThan(baseline.co - 0.5);
-    // SV is reduced vs therapeutic single-pressor case (afterload + HR product)
+    // SV reduced by afterload penalty
     expect(d.sv).toBeLessThan(75);
   });
 
@@ -619,11 +618,26 @@ describe('Afterload excess: vasopressor overdose', () => {
     }
   });
 
-  it('extreme pressors on failing heart: progresses to shock', () => {
-    // Pure vasopressors alone are constrained by baroreflex bradycardia (MAP stays near setpoint).
-    // But on a FAILING heart (Emax=0.5, severe cardiogenic): extreme afterload penalty
-    // reduces SV further → CO drops to shock range → clinical decompensation.
-    // This captures the "never add pure vasopressors to cardiogenic shock" teaching point.
+  it('toxic vasopressor dose on normal heart: severe bradycardia + low CO + rising lactate', () => {
+    // Mechanism: baroreflex floors base SVR to svrMin=4. Effective SVR = 4 + 45 = 49 WU.
+    // Reflex bradycardia is the dominant response: HR drops to ~35 bpm, CO falls to ~2.2 L/min.
+    // This is the clinical phenotype of phenylephrine OD — CO collapse driven by bradycardia
+    // before acidosis has fully developed. Rising lactate (>3 mmol/L) confirms tissue hypoperfusion.
+    const pressors = [
+      infusion('Phenylephrine overdose', 'svr', 45), // ~9× therapeutic: lethal OD
+    ];
+    const s = simulate(DEFAULT_STATE, 600, pressors);
+    const d = effectiveDerived(s, pressors);
+    // Severe reflex bradycardia — primary mechanism of phenylephrine overdose toxicity
+    expect(s.hr).toBeLessThan(40);
+    // CO meaningfully reduced from resting ~5 L/min
+    expect(d.co).toBeLessThan(3.0);
+    // Lactate rising from tissue hypoperfusion at sustained low CO
+    expect(s.lactate).toBeGreaterThan(3.0);
+  });
+
+  it('extreme pressors on failing heart: decompensates faster than normal heart', () => {
+    // Failing heart (Emax=0.5): ESPVR denominator 4× smaller → SV penalty far steeper.
     const pressors = [
       infusion('Norepi: SVR', 'svr', 8),
       infusion('Phenylephrine', 'svr', 5),
@@ -631,14 +645,18 @@ describe('Afterload excess: vasopressor overdose', () => {
       infusion('Epi: SVR', 'svr', 6),
     ];
     const failingHeart = { ...DEFAULT_STATE, emax: 0.5 };
-    const s = simulate(failingHeart, 600, pressors);
-    const d = effectiveDerived(s, pressors);
-    const notCompensated =
-      d.co < 2.0 ||
-      d.cardiovascularStatus === 'shock' ||
-      d.cardiovascularStatus === 'decompensating' ||
-      d.cardiovascularStatus === 'arrest';
-    expect(notCompensated).toBe(true);
+    const sFailing = simulate(failingHeart, 300, pressors);
+    const sNormal  = simulate(DEFAULT_STATE,  300, pressors);
+    const dFailing = effectiveDerived(sFailing, pressors);
+    const dNormal  = effectiveDerived(sNormal,  pressors);
+    // Failing heart must have lower CO than normal under same extreme pressor load
+    expect(dFailing.co).toBeLessThan(dNormal.co);
+    // Failing heart should be in shock or worse
+    const failingInShock =
+      dFailing.cardiovascularStatus === 'shock' ||
+      dFailing.cardiovascularStatus === 'decompensating' ||
+      dFailing.cardiovascularStatus === 'arrest';
+    expect(failingInShock).toBe(true);
   });
 
   it('afterload penalty is Emax-dependent: failing heart decompensates sooner than normal', () => {

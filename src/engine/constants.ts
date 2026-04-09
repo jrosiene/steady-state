@@ -102,7 +102,7 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   // SV penalty fraction = max(0, MAP − threshold) / (emaxEffective × gain)
   // Normal (Emax=2, MAP=190): (190−140)/(2×250) = 10% penalty
   // Failing (Emax=0.5, MAP=190): (190−140)/(0.5×250) = 40% penalty → rapid decompensation ✓
-  // Vasopressor excess (Emax=2, MAP=240): 100/500 = 20% penalty → SV↓, CO↓, shock spiral ✓
+  // Toxic phenylephrine (SVR=50, CO→5, MAP≈255): (255−140)/(2×250) = 23% penalty → shock ✓
   afterloadMapThreshold: 140,
   afterloadSvGain: 250,
 
@@ -110,7 +110,10 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   hrMin: 30,
   hrMax: 220,
   svrMin: 4,
-  svrMax: 40,
+  // 60 WU (~4800 dynes·s/cm⁵): allows toxic vasopressor levels. Also fixes a secondary
+  // realism issue — the baroreflex SVR target at MAP=0 is 17+0.45×90=57.5 WU, which was
+  // arbitrarily capped at 40. Now the full compensatory range can express.
+  svrMax: 60,
   edvMin: 30,
   edvMax: 300,
   pvrMin: 0.5,
