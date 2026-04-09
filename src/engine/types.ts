@@ -251,6 +251,15 @@ export interface HemodynamicParams {
   lactateMAPThreshold: number;
   /** Gain mapping MAP deficit below lactateMAPThreshold to additional lactate target (mmol/L per mmHg). */
   lactateMAPGain: number;
+  /**
+   * Type B lactic acidosis gain: inflammatory/mitochondrial dysfunction driven by noTone.
+   * Models the direct cytopathic hypoxia of sepsis — cells fail to utilize O2 even when
+   * delivery is adequate (high CO, normal SvO2). This is why septic shock lactate does
+   * not correlate with SvO2 the way hemorrhagic shock lactate does.
+   * At noTone=0.7 (single sepsis stack): +7 mmol/L → pH ~7.24 (mild acidosis, compensated)
+   * At noTone=1.0 (severe/stacked):     +10 mmol/L → drives SvO2 below threshold → spiral
+   */
+  lactateNoToneGain: number;
   /** Time constant for lactate rise when DO2 is inadequate (seconds). */
   tauLactateRise: number;
   /** Time constant for lactate clearance when DO2 is restored (seconds). Hepatic clearance is slower. */

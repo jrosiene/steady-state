@@ -154,6 +154,43 @@ describe('Septic shock + vasopressor treatment', () => {
     expect(effectiveDerived(s, withSteroids).map).toBeGreaterThan(derive(s, p).map);
   });
 
+  it('sepsis drives type B lactic acidosis: lactate rises despite adequate CO', () => {
+    // Key teaching point: in septic shock, lactate rises via cytopathic hypoxia
+    // (inflammatory mitochondrial dysfunction) even when CO is high and SvO2 is normal.
+    // This is why septic lactate does NOT correlate with SvO2 the way hemorrhagic shock does.
+    const sepsis = [iv('Sepsis: NO↑', 'scenario', 'noTone', 0.7, 10)];
+    const early = simulate(DEFAULT_STATE, 60, sepsis);
+    const late  = simulate(DEFAULT_STATE, 600, sepsis);
+    const dLate = effectiveDerived(late, sepsis);
+
+    expect(late.lactate).toBeGreaterThan(early.lactate);           // lactate rises over time
+    expect(late.lactate).toBeGreaterThan(3.0);                     // clinically significant elevation
+    expect(dLate.co).toBeGreaterThan(3.5);                         // CO still preserved (hyperdynamic)
+    expect(dLate.svO2).toBeGreaterThan(0.65);                      // SvO2 above anaerobic threshold
+  });
+
+  it('sepsis produces significant compensatory tachycardia', () => {
+    // Baroreflex responds to MAP drop from SVR reduction: HR rises to compensate.
+    // Clinical: warm septic shock HR typically 100-120 bpm.
+    const sepsis = [iv('Sepsis: NO↑', 'scenario', 'noTone', 0.7, 10)];
+    const s = simulate(DEFAULT_STATE, 300, sepsis); // allow baroreflex to equilibrate
+    expect(s.hr).toBeGreaterThan(p.hrBaseline + 15); // at least 15 bpm above baseline
+  });
+
+  it('sustained severe sepsis (noTone 1.0) eventually collapses despite preserved initial CO', () => {
+    // With maximal noTone, type B lactate + acidosis Emax penalty + vasoplegia create a
+    // positive feedback spiral. System is initially compensated (hyperdynamic), but
+    // acidosis-driven contractility loss eventually drops CO enough that SvO2 falls
+    // below the anaerobic threshold — triggering the type A component and runaway collapse.
+    const severe = [iv('Severe sepsis', 'scenario', 'noTone', 1.0, 10)];
+    const early = simulate(DEFAULT_STATE, 120, severe);
+    const late  = simulate(DEFAULT_STATE, 900, severe);
+    expect(effectiveDerived(early, severe).cardiovascularStatus).toBe('compensated'); // initially OK
+    expect(['decompensating', 'arrest']).toContain(
+      effectiveDerived(late, severe).cardiovascularStatus,           // collapses by 15 min
+    );
+  });
+
   it('dobutamine in septic shock: CO↑ but MAP response limited (SVR already low)', () => {
     const sepsis = [iv('Sepsis: NO↑', 'scenario', 'noTone', 0.7, 10)];
     const decompensated = simulate(DEFAULT_STATE, 120, sepsis);

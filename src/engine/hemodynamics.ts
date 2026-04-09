@@ -149,13 +149,16 @@ export function derivative(
   const dNoTone  = (noToneTarget  - state.noTone)  / params.tauNoTone;
   const dEt1Tone = (et1ToneTarget - state.et1Tone) / params.tauEt1Tone;
 
-  // Lactate ODE: two independent drivers.
-  // 1. SvO2 deficit: anaerobic metabolism when O2 delivery < demand
-  // 2. MAP deficit: microvascular maldistribution at low perfusion pressure —
-  //    even at max O2 extraction (SvO2 floor), regional hypoperfusion continues to generate lactate
+  // Lactate ODE: three independent drivers.
+  // 1. SvO2 deficit: type A — anaerobic metabolism when O2 delivery < demand
+  // 2. MAP deficit: type A — microvascular maldistribution at low perfusion pressure
+  // 3. noTone: type B — cytopathic hypoxia in sepsis; cells can't use O2 even when SvO2 is normal
+  //    This is why septic lactate doesn't correlate with SvO2 the way hemorrhagic shock does.
+  //    Uses state.noTone (which is the effective noTone after interventions in this call path).
   const lactateTarget = 1
-    + params.lactateSvO2Gain * Math.max(0, params.lactateSvO2Threshold - svO2)
-    + params.lactateMAPGain  * Math.max(0, params.lactateMAPThreshold  - map);
+    + params.lactateSvO2Gain  * Math.max(0, params.lactateSvO2Threshold - svO2)
+    + params.lactateMAPGain   * Math.max(0, params.lactateMAPThreshold  - map)
+    + params.lactateNoToneGain * state.noTone;
   const tauLactate = lactateTarget > state.lactate ? params.tauLactateRise : params.tauLactateClear;
   const dLactate = (lactateTarget - state.lactate) / tauLactate;
 

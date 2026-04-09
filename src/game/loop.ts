@@ -149,10 +149,13 @@ export class SimulationLoop {
       const rvedvTarget = computeRvedvTarget(pvrEffective, p.rvedvRef, p);
       const dRvedv = (rvedvTarget - state.rvedv) / p.tauRvAdaptation;
 
-      // Lactate ODE: SvO2 deficit + MAP-driven microvascular maldistribution
+      // Lactate ODE: type A (SvO2/MAP) + type B (noTone/inflammatory).
+      // effective.noTone includes sepsis overlays — type B lactate responds to the full
+      // inflammatory burden, not just the base state's ODE-integrated noTone.
       const lactateTarget = 1
-        + p.lactateSvO2Gain * Math.max(0, p.lactateSvO2Threshold - derived.svO2)
-        + p.lactateMAPGain  * Math.max(0, p.lactateMAPThreshold  - derived.map);
+        + p.lactateSvO2Gain  * Math.max(0, p.lactateSvO2Threshold - derived.svO2)
+        + p.lactateMAPGain   * Math.max(0, p.lactateMAPThreshold  - derived.map)
+        + p.lactateNoToneGain * effective.noTone;
       const tauLactate = lactateTarget > state.lactate ? p.tauLactateRise : p.tauLactateClear;
       const dLactate = (lactateTarget - state.lactate) / tauLactate;
 

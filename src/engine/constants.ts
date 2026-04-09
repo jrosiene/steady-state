@@ -76,7 +76,8 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
                                // at SvO2=0.50: target = 1 + 25×0.15 = 4.75 (moderate shock)
   lactateMAPThreshold: 50,    // MAP < 50 → microvascular maldistribution adds to lactate target
   lactateMAPGain: 0.3,        // at MAP=40: +3 mmol/L; at MAP=30: +6 mmol/L
-                               // → at MAP=40, total target ≈ 17.75 → pH ≈ 6.88 → arrest cascade
+  lactateNoToneGain: 10,      // type B: at noTone=0.7 → +7 mmol/L → pH 7.24 (compensated warm sepsis)
+                               // at noTone=1.0 → +10 mmol/L → SvO2 drops below threshold → spiral → arrest
   tauLactateRise: 180,        // 3 min to develop (anaerobic metabolism is rapid)
   tauLactateClear: 900,       // 15 min to clear (hepatic lactate clearance is slower)
   acidosisPhThreshold: 7.35,  // myocardial depression starts at mild acidosis
