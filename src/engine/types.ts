@@ -77,6 +77,8 @@ export interface HemodynamicState {
 /** Values derived algebraically each tick — never integrated directly. */
 export interface DerivedValues {
   // --- Systemic ---
+  /** Effective LV maximal elastance after noTone and acidosis penalties (functional contractility). */
+  emaxEffective: number;
   /** LV stroke volume (mL). */
   sv: number;
   /** Cardiac output (L/min). HR × SV / 1000. */
@@ -286,6 +288,24 @@ export interface HemodynamicParams {
   acidosisSvrPhThreshold: number;
   /** SVR reduction per unit pH deficit below acidosisSvrPhThreshold (WU). */
   acidosisSvrGain: number;
+  /**
+   * pH at which acidosis begins capping the maximum achievable HR (SA node depression).
+   * H⁺ directly inhibits SA node automaticity and desensitizes β-adrenergic receptors.
+   * Above this threshold: full baroreflex HR range available.
+   * Below acidosisHrPhFloor: HR clamped to hrMin (agonal rhythm).
+   */
+  acidosisHrPhThreshold: number;
+  /** pH below which HR is clamped to hrMin (agonal/asystole). */
+  acidosisHrPhFloor: number;
+  /**
+   * CO threshold below which pulmonary hypoperfusion is modeled as an effective shunt.
+   * When CO falls below this, the oxygenation model adds an effective Qs/Qt component
+   * to reflect that insufficient pulmonary blood flow → SpO2 falls toward SvO2.
+   * At CO=0: effective shunt fraction approaches 1 → SpO2 = SvO2 (deeply cyanotic).
+   */
+  lowFlowCoThreshold: number;
+  /** Additional Qs/Qt per L/min CO deficit below lowFlowCoThreshold. */
+  lowFlowQsQtGain: number;
 
   // --- Physiologic clamps ---
   hrMin: number;

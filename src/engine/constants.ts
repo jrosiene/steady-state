@@ -90,6 +90,13 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   acidosisSvrPhThreshold: 7.3, // vasoplegia onset: pH < 7.3 → SVR begins to fall
   acidosisSvrGain: 15,         // pH=7.1 → −3 WU; pH=7.0 → −4.5 WU; pH=6.9 → −6 WU
                                 // baroreflex SVR maxes at 40 WU; penalty overcomes it below pH~7.0
+  acidosisHrPhThreshold: 7.1,  // SA node depression starts: pH < 7.1 → HR ceiling begins to drop
+  acidosisHrPhFloor: 6.8,      // at pH ≤ 6.8: HR clamped to hrMin (agonal rhythm)
+                                // linear scaling: pH=7.0 → ceiling ~147; pH=6.9 → ceiling ~73
+  lowFlowCoThreshold: 2.0,     // L/min: below this, pulmonary hypoperfusion adds effective shunt
+  lowFlowQsQtGain: 0.4,        // at CO=0.04 → extra_shunt = 0.4×(2.0−0.04) = 0.78
+                                // → effective qsQt ≈ 0.80 → SpO2 ≈ 27% (deeply cyanotic arrest) ✓
+                                // at CO=1.0 → extra_shunt = 0.4×1.0 = 0.40 → SpO2 drops to ~60%
 
   // --- Physiologic clamps ---
   hrMin: 30,

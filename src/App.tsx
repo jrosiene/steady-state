@@ -191,7 +191,7 @@ function App() {
             <VitalDisplay label="SVR" value={snap.svr} unit="WU" color="#ff88ff" />
             <VitalDisplay label="CVP" value={snap.cvp} unit="mmHg" color="#88ffff" warn={snap.cvp > 15} />
             <VitalDisplay label="EDV" value={snap.edv} unit="mL" color="#aaaaaa" />
-            <VitalDisplay label="Emax" value={snap.emax} unit="" color="#aaaaaa" />
+            <VitalDisplay label="Emax (eff)" value={snap.emaxEffective} unit="" color="#aaaaaa" warn={snap.emaxEffective < 0.5} decimals={2} />
           </div>
           <div style={styles.timeDisplay}>
             Sim Time: {formatTime(snap.time)}
@@ -224,6 +224,27 @@ function App() {
           </div>
           <div style={{ ...styles.timeDisplay, fontSize: 11 }}>
             FiO2: {(snap.fiO2 * 100).toFixed(0)}% · Qs/Qt: {(snap.qsQt * 100).toFixed(0)}%
+          </div>
+        </div>
+
+        {/* Blood Gas / Chemistry */}
+        <div style={{ ...styles.panel, gridColumn: '1 / 3' }}>
+          <h2 style={styles.panelTitle}>Blood Gas</h2>
+          <div style={styles.vitalsGrid}>
+            <VitalDisplay label="pH" value={snap.pH} unit="" color="#ff88aa" decimals={2}
+              warn={snap.pH < 7.35 || snap.pH > 7.45} />
+            <VitalDisplay label="HCO₃" value={snap.hco3} unit="mEq/L" color="#88ccff"
+              warn={snap.hco3 < 18 || snap.hco3 > 26} />
+            <VitalDisplay label="Base Excess" value={snap.be} unit="mEq/L" color="#aaaacc"
+              warn={snap.be < -4 || snap.be > 2} />
+            <VitalDisplay label="PaO₂" value={snap.paO2} unit="mmHg" color="#44aaff"
+              warn={snap.paO2 < 60} />
+            <VitalDisplay label="Lactate" value={snap.lactate} unit="mmol/L" color="#ffcc44"
+              warn={snap.lactate > 2.0} />
+          </div>
+          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, color: '#666' }}>Cardiovascular Status</span>
+            <CardiovascularStatusBadge status={snap.cardiovascularStatus} />
           </div>
         </div>
 
@@ -404,17 +425,36 @@ function App() {
 
 // --- Sub-components ---
 
-function VitalDisplay({ label, value, unit, color, warn }: {
-  label: string; value: number; unit: string; color: string; warn?: boolean;
+function VitalDisplay({ label, value, unit, color, warn, decimals = 1 }: {
+  label: string; value: number; unit: string; color: string; warn?: boolean; decimals?: number;
 }) {
   return (
     <div style={{ ...styles.vital, borderColor: warn ? '#ff0000' : color }}>
       <div style={{ color: '#888', fontSize: 12 }}>{label}</div>
       <div style={{ color, fontSize: 28, fontWeight: 'bold', fontFamily: 'monospace' }}>
-        {value.toFixed(1)}
+        {value.toFixed(decimals)}
       </div>
       <div style={{ color: '#666', fontSize: 11 }}>{unit}</div>
     </div>
+  );
+}
+
+function CardiovascularStatusBadge({ status }: { status: string }) {
+  const config: Record<string, { color: string; label: string }> = {
+    compensated:    { color: '#44ff88', label: 'Compensated' },
+    shock:          { color: '#ffaa44', label: 'Shock' },
+    decompensating: { color: '#ff4444', label: 'Decompensating' },
+    arrest:         { color: '#ff2222', label: '— ARREST —' },
+  };
+  const { color, label } = config[status] ?? { color: '#888', label: status };
+  return (
+    <span style={{
+      color, fontWeight: 700, fontSize: 13, fontFamily: 'monospace',
+      border: `1px solid ${color}`, padding: '2px 10px', borderRadius: 4,
+      letterSpacing: status === 'arrest' ? 2 : 0,
+    }}>
+      {label}
+    </span>
   );
 }
 

@@ -135,9 +135,16 @@ export class SimulationLoop {
       // Full derive from effective state: MAP, SpO2, mPAP all reflect interventions
       const derived = derive(effective, p);
 
-      // Baroreflex driven by effective MAP and HR
+      // pH-dependent HR ceiling: H⁺ depresses SA node automaticity in severe acidosis.
+      const hrCeilingFraction = Math.max(0, Math.min(1,
+        (derived.pH - p.acidosisHrPhFloor) / (p.acidosisHrPhThreshold - p.acidosisHrPhFloor),
+      ));
+      const hrCeiling = p.hrMin + hrCeilingFraction * (p.hrMax - p.hrMin);
+      const pWithHrCeiling = hrCeiling < p.hrMax ? { ...p, hrMax: hrCeiling } : p;
+
+      // Baroreflex driven by effective MAP and HR (with pH-adjusted hrMax)
       const { dHr, dSvr } = computeBaroreflex(
-        effective.hr, effective.svr, derived.map, effective.hrMod, p,
+        effective.hr, effective.svr, derived.map, effective.hrMod, pWithHrCeiling,
       );
 
       // Vasoactive mediator ODEs: targets from effective SpO2/mPAP,

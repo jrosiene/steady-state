@@ -62,8 +62,14 @@ export function derive(
   const sv = computeSV(edvEffective, emaxEffective, params);
   const co = (state.hr * sv) / 1000;
 
+  // Low-flow pulmonary hypoperfusion: when CO falls below threshold, the V/Q model
+  // understates hypoxemia because it assumes adequate pulmonary blood flow.
+  // Model as additional effective shunt: insufficient perfusion → SpO2 trends toward SvO2.
+  const lowFlowShunt = params.lowFlowQsQtGain * Math.max(0, params.lowFlowCoThreshold - co);
+  const effectiveQsQt = Math.min(0.98, state.qsQt + lowFlowShunt);
+
   // Oxygenation is CO-dependent but not SVR/PVR-dependent
-  const { spO2, paO2, svO2 } = computeOxygenation(state.fiO2, state.qsQt, co, params);
+  const { spO2, paO2, svO2 } = computeOxygenation(state.fiO2, effectiveQsQt, co, params);
 
   // ── Pass 2: apply SpO2-driven feedbacks ──────────────────────────────────
   // HPV (Layer A): hypoxemia → pulmonary vasoconstriction
@@ -111,7 +117,7 @@ export function derive(
     map < 50 || co < 2.0 || pH < 7.2 ? 'shock' :
     'compensated';
 
-  return { sv, co, map, rvSv, rvCo, mPAP, pcwp, spO2, paO2, svO2, pH, hco3, be, cardiovascularStatus };
+  return { emaxEffective, sv, co, map, rvSv, rvCo, mPAP, pcwp, spO2, paO2, svO2, pH, hco3, be, cardiovascularStatus };
 }
 
 /** Build a full snapshot (state + derived) for the UI layer. */
@@ -139,10 +145,23 @@ export function derivative(
   params: HemodynamicParams,
 ): HemodynamicState {
   const derived = derive(state, params);
-  const { map, spO2, mPAP, svO2 } = derived;
+  const { map, spO2, mPAP, svO2, pH } = derived;
 
-  // Baroreflex
-  const { dHr, dSvr } = computeBaroreflex(state.hr, state.svr, map, state.hrMod, params);
+  // pH-dependent HR ceiling: H⁺ directly depresses SA node automaticity and
+  // desensitizes β-adrenergic receptors. Despite maximum sympathetic drive,
+  // HR cannot be sustained above a pH-dependent ceiling in severe acidosis.
+  // Linear interpolation: at acidosisHrPhThreshold (7.1) → full hrMax
+  //                       at acidosisHrPhFloor (6.8) → hrMin (agonal)
+  const hrCeilingFraction = Math.max(0, Math.min(1,
+    (pH - params.acidosisHrPhFloor) / (params.acidosisHrPhThreshold - params.acidosisHrPhFloor),
+  ));
+  const hrCeiling = params.hrMin + hrCeilingFraction * (params.hrMax - params.hrMin);
+  const paramsWithHrCeiling = hrCeiling < params.hrMax
+    ? { ...params, hrMax: hrCeiling }
+    : params;
+
+  // Baroreflex (with pH-adjusted hrMax)
+  const { dHr, dSvr } = computeBaroreflex(state.hr, state.svr, map, state.hrMod, paramsWithHrCeiling);
 
   // Vasoactive mediator ODEs (Layer B)
   const { noToneTarget, et1ToneTarget } = computeVasoactiveToneTargets(spO2, mPAP, params);
