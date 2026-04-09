@@ -411,8 +411,14 @@ function App() {
               onClick={() => addIntervention('1L NS bolus', 'treatment', 'bolus', 'edv', 40, 600, 3600)} />
             <ScenarioButton label="Needle Decompression" description="Bolus · CVP −10. Immediate. Effect sustained (t½ 24h)."
               onClick={() => addIntervention('Needle decompression', 'treatment', 'bolus', 'cvp', -10, 10, 86400)} />
-            <ScenarioButton label="Methylprednisolone" description="Bolus · noTone −0.4. Onset ~30 min. t½ 80 min."
-              onClick={() => addIntervention('Steroids: NO↓', 'treatment', 'bolus', 'noTone', -0.4, 1800, 4800)} />
+            <ScenarioButton label="Methylprednisolone" description="Bolus · noTone −0.4 (onset 30 min); V/Q Qs/Qt −0.06 (onset 1h, anti-inflammatory). t½ 80 min / 4h."
+              onClick={() => {
+                // Anti-inflammatory: suppresses iNOS/cytokine-driven vasodilation. t½ 80 min (PK).
+                addIntervention('Steroids: NO↓', 'treatment', 'bolus', 'noTone', -0.4, 1800, 4800);
+                // Airway anti-inflammatory: reduces mucosal edema + bronchospasm → V/Q mismatch ↓.
+                // Onset ~1h (genomic mechanism). Effect outlasts PK t½ — 4h effective duration.
+                addIntervention('Steroids: V/Q↑', 'treatment', 'bolus', 'qsQt', -0.06, 3600, 14400);
+              }} />
             <ScenarioButton label="Sildenafil (PDE5i)" description="Oral bolus · PVR −1.5, SVR −0.5 WU. Onset ~30 min. t½ 4h."
               onClick={() => {
                 addIntervention('Sildenafil: PVR↓', 'treatment', 'bolus', 'pvr', -1.5, 1800, 14400);
