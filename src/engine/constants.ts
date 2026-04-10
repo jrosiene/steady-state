@@ -40,7 +40,11 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   // --- Oxygenation / Fick ---
   vo2: 250,     // mL O2/min — resting O2 consumption
   hgb: 15,      // g/dL — normal hemoglobin
-  paCO2: 40,    // mmHg — normal arterial CO2
+  paCO2: 40,    // mmHg — baseline arterial CO2 at normal CO
+  co2RetentionGain: 3,   // mmHg paCO2 rise per L/min CO below reference
+                          // CO=2: +7.5 mmHg → paCO2=47.5 → pH drops ~0.07 at lac=7.6
+                          // CO=1: +10.5 mmHg → paCO2=50.5 → pH drops ~0.10 at lac=7.6
+  co2RetentionCoRef: 4.5, // L/min — normal CO; below this, CO2 clearance is impaired
   rq: 0.8,      // respiratory quotient
   p50: 26.8,    // mmHg — standard P50 (normal pH/temp/2,3-DPG)
   hillN: 2.7,   // Hill curve cooperativity coefficient

@@ -34,20 +34,28 @@ export function derive(
   state: HemodynamicState,
   params: HemodynamicParams,
 ): DerivedValues {
-  // ── Blood gases: derived from lactate (state var) + constant paCO2 ─────────
-  // Pure anion-gap metabolic acidosis model: each mmol/L lactate above 1 consumes 1 mEq/L HCO3.
-  // Henderson-Hasselbalch: pH = 6.1 + log10(HCO3 / (0.0307 × paCO2))
-  // Normal: HCO3=24, paCO2=40 → pH = 6.1 + log10(24/1.228) = 7.39 ✓
-  // Lactate=10: HCO3=15 → pH = 6.1 + log10(15/1.228) = 7.19 ✓
+  // ── Blood gases — two-pass to resolve pH ↔ Emax ↔ CO circular dependency ──
+  //
+  // Circular dependency:
+  //   pH → acidosisEmaxPenalty → emaxEffective → SV → CO → paCO2eff → pH
+  //
+  // Resolution: pHPrelim uses constant paCO2 (drives Emax in this tick).
+  //             pHFinal uses CO-adjusted paCO2 (returned for display/status).
+  //             One-tick lag on the CO2 retention → Emax path is negligible
+  //             given that the fastest ODE time constant (tauHr=3s) >> dt (50ms).
+  //
+  // HCO3 model: pure anion-gap metabolic acidosis, 1:1 stoichiometry.
+  //   Henderson-Hasselbalch: pH = 6.1 + log10(HCO3 / (0.0307 × paCO2))
+  //   Normal: HCO3=24, paCO2=40 → pH = 7.39 ✓   Lactate=10: HCO3=15 → pH_prelim=7.19 ✓
   const hco3 = Math.max(5, 24 - Math.max(0, state.lactate - 1));
-  const pH = 6.1 + Math.log10(hco3 / (0.0307 * params.paCO2));
   const be = hco3 - 24;
+  const pHPrelim = 6.1 + Math.log10(hco3 / (0.0307 * params.paCO2));
 
   // ── Vasoactive tone effects (Layer B: state variables → algebraic corrections) ──
   // Acidosis-driven myocardial depression: pH < 7.35 → progressive emax penalty.
   // Mechanism: intracellular acidosis reduces myofilament Ca²⁺ sensitivity and SR function.
   // Combined with noTone depression (septic cardiomyopathy) — independent mechanisms.
-  const acidosisEmaxPenalty = Math.max(0, (params.acidosisPhThreshold - pH) * params.acidosisEmaxGain);
+  const acidosisEmaxPenalty = Math.max(0, (params.acidosisPhThreshold - pHPrelim) * params.acidosisEmaxGain);
   const emaxEffective = Math.max(0.05,
     state.emax
     - state.noTone * params.noToneEmaxGain
@@ -61,6 +69,14 @@ export function derive(
   // ── Pass 1: SV, CO, preliminary oxygenation ──────────────────────────────
   const sv = computeSV(edvEffective, emaxEffective, params);
   const co = (state.hr * sv) / 1000;
+
+  // ── CO2 retention: low cardiac output → impaired pulmonary CO2 clearance ──
+  // Below co2RetentionCoRef, rising venous pCO2 and V/Q mismatch drive PaCO2 up.
+  // Produces mixed metabolic + respiratory acidosis — the clinical pattern of
+  // cardiogenic shock, cardiac arrest, and severe hemodynamic failure.
+  const paCO2Effective = params.paCO2
+    + params.co2RetentionGain * Math.max(0, params.co2RetentionCoRef - co);
+  const pH = 6.1 + Math.log10(hco3 / (0.0307 * paCO2Effective));
 
   // Low-flow pulmonary hypoperfusion: when CO falls below threshold, the V/Q model
   // understates hypoxemia because it assumes adequate pulmonary blood flow.

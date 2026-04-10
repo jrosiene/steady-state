@@ -185,8 +185,19 @@ export interface HemodynamicParams {
   vo2: number;
   /** Hemoglobin concentration (g/dL). */
   hgb: number;
-  /** Arterial CO2 (mmHg). Treated as constant (respiratory mechanics deferred). */
+  /** Baseline arterial CO2 (mmHg) at normal cardiac output. */
   paCO2: number;
+  /**
+   * CO2 retention gain: mmHg paCO2 rise per L/min CO below co2RetentionCoRef.
+   * Mechanism: low cardiac output → impaired pulmonary CO2 clearance →
+   * rising PaCO2 → superimposed respiratory acidosis on top of metabolic.
+   * This mixed acidosis (type A lactic + respiratory) is the clinical pattern
+   * in cardiogenic shock and late-stage hemodynamic failure.
+   * Hook: set to 0 for mechanically ventilated patients (CO2 normalized by vent).
+   */
+  co2RetentionGain: number;
+  /** Reference CO above which CO2 clearance is adequate (L/min). */
+  co2RetentionCoRef: number;
   /** Respiratory quotient (VCO2/VO2). */
   rq: number;
   /** Hill curve P50 (mmHg). PaO2 at which Hgb is 50% saturated. */
