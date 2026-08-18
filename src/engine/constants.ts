@@ -79,9 +79,16 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   tauRvAdaptation: 120,      // 2 min for acute RV dilation
 
   // --- Lactate / acid-base ---
-  lactateSvO2Threshold: 0.65, // anaerobic threshold: SvO2 < 65% → lactate starts rising
-  lactateSvO2Gain: 25,        // at SvO2=0.10 (floor): target = 1 + 25×0.55 = 14.75 mmol/L
-                               // at SvO2=0.50: target = 1 + 25×0.15 = 4.75 (moderate shock)
+  // Anaerobic threshold. Normal SvO2 is 0.65–0.75, so the threshold must sit well
+  // below that: lactate rises at the *critical* oxygen extraction ratio (~50%),
+  // not at any reduction in delivery. At 0.65 the model produced resting lactic
+  // acidosis in ordinary chronic anaemia — Hgb 9.8 gave a lactate of 2.4 and
+  // Hgb 7 gave 6.1, both clinically wrong, and both seeded false death spirals
+  // through the acidosis → Emax penalty.
+  lactateSvO2Threshold: 0.50,
+  lactateSvO2Gain: 34,        // at SvO2=0.10 (floor): target = 1 + 34×0.40 = 14.6 mmol/L
+                               // at SvO2=0.35: target = 1 + 34×0.15 = 6.1 (established shock)
+                               // at SvO2=0.45: target = 1 + 34×0.05 = 2.7 (marginal delivery)
   lactateMAPThreshold: 50,    // MAP < 50 → microvascular maldistribution adds to lactate target
   lactateMAPGain: 0.3,        // at MAP=40: +3 mmol/L; at MAP=30: +6 mmol/L
   lactateNoToneGain: 10,      // type B: at noTone=0.7 → +7 mmol/L → pH 7.24 (compensated warm sepsis)
@@ -102,6 +109,13 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   acidosisHrPhFloor: 6.8,      // at pH ≤ 6.8: HR clamped to hrMin (agonal rhythm)
                                 // linear scaling: pH=7.0 → ceiling ~147; pH=6.9 → ceiling ~73
   lowFlowCoThreshold: 2.0,     // L/min: below this, pulmonary hypoperfusion adds effective shunt
+  // Cardiogenic pulmonary oedema → shunt.
+  // PCWP=25 → +0.126 shunt (SpO2 ~88% on room air); PCWP=32 → +0.252 (SpO2 ~80%).
+  // Reversing preload (nitrates, diuresis, PEEP) lowers PCWP and un-floods alveoli,
+  // which is why oxygenation improves within minutes of effective offloading.
+  edemaPcwpThreshold: 18,
+  edemaQsQtGain: 0.018,
+
   lowFlowQsQtGain: 0.4,        // at CO=0.04 → extra_shunt = 0.4×(2.0−0.04) = 0.78
                                 // → effective qsQt ≈ 0.80 → SpO2 ≈ 27% (deeply cyanotic arrest) ✓
                                 // at CO=1.0 → extra_shunt = 0.4×1.0 = 0.40 → SpO2 drops to ~60%

@@ -1,0 +1,127 @@
+import type { Snapshot } from '../engine/types';
+import type { PatientRuntime } from './types';
+
+/**
+ * Advice from someone more senior, reasoned from the patient's actual physiology
+ * rather than from the case's hidden label.
+ *
+ * This is the game's hint system, and it is deliberately built the way a good
+ * curbside works: the attending does not name the diagnosis, they name the
+ * physiologic pattern and tell you what would distinguish the possibilities.
+ * A player who has already gathered data gets a sharper answer than one who
+ * calls with nothing, because the reasoning runs off the same numbers.
+ */
+export function attendingAdvice(patient: PatientRuntime, snap: Snapshot): string {
+  const shocked = snap.map < 70;
+  const hypoxic = snap.spO2 < 0.92;
+  const congested = snap.pcwp > 20;
+  const lowOutput = snap.co < 3.5;
+  const vasodilated = snap.svr < 13;
+  const rvStrained = snap.rvedv > 185 && snap.mPAP > 27;
+  const acidotic = snap.pH < 7.3;
+
+  // Obstructive: pressure-overloaded RV with a low wedge is mechanical until proven otherwise.
+  if (rvStrained && snap.pcwp < 18) {
+    return (
+      "That combination — sudden hypoxaemia, a clear-ish chest, and a patient who's tanking — " +
+      "makes me think obstructive physiology rather than anything you'll fix with volume. " +
+      "If the right ventricle is the problem, filling it further makes it worse. " +
+      "Get an echo at the bedside; if the RV is dilated and the septum is flat you've got your answer. " +
+      "Anticoagulate unless there's a hard contraindication, and if she's persistently hypotensive, " +
+      "that's the threshold where systemic lysis stops being optional. She needs the unit either way."
+    );
+  }
+
+  // Cardiogenic: cold and congested.
+  if (lowOutput && congested) {
+    return (
+      "Low output with high filling pressures is a pump problem. Cold and congested, not warm and dry — " +
+      "so this isn't sepsis, and fluid will drown him. Get an EKG and a troponin right now if you haven't. " +
+      "If there's ST elevation this is a reperfusion decision and the clock is myocardium. " +
+      "Call cardiology, and get him somewhere you can run an inotrope."
+    );
+  }
+
+  // Distributive: warm, vasodilated, acidotic.
+  if (shocked && vasodilated) {
+    return (
+      "High output with no vascular tone is distributive shock, and at her age with that history " +
+      "the source is almost certainly the urine. The two things that change her trajectory are " +
+      "fluid and antibiotics, and antibiotics take hours to work — so the delay you're deciding about now " +
+      "is the one that matters. Cultures if you can get them fast, but don't hold the antibiotics for them. " +
+      "If she needs a pressor to hold a MAP of 65, she needs the unit."
+    );
+  }
+
+  // Hypovolaemic / haemorrhagic.
+  if (shocked && snap.edv < 90 && !congested) {
+    return (
+      "Empty tank. Tachycardic, under-filled, narrow pulse pressure — he's lost volume, and if he's bleeding " +
+      "the only two treatments are blood and stopping the bleeding. A pressor here just squeezes an empty " +
+      "circuit and makes the number look better while the gut and kidneys go without. " +
+      "Transfuse, get GI involved tonight rather than in the morning, and move him where he can be watched."
+    );
+  }
+
+  // Pure respiratory failure.
+  if (hypoxic && !shocked) {
+    if (congested) {
+      return (
+        "If the wedge is up, the alveoli are wet, and that's why oxygen alone isn't doing much — " +
+        "you're trying to oxygenate blood that's passing flooded lung. Take the preload down: " +
+        "nitrates work faster than a diuretic, and positive pressure does both jobs at once. " +
+        "Sit him up while you're waiting for any of it."
+      );
+    }
+    return (
+      "Sounds like airway obstruction rather than parenchyma or pump. Bronchodilators and steroids, " +
+      "and don't chase a normal saturation in someone whose baseline is 90 — target his baseline, not yours. " +
+      "If he's tiring, non-invasive ventilation before he needs a tube."
+    );
+  }
+
+  if (acidotic) {
+    return (
+      "That lactate and pH tell you the tissue isn't getting what it needs, whatever the blood pressure says. " +
+      "Work out which kind of shock this is before you treat it — the examination and a bedside echo " +
+      "will get you there faster than another round of labs."
+    );
+  }
+
+  if (patient.case.codeStatus === 'DNR/DNI') {
+    return (
+      "Before you escalate anything here, look at the trajectory. Third admission in six months, " +
+      "not turning around on day four of appropriate treatment — that's a dying patient, and no amount of " +
+      "fluid changes it. The valuable thing you can do tonight is get the family on the phone and find out " +
+      "what she would have wanted. That's a real intervention, not a failure to intervene."
+    );
+  }
+
+  return (
+    "Nothing in what you're describing sounds like it needs me tonight. Keep an eye on the trend rather " +
+    "than any single number, and call me back if the picture changes."
+  );
+}
+
+/** Specialty consult responses, likewise reasoned from physiology. */
+export function specialtyAdvice(orderId: string, snap: Snapshot): string {
+  if (orderId === 'consult-gi') {
+    const activeBleed = snap.edv < 95;
+    return activeBleed
+      ? "GI fellow: we'll scope him tonight. Keep transfusing to a haemoglobin of 7, keep the PPI drip running, " +
+        "and make sure he's in a monitored bed before we start — I don't want to be sedating him on the ward."
+      : "GI fellow: sounds like he's stable at the moment. Keep the PPI drip going and we'll scope him first thing. " +
+        "Call me back tonight if he drops his pressure or has another large bleed.";
+  }
+
+  if (orderId === 'consult-cards') {
+    const poorPump = snap.emaxEffective < 1.2;
+    return poorPump
+      ? "Cardiology: with that pressure and those filling pressures I'm treating this as cardiogenic shock. " +
+        "We're activating the lab. Aspirin, heparin, and do not give him fluid — get him to the unit now."
+      : "Cardiology: nothing here that needs the lab tonight. Cycle the troponins, keep him on telemetry, " +
+        "and we'll see him in the morning.";
+  }
+
+  return 'Consult acknowledged.';
+}

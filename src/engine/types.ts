@@ -318,6 +318,22 @@ export interface HemodynamicParams {
   /** Additional Qs/Qt per L/min CO deficit below lowFlowCoThreshold. */
   lowFlowQsQtGain: number;
 
+  /**
+   * PCWP above which hydrostatic pressure overcomes plasma oncotic pressure and
+   * fluid transudates into the alveoli (Starling forces across the pulmonary
+   * capillary). Flooded alveoli are perfused but not ventilated — true shunt.
+   *
+   * ~18 mmHg is the classical threshold for radiographic interstitial oedema;
+   * alveolar flooding follows above ~25 mmHg.
+   */
+  edemaPcwpThreshold: number;
+  /**
+   * Additional Qs/Qt per mmHg of PCWP above edemaPcwpThreshold.
+   * This is what makes cardiogenic pulmonary oedema hypoxaemic, and what makes
+   * preload reduction (diuresis, nitrates, PEEP) improve oxygenation.
+   */
+  edemaQsQtGain: number;
+
   // --- Afterload-sensitive SV (ESPVR) ---
   /**
    * MAP threshold above which arterial afterload begins reducing SV.

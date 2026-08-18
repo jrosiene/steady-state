@@ -67,7 +67,19 @@ export function derive(
   const edvEffective = Math.max(params.edvMin, state.edv - rvlvPenalty);
 
   // ── Pass 1: SV, CO, preliminary oxygenation ──────────────────────────────
-  const sv = computeSV(edvEffective, emaxEffective, params);
+  //
+  // Series-circulation constraint. The two ventricles are in series, so the left
+  // can only eject what the right delivers through the lungs: sustained LV output
+  // cannot exceed sustained RV output. Without this the model lets a completely
+  // failed RV (rvCo → 0) coexist with a normal cardiac output and blood pressure,
+  // which is exactly the state a massive PE or RV infarct should not survive.
+  //
+  // RV output depends only on rvedv, rvEmax and hr, so it can be computed here
+  // with no circular dependency on anything downstream.
+  const { rvSv, rvCo } = computeRVOutput(state.rvedv, state.rvEmax, state.hr, params);
+
+  const svLv = computeSV(edvEffective, emaxEffective, params);
+  const sv = Math.min(svLv, rvSv);
   const co = (state.hr * sv) / 1000;
 
   // ── CO2 retention: low cardiac output → impaired pulmonary CO2 clearance ──
@@ -82,7 +94,17 @@ export function derive(
   // understates hypoxemia because it assumes adequate pulmonary blood flow.
   // Model as additional effective shunt: insufficient perfusion → SpO2 trends toward SvO2.
   const lowFlowShunt = params.lowFlowQsQtGain * Math.max(0, params.lowFlowCoThreshold - co);
-  const effectiveQsQt = Math.min(0.98, state.qsQt + lowFlowShunt);
+
+  // Hydrostatic pulmonary edema → shunt.
+  // PCWP depends only on EDV and Emax, so it is available before gas exchange.
+  // Once capillary hydrostatic pressure exceeds plasma oncotic pressure, fluid
+  // floods alveoli that remain perfused — anatomically true shunt, not V/Q mismatch.
+  // This is the coupling that makes cardiogenic pulmonary edema hypoxemic, and that
+  // makes preload reduction (diuresis, nitrates, PEEP) restore oxygenation.
+  const pcwp = computePCWP(edvEffective, emaxEffective, params);
+  const edemaShunt = params.edemaQsQtGain * Math.max(0, pcwp - params.edemaPcwpThreshold);
+
+  const effectiveQsQt = Math.min(0.98, state.qsQt + lowFlowShunt + edemaShunt);
 
   // Oxygenation is CO-dependent but not SVR/PVR-dependent
   const { spO2, paO2, svO2 } = computeOxygenation(state.fiO2, effectiveQsQt, co, params);
@@ -133,8 +155,6 @@ export function derive(
 
   // Final hemodynamics with corrected SVR/PVR and afterload-adjusted CO
   const map = coFinal * svrEffective + state.cvp;
-  const pcwp = computePCWP(edvEffective, emaxEffective, params);
-  const { rvSv, rvCo } = computeRVOutput(state.rvedv, state.rvEmax, state.hr, params);
   const mPAP = computeMPAP(rvCo, pvrEffective, pcwp);
 
   // ── Cardiovascular failure status ────────────────────────────────────────

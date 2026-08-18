@@ -4,11 +4,15 @@
   box-sizing: border-box;
 }
 
-body {
-  background: #1a1a1a;
-  color: #e0e0e0;
+/* The shift view is a full-height application layout, so the root chain
+   needs an explicit height for the flex column to resolve against. */
+html,
+body,
+#root {
+  height: 100%;
 }
 
-#root {
-  width: 100%;
+body {
+  background: #0c1016;
+  color: #d8dfe8;
 }

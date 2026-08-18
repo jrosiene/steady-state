@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { rk4Step, clampState } from '../solver';
 import { derivative } from '../hemodynamics';
 import { DEFAULT_PARAMS, DEFAULT_STATE } from '../constants';
-import type { HemodynamicState, HemodynamicParams } from '../types';
+import type { HemodynamicState } from '../types';
 
 describe('rk4Step', () => {
   it('advances time by dt', () => {
@@ -31,7 +31,9 @@ describe('rk4Step', () => {
       hr: 100, svr: 0, edv: 0, emax: 0, cvp: 0, hrMod: 0,
       rvEmax: 0, pvr: 0, rvedv: 0, qsQt: 0, fiO2: 0, noTone: 0, et1Tone: 0, lactate: 1, time: 0,
     };
-    const decayDeriv = (s: HemodynamicState, _p: HemodynamicParams): HemodynamicState => ({
+    // The params argument is unused here, so it is simply omitted — a function of
+    // fewer parameters still satisfies the derivative signature.
+    const decayDeriv = (s: HemodynamicState): HemodynamicState => ({
       hr: -s.hr, svr: 0, edv: 0, emax: 0, cvp: 0, hrMod: 0,
       rvEmax: 0, pvr: 0, rvedv: 0, qsQt: 0, fiO2: 0, noTone: 0, et1Tone: 0, lactate: 0, time: 1,
     });

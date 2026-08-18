@@ -1,119 +1,169 @@
 # Steady/State
 
-A real-time cardiovascular physiology simulator built for medical education. Models the heart, lungs, and vasculature as a coupled ODE system, rendered in an EMR-style interface where you can apply clinical scenarios and treatments and watch the physiology respond over time.
+A hospital night-shift game built on a real cardiovascular physiology engine.
+
+You cover eight patients on a general medical ward from 19:00 to 07:00. You never
+see any of them. You have a phone, a set of nurses who page you, and an order
+entry system — and underneath it all, a coupled ODE model of the heart, lungs and
+vasculature that decides what actually happens to each patient.
+
+Nothing is scripted to an outcome. Illness scripts apply *mechanistic* insults —
+preload loss, contractility loss, shunt, inflammatory tone — and the physiology
+takes it from there. A patient treated at 20:10 and one treated at 21:30 receive
+exactly the same insult and diverge on their own.
 
 **Live:** [sim.jrlab.org](https://sim.jrlab.org)
 
 ---
 
-## What it simulates
+## The game
+
+```bash
+npm install
+npm run dev      # http://localhost:5173
+```
+
+Take the pager. The shift runs at 30–240× compression, so twelve hours takes
+three to twelve minutes of real time. Pause whenever you like.
+
+### What makes it hard
+
+**Vitals go stale.** Floor observations are every four hours. Between them you are
+reading history, and the patient board shows you how old each set is. Continuous
+monitoring collapses that gap — for the patients you think to order it on.
+
+**The nurse sees more than the chart does.** Asking how someone looks, whether
+they are confused, or whether they are making urine costs nothing and is always
+current. Perfusion and mentation degrade well before a cuff pressure declares
+itself, so the players who ask find deterioration first.
+
+**Orders take time.** Pharmacy verifies, nurses draw up, blood comes from the
+bank. Antibiotics take hours to work. The clock that matters starts when you
+decide, not when the drug lands.
+
+**The floor has limits.** Vasoactive infusions and ventilators need an ICU bed,
+and beds take time to arrange. Deciding to escalate is itself a treatment, and
+frequently the one that decides the night.
+
+**Most pages are not emergencies.** One patient asks for a sleeping tablet three
+times. The cost of treating every page as a crisis is paid by the patient down
+the hall.
+
+### The ward
+
+Eight patients, each built around one decision:
+
+| Patient | Presents as | Actually |
+|---|---|---|
+| Whitfield, 78F | Pyelonephritis, improving | Urosepsis → septic shock |
+| Brennan, 71M | COPD exacerbation | Decompensated heart failure — the admission diagnosis is wrong |
+| Okonkwo, 54F | POD#2 knee replacement | Massive PE with RV failure |
+| Castellanos, 63M | Stable GI bleed | Rebleeding ulcer → haemorrhagic shock |
+| Penhale, 68M | COPD exacerbation | COPD exacerbation — the obvious answer is correct |
+| Demir, 59M | Chest pain, troponins negative | Anterior STEMI → cardiogenic shock |
+| Marsh, 84F | Aspiration pneumonia, DNR/DNI | Dying. The intervention is a goals-of-care conversation |
+| Fitzgerald, 44F | Cellulitis, improving | Nothing. She just cannot sleep |
+
+Because outcomes come from physiology rather than from a script, the traps are
+real: a fluid bolus in Brennan raises his wedge, floods more alveoli, and drops
+his saturation. Nothing special-cases it — that is simply what the model does.
+
+At 07:00 you get a debrief: what was actually wrong with each patient, what you
+ordered, how long you took from the moment they became unstable, and the teaching
+point attached to the case that earned it.
+
+---
+
+## The physiology engine
+
+The engine predates the game and is also usable on its own — the briefing screen
+has a link to a test bench where you can drive a single patient, apply scenarios
+and treatments, and watch the traces.
 
 ### Systemic circuit
 - Frank-Starling curve with ascending (Michaelis-Menten) and descending (overdistension) limbs
 - LV contractility (Emax), preload (EDV), afterload (SVR), CVP
 - Baroreflex: first-order HR and SVR regulation defending a MAP setpoint
-- Direct chronotropy (β1 agonists shift HR target; phenylephrine reflex brady is emergent)
+- Afterload-sensitive SV via an ESPVR constraint
 
 ### Pulmonary circuit
-- RV Frank-Starling (separate Emax, RVEDV) — RV failure modeled independently of LV
-- PCWP from LV EDPVR — rises with volume overload or systolic failure
-- mPAP = RVCO × PVR + PCWP — supports all four PH classes:
-  - Class I (PAH): PVR↑ with normal PCWP
-  - Class II (LV failure): PCWP↑ → mPAP↑
-  - Class III (hypoxic HPV): V/Q mismatch → SpO2↓ → PVR↑
-  - Class IV (CTEPH): fixed mechanical PVR↑
-- **RV-LV ventricular interdependence**: RVEDV dilation above threshold bows the septum leftward, reducing effective LV filling (the D-sign) → CO↓ → MAP↓ even with preserved SVR
+- RV Frank-Starling with its own Emax and RVEDV — RV failure is modelled independently of LV
+- PCWP from the LV EDPVR — rises with volume overload or systolic failure
+- mPAP = RVCO × PVR + PCWP, supporting all four PH classes
+- **RV-LV interdependence**: RVEDV dilation bows the septum leftward (the D-sign), reducing LV filling
+- **Series-circulation constraint**: sustained LV output cannot exceed RV output, so a failed RV brings the whole circulation down with it
 
 ### Gas exchange
-- Two-compartment shunt model (Riley): SpO2 = SaO2_ideal × (1−Qs/Qt) + SvO2 × Qs/Qt
-- Hill oxygen-hemoglobin dissociation curve (P50 = 26.8 mmHg, n = 2.7)
-- Fick-based SvO2: falls when CO drops, amplifying shunt effect in low-output states
-- Teaching property preserved: large shunt barely responds to supplemental O2
+- Two-compartment shunt model (Riley) with a Hill dissociation curve
+- Fick-based SvO2, so low output amplifies the shunt effect
+- **Hydrostatic pulmonary oedema → shunt**: once PCWP exceeds plasma oncotic pressure, alveoli flood and become true shunt. This is what makes cardiogenic pulmonary oedema hypoxaemic, why oxygen alone barely helps, and why preload reduction fixes the saturation
+- Low-flow pulmonary hypoperfusion as an effective shunt
 
-### Vasoactive mediator layer
-Instantaneous reflexes and ODE-integrated mediator tones that couple pulmonary hypertension and hypoxemia back to systemic hemodynamics:
+### Vasoactive mediators
+Instantaneous reflexes (HPV, hypoxic vasodilation) plus ODE-integrated mediator
+tones (NO/PGI2, endothelin-1) that couple pulmonary hypertension and hypoxaemia
+back into systemic haemodynamics.
 
-| Mechanism | Trigger | Effect |
-|---|---|---|
-| HPV (Layer A) | SpO2 < 93% | PVR↑ — lung shunts blood away from hypoxic units |
-| Hypoxic vasodilation (Layer A) | SpO2 < 90% | SVR↓ — peripheral tissue adenosine/NO |
-| RV-LV interdependence (Layer A) | RVEDV > 195 mL | Effective EDV↓ → SV↓ → MAP↓ |
-| NO/PGI2 tone (Layer B ODE) | SpO2↓, inflammation | SVR↓, Emax↓, mild PVR↓ — septic physiology |
-| ET-1 tone (Layer B ODE) | mPAP > 18 mmHg | PVR↑↑, mild SVR↑ — self-amplifying PH loop |
-| RVEDV afterload dilation (ODE) | PVR↑ | RVEDV target rises → septal shift develops |
-
-### Patient variability
-Each "New Patient" samples physiologic parameters (MAP setpoint, HR baseline, SVR, Emax, PVR, Hgb, etc.) from Gaussian distributions with physiologically calibrated coefficients of variation, producing a realistic population spread.
-
----
-
-## Clinical scenarios
-
-| Scenario | Primary mechanism |
-|---|---|
-| Hemorrhage (Class II/IV) | EDV↓ → CO↓ → baroreflex compensation |
-| Septic shock | noTone↑ (NO/PGI2) → SVR↓ + Emax↓ + third-spacing |
-| Cardiogenic shock (acute MI) | Emax↓ → PCWP↑ + CO↓ |
-| Tension pneumothorax | EDV↓ + CVP↑ (obstructive physiology) |
-| PAH (Class I) | PVR↑ → ET-1 tone → self-amplifying PVR loop |
-| LV failure / PVH (Class II) | Emax↓ → PCWP↑ → mPAP↑ |
-| Hypoxic PH (Class III) | Qs/Qt↑ → SpO2↓ → HPV → PVR↑ |
-| CTEPH (Class IV) | Fixed mechanical PVR↑ |
-| COPD stable / exacerbation | V/Q mismatch → chronic HPV → cor pulmonale trajectory |
-| Massive PE | Acute PVR↑ → RV afterload crisis → septal shift → MAP↓ |
-| Acute decompensated LV HF | Emax↓ + volume overload → PCWP↑ + pulmonary edema |
-| Cor pulmonale | PVR↑ → RVEDV dilation → RVLV interdependence → MAP↓ |
-| Biventricular failure | Both ventricles failing simultaneously |
-
-## Treatments
-
-Norepinephrine, Epinephrine, Dobutamine, Phenylephrine, Vasopressin, Fluid bolus, Needle decompression, Supplemental O2, Inhaled NO, Sildenafil (PDE5i), Bosentan (ET-1 antagonist), Methylprednisolone — each with physiologically modeled receptor profiles, onset/offset kinetics, and mechanistic effects on the vasoactive tone layer.
+### Acid-base
+Lactate as a first-order ODE driven by oxygen delivery, perfusion pressure, and
+inflammatory tone, feeding pH → myocardial depression, vasoplegia, and SA-node
+suppression. This is the failure spiral, and it is what makes late recognition
+qualitatively different from early recognition rather than merely worse.
 
 ---
 
 ## Architecture
 
 ```
-src/engine/
-  types.ts          — HemodynamicState, HemodynamicParams, DerivedValues, Intervention
-  constants.ts      — DEFAULT_PARAMS and DEFAULT_STATE (healthy 70 kg adult at rest)
-  frank-starling.ts — Generic Starling curve + LV/RV wrappers
-  baroreflex.ts     — First-order HR/SVR regulation
-  pulmonary.ts      — PCWP, RV output, mPAP, TPG
-  oxygenation.ts    — Alveolar gas equation, Hill curve, Fick SvO2, shunt mixing
-  vasoactive.ts     — Layer A reflexes + Layer B ODE targets
-  hemodynamics.ts   — derive() two-pass pipeline, derivative(), interventionEffect()
-  solver.ts         — RK4 integrator, clampState, clampEffective
-  patient.ts        — Gaussian patient sampling
+src/engine/          Physiology. Pure functions, no UI, no game concepts.
+  types.ts           HemodynamicState, HemodynamicParams, DerivedValues, Intervention
+  constants.ts       DEFAULT_PARAMS / DEFAULT_STATE (healthy 70 kg adult at rest)
+  frank-starling.ts  Generic Starling curve + LV/RV wrappers
+  baroreflex.ts      First-order HR/SVR regulation
+  pulmonary.ts       PCWP, RV output, mPAP, TPG
+  oxygenation.ts     Alveolar gas equation, Hill curve, Fick SvO2, shunt mixing
+  vasoactive.ts      Layer A reflexes + Layer B mediator ODE targets
+  hemodynamics.ts    derive() pipeline, derivative(), intervention overlay
+  solver.ts          RK4 integrator, clamps
+  patient.ts         Gaussian patient sampling
 
-src/game/
-  clock.ts          — Wall-time → sim-time with configurable compression (1x–300x)
-  loop.ts           — requestAnimationFrame loop, fixed 50ms physics timestep
+src/game/            The night shift.
+  physics.ts         stepPhysics() — one patient, one timestep (shared by bench and ward)
+  shift.ts           ShiftEngine: owns every patient, every channel, every outcome
+  cases.ts           The eight patients and their illness scripts
+  orders.ts          Order catalogue with lead times and ICU gating
+  clinical.ts        Physiology → charted vitals, labs, imaging, gestalt
+  nurse.ts           Nurse replies and escalation thresholds
+  consults.ts        Attending and specialty advice, reasoned from live physiology
+  scoring.ts         End-of-shift debrief
+
+src/ui/              React components for the shift.
+src/bench/           The original single-patient engine test bench.
 ```
 
-### ODE system
+### Key invariants
 
-The simulator integrates 14 state variables with RK4 at a 50ms timestep:
+**Interventions are a read-only overlay.** ODE integration uses the effective
+state (base + interventions) to compute targets, but integrates only the base
+state. Deltas never compound, and when a drug wears off the patient returns to
+their intrinsic physiology.
 
-| Variable | Dynamics |
-|---|---|
-| `hr` | Baroreflex (tauHr ≈ 3s) |
-| `svr` | Baroreflex (tauSvr ≈ 8s) |
-| `noTone` | Hypoxia + inflammation → NO/PGI2 buildup (tau ≈ 5 min) |
-| `et1Tone` | mPAP↑ → ET-1 synthesis (tau ≈ 10 min, self-amplifying) |
-| `rvedv` | RV afterload dilation (tau ≈ 2 min) |
-| All others | Driven by intervention overlays (derivative = 0) |
+**The engine knows nothing about the game.** No case, order, or nurse concept
+appears in `src/engine`. The game layer observes physiology and applies
+interventions; it never reaches in to set an outcome.
 
-Interventions are a **read-only overlay** on base state — never baked in. This ensures intervention deltas don't compound across physics steps while still feeding into all feedback loops (baroreflex, HPV, mediator ODEs).
+**True state and observed state are separate.** `runtime.state` is what is
+happening; `runtime.lastVitals` is what the player knows. Only monitoring closes
+the gap. The UI renders the observed state and never leaks the true one.
 
 ---
 
 ## Development
 
 ```bash
-npm install
-npm run dev      # local dev server at http://localhost:5173
-npm test         # 133 unit tests (Vitest)
+npm run dev      # dev server
+npm test         # 235 unit tests (Vitest)
+npm run lint
 npm run build    # production build → dist/
 ```
 
@@ -123,4 +173,7 @@ Deployed via Cloudflare Pages — every push to `main` triggers a rebuild.
 
 ## Status
 
-This is a research/education prototype. The physiology is modeled at the level of detail appropriate for teaching hemodynamic reasoning to medical students and residents — not a validated clinical decision support tool.
+A research and education prototype. The physiology is modelled at the level of
+detail appropriate for teaching haemodynamic reasoning to students and residents.
+It is not a validated clinical decision support tool, and the drug kinetics in
+particular are deliberately simplified.
