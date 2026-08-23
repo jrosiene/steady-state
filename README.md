@@ -45,6 +45,13 @@ decide, not when the drug lands.
 and beds take time to arrange. Deciding to escalate is itself a treatment, and
 frequently the one that decides the night.
 
+**The handoff is uneven.** Each patient comes with a written sign-out in the
+shape a real one takes — a one-liner, the jobs left for overnight, and "if this
+happens, do that" — and they vary from thorough to almost nothing. Empty sections
+are shown as empty, because a missing contingency plan is information. The fullest
+handoff on the ward is on the patient who needs it least; two of the thinnest are
+on people who die if you leave them. You can re-read any of them from the chart.
+
 **Most pages are not emergencies.** One patient asks for a sleeping tablet three
 times. The cost of treating every page as a crisis is paid by the patient down
 the hall — so the order set includes the ordinary night-float material (melatonin,
@@ -171,7 +178,7 @@ the gap. The UI renders the observed state and never leaks the true one.
 
 ```bash
 npm run dev      # dev server
-npm test         # 244 unit tests (Vitest)
+npm test         # 250 unit tests (Vitest)
 npm run lint
 npm run build    # production build → dist/
 ```

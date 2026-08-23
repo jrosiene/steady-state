@@ -28,9 +28,17 @@ export const CASES: PatientCase[] = [
     allergies: 'Sulfa (rash)',
     admissionDx: 'Pyelonephritis, on ceftriaxone',
     history: ['Type 2 diabetes', 'CKD stage 3', 'Recurrent UTIs'],
-    signout:
-      'Admitted yesterday with flank pain and dysuria. Urine culture pending. ' +
-      'Afebrile most of today on ceftriaxone. Day team thought she looked well enough for discharge tomorrow.',
+    // Thin, and confidently wrong about the severity. The day team had already
+    // decided she was going home, which is why there is nothing here about what
+    // to do if she turned.
+    handoff: {
+      author: 'Dr Okafor, day intern',
+      severity: 'stable',
+      summary: 'Pyelonephritis, day 2 of ceftriaxone. Afebrile most of today, eating and drinking. Likely home tomorrow.',
+      todo: ['Chase the urine culture in the morning.'],
+      contingencies: [],
+      quality: 'thin',
+    },
     hiddenDx: 'Gram-negative urosepsis progressing to septic shock',
     teachingPoint:
       'Septic shock is a distributive problem: the cardiac output is high and the vascular tone is gone. ' +
@@ -80,9 +88,24 @@ export const CASES: PatientCase[] = [
     allergies: 'NKDA',
     admissionDx: 'COPD exacerbation',
     history: ['COPD', 'Hypertension', 'Prior anterior MI (EF 30%)', 'Atrial fibrillation'],
-    signout:
-      'Admitted this morning as a COPD flare, started on steroids and nebs. ' +
-      "Day team noted he's 'a bit wet' but attributed the hypoxia to his COPD. Net positive 2.4 litres since admission.",
+    // Detailed, fluent, and anchored on the wrong diagnosis. The oxygen requirement
+    // and the weight gain are both recorded and both explained away — and the one
+    // contingency left behind actively points the wrong way.
+    handoff: {
+      author: 'Dr Lindqvist, day resident',
+      severity: 'watcher',
+      summary:
+        'COPD exacerbation, day 1 of prednisone and scheduled nebulisers. Now needing 2L, which is new for him — ' +
+        'he is normally on room air at home. Net positive 2.4 litres since admission.',
+      todo: [
+        'Scheduled nebulisers are due at 22:00 and 04:00.',
+        'Morning chest film if he has not improved.',
+      ],
+      contingencies: [
+        'If he desaturates, turn the oxygen up and give a PRN nebuliser.',
+      ],
+      quality: 'adequate',
+    },
     hiddenDx: 'Acute decompensated heart failure with flash pulmonary oedema — mislabelled as COPD',
     teachingPoint:
       'The admission diagnosis is a hypothesis, not a fact. This is cardiogenic pulmonary oedema: a high wedge ' +
@@ -140,9 +163,19 @@ export const CASES: PatientCase[] = [
     allergies: 'NKDA',
     admissionDx: 'POD#2 total knee arthroplasty — pain control',
     history: ['Obesity', 'Oestrogen-containing contraception', 'Osteoarthritis'],
-    signout:
-      'Routine post-op. Ambulating with physio. Was supposed to go home today but pain was not controlled. ' +
-      'Chemical DVT prophylaxis was held yesterday for a haematoma at the surgical site.',
+    // Almost nothing, because nothing was expected to happen. The one fact that
+    // matters is filed as a routine task rather than flagged as a risk.
+    handoff: {
+      author: 'Ms Halvorsen, orthopaedic PA',
+      severity: 'stable',
+      summary: 'Day 2 after a total knee replacement. Routine recovery. Was for discharge today, held back for pain control.',
+      todo: [
+        'Oxycodone is written as required — nothing else outstanding.',
+        'Enoxaparin has been held since yesterday because of the wound haematoma. Surgery to review in the morning.',
+      ],
+      contingencies: [],
+      quality: 'thin',
+    },
     hiddenDx: 'Massive pulmonary embolism with right ventricular failure',
     teachingPoint:
       'Sudden hypoxaemia with hypotension and a clear chest is obstructive shock until proven otherwise. ' +
@@ -192,9 +225,27 @@ export const CASES: PatientCase[] = [
     allergies: 'NKDA',
     admissionDx: 'Upper GI bleed — melaena, Hgb 9.8',
     history: ['Peptic ulcer disease', 'Daily NSAIDs for back pain', 'Alcohol use disorder'],
-    signout:
-      'Two units transfused in the ED, Hgb came up to 9.8 and held. GI planning to scope in the morning. ' +
-      'On a pantoprazole drip. Has been stable all afternoon.',
+    // What a good handoff looks like. Everything the night doctor needs is here,
+    // including the thresholds — a player who reads it knows what to do before
+    // the page arrives.
+    handoff: {
+      author: 'Dr Nakamura, day hospitalist',
+      severity: 'watcher',
+      summary:
+        'Upper GI bleed, presumed peptic ulcer on a background of daily NSAIDs. Two units in the emergency department, ' +
+        'haemoglobin came up to 9.8 and has held all afternoon. Pantoprazole infusion running. GI plan to scope in the morning.',
+      todo: [
+        'Repeat haemoglobin at 06:00.',
+        'Nil by mouth from midnight for the endoscopy.',
+        'He has two large-bore cannulae — please keep them patent.',
+      ],
+      contingencies: [
+        'If he passes another large melaena or frank blood, send a crossmatch and transfuse to a haemoglobin of 7.',
+        'If he becomes tachycardic or drops his pressure, call the GI fellow overnight rather than waiting for the morning list — do not sit on it.',
+        'He will not tolerate being scoped on the ward. If he is bleeding actively he needs a monitored bed first.',
+      ],
+      quality: 'thorough',
+    },
     hiddenDx: 'Rebleeding peptic ulcer causing haemorrhagic shock',
     teachingPoint:
       'Haemorrhagic shock is a volume problem, and the only definitive treatments are blood and haemostasis. ' +
@@ -242,9 +293,19 @@ export const CASES: PatientCase[] = [
     allergies: 'Penicillin (anaphylaxis)',
     admissionDx: 'COPD exacerbation',
     history: ['Severe COPD (FEV1 34%)', '50 pack-year smoking history', 'Home O2 2L'],
-    signout:
-      'Second day of treatment for a genuine COPD flare. On scheduled nebs and prednisone, improving slowly. ' +
-      'Baseline saturation at home is 89–91%.',
+    // Unremarkable, but it carries the single fact that stops a well-meaning
+    // doctor doing harm: what this man's saturation looks like when he is well.
+    handoff: {
+      author: 'Dr Lindqvist, day resident',
+      severity: 'watcher',
+      summary: 'COPD exacerbation, day 2. Slowly improving on prednisone and scheduled nebulisers.',
+      todo: ['Scheduled nebulisers at 22:00 and 04:00.'],
+      contingencies: [
+        'His saturation at home is 89–91% on 2L. Please do not chase a normal number — target his baseline.',
+        'If he is tiring, think about non-invasive ventilation before he needs a tube.',
+      ],
+      quality: 'adequate',
+    },
     hiddenDx: 'COPD exacerbation with acute bronchospasm — the admission diagnosis is correct',
     teachingPoint:
       'Not every deterioration is a hidden diagnosis. This is bronchospasm, the obvious treatment is the right one, ' +
@@ -282,9 +343,16 @@ export const CASES: PatientCase[] = [
     allergies: 'NKDA',
     admissionDx: 'Chest pain — rule out acute coronary syndrome',
     history: ['Hyperlipidaemia', 'Hypertension', 'Family history of premature CAD'],
-    signout:
-      'Two troponins negative, EKG unremarkable on arrival. Chest pain free since the ED. ' +
-      'Planned for a stress test in the morning, likely discharge after.',
+    // Technically correct and comprehensively unhelpful. The contingency covers
+    // the first thirty seconds of the problem and nothing after it.
+    handoff: {
+      author: 'Dr Okafor, day intern',
+      severity: 'stable',
+      summary: 'Chest pain, two negative troponins, unremarkable EKG on arrival. Pain free since the emergency department. Stress test booked for the morning.',
+      todo: ['Nil by mouth from midnight for the stress test.'],
+      contingencies: ['If the pain comes back, repeat the EKG.'],
+      quality: 'adequate',
+    },
     hiddenDx: 'Anterior STEMI with cardiogenic shock',
     teachingPoint:
       'Cardiogenic shock is a pump problem: low output, high filling pressures, and pulmonary oedema together. ' +
@@ -330,9 +398,19 @@ export const CASES: PatientCase[] = [
       'Third aspiration pneumonia in six months',
       'Weight loss, recurrent admissions',
     ],
-    signout:
-      'Fourth day of antibiotics, not really turning the corner. Family has been hard to reach. ' +
-      'No goals-of-care conversation documented this admission. DNR/DNI confirmed on arrival.',
+    // The gap in this one is the whole case. Four days of treatment, no better,
+    // and nobody has yet written down what the family would want — which is the
+    // decision the night doctor is about to be handed.
+    handoff: {
+      author: 'Dr Okafor, day intern',
+      severity: 'stable',
+      summary: 'Aspiration pneumonia, day 4 of co-amoxiclav. Advanced dementia, admitted from a nursing home. Third admission in six months.',
+      todo: [
+        'No goals-of-care discussion documented this admission. Her daughter has not returned our calls — someone should try again.',
+      ],
+      contingencies: [],
+      quality: 'thin',
+    },
     hiddenDx: 'Progressive aspiration pneumonia in advanced dementia — the dying process',
     teachingPoint:
       'Escalation is not always the intervention. This patient is at the end of a long trajectory, and the ' +
@@ -375,8 +453,24 @@ export const CASES: PatientCase[] = [
     allergies: 'Codeine (nausea)',
     admissionDx: 'Lower extremity cellulitis',
     history: ['Obesity', 'Chronic venous stasis'],
-    signout:
-      'Responding nicely to IV antibiotics, erythema is receding and already marked. Likely discharge tomorrow on orals.',
+    // The most complete handoff on the ward, on the patient who needs it least.
+    // Handoff quality tracks how much time the day team had, not how sick anyone is.
+    handoff: {
+      author: 'Dr Nakamura, day hospitalist',
+      severity: 'stable',
+      summary:
+        'Lower limb cellulitis, day 3 of IV flucloxacillin. Erythema is receding and the margin is marked; ' +
+        'afebrile for 48 hours. For a switch to oral antibiotics and discharge tomorrow.',
+      todo: [
+        'Cannula in the left hand is three days old — resite it if it stops running.',
+        'She has not slept well in hospital and has asked about something to help.',
+        'Simple analgesia is written as required.',
+      ],
+      contingencies: [
+        'If the erythema extends beyond the marked line, let the day team know and we will re-image.',
+      ],
+      quality: 'thorough',
+    },
     hiddenDx: 'Uncomplicated cellulitis, improving — nothing is wrong',
     teachingPoint:
       'Most overnight pages are not emergencies, and the ward will page you about all of them. ' +

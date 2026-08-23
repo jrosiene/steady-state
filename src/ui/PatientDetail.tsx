@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { PatientView, LabResult, Vitals, OrderCategory } from '../game/types';
 import { ORDERS, ORDER_CATEGORIES } from '../game/orders';
 import { ageLabel, clockTime, isAbnormal } from '../game/clinical';
+import { HandoffCard } from './HandoffCard';
 
 /**
  * The right-hand column: what is known about this patient, and everything the
@@ -36,6 +37,11 @@ export function PatientDetail({
             Allergies: {p.case.allergies} · {p.case.codeStatus}
           </span>
         </div>
+
+        <details className="handoff-details">
+          <summary>Day team handoff</summary>
+          <HandoffCard handoff={p.case.handoff} compact />
+        </details>
 
         <div className="section-title">Vitals</div>
         <VitalsCard vitals={displayVitals} ageSec={vitalsAgeSec} live={live} dead={dead} />

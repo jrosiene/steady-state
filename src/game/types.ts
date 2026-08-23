@@ -184,6 +184,43 @@ export interface CaseEvent {
 
 export type CodeStatus = 'Full Code' | 'DNR/DNI' | 'DNR, OK to intubate';
 
+/** The day team's illness-severity call. Not always right. */
+export type HandoffSeverity = 'stable' | 'watcher' | 'unstable';
+
+/**
+ * How complete the written handoff is.
+ *
+ * Recorded so the debrief can say what the player was working from. Handoff
+ * quality tracks how interesting the day team found the patient far more than it
+ * tracks how sick they are, which is why the fullest sign-out on this ward is on
+ * the woman with cellulitis and the thinnest are on two of the people who die.
+ */
+export type HandoffQuality = 'thorough' | 'adequate' | 'thin';
+
+/**
+ * The written sign-out, in the shape a real one takes: a one-liner, the jobs left
+ * for overnight, and the "if this happens, do that" planning that is the first
+ * thing to get dropped when the day team is busy.
+ *
+ * The absences matter as much as the content. An empty contingency list is not a
+ * formatting artefact — it is the day team having failed to think past the end of
+ * their own shift, and the player should be able to see that they are working
+ * without a net.
+ */
+export interface Handoff {
+  /** Who wrote it, and how senior they are. */
+  author: string;
+  /** The day team's own read on how sick this patient is. */
+  severity: HandoffSeverity;
+  /** The one-line summary: why they are here and where they have got to. */
+  summary: string;
+  /** Jobs explicitly left for the night. */
+  todo: string[];
+  /** Anticipatory guidance. Frequently missing, occasionally wrong. */
+  contingencies: string[];
+  quality: HandoffQuality;
+}
+
 export interface PatientCase {
   id: string;
   name: string;
@@ -196,8 +233,8 @@ export interface PatientCase {
   /** The working diagnosis on the handoff — may be wrong. */
   admissionDx: string;
   history: string[];
-  /** Sign-out text from the day team. */
-  signout: string;
+  /** Written sign-out from the day team. */
+  handoff: Handoff;
   /** The real problem. Revealed only in the debrief. */
   hiddenDx: string;
   /** What this case is meant to teach. Shown in the debrief. */

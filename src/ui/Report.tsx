@@ -80,6 +80,8 @@ export function Report({
               <b>What was actually going on:</b> {d.hiddenDx}
             </div>
 
+            <div className="debrief-handoff">{d.handoffNote}</div>
+
             {(d.hits.length > 0 || d.misses.length > 0 || d.harms.length > 0) && (
               <div className="debrief-cols">
                 <div className="debrief-list">

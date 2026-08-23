@@ -17,6 +17,8 @@ export interface PatientDebrief {
   responseMinutes: number | null;
   teachingPoint: string;
   hiddenDx: string;
+  /** What the day team's written handoff gave the player to work from. */
+  handoffNote: string;
 }
 
 export interface ShiftReport {
@@ -110,7 +112,38 @@ function buildDebrief(patient: PatientRuntime): PatientDebrief {
     responseMinutes,
     teachingPoint: patient.case.teachingPoint,
     hiddenDx: patient.case.hiddenDx,
+    handoffNote: handoffNote(patient),
   };
+}
+
+/**
+ * What the player was working from.
+ *
+ * Worth naming in the debrief because a thin handoff genuinely changes how hard
+ * a case was, and because noticing that you have been handed nothing is a skill
+ * in itself — the moment to ask more questions is when the sign-out is short.
+ */
+function handoffNote(patient: PatientRuntime): string {
+  const { handoff } = patient.case;
+  const died = patient.status === 'died';
+  const missedSeverity = handoff.severity === 'stable' && died;
+
+  if (missedSeverity) {
+    return handoff.contingencies.length === 0
+      ? 'The day team signed this patient out as stable and left no contingency plan.'
+      : 'The day team signed this patient out as stable.';
+  }
+
+  switch (handoff.quality) {
+    case 'thorough':
+      return 'The handoff was thorough, and anticipated what happened.';
+    case 'adequate':
+      return handoff.contingencies.length === 0
+        ? 'The handoff covered the basics but left no contingency plan.'
+        : 'The handoff covered the basics, though not what actually happened.';
+    default:
+      return 'You were handed very little on this patient.';
+  }
 }
 
 function outcomeTone(patient: PatientRuntime): 'good' | 'mixed' | 'bad' {

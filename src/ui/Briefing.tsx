@@ -1,4 +1,5 @@
 import { CASES } from '../game/cases';
+import { HandoffCard } from './HandoffCard';
 
 /**
  * The handoff.
@@ -55,6 +56,11 @@ export function Briefing({ onStart, onBench }: { onStart: () => void; onBench: (
         </div>
 
         <h2>Sign-out from the day team</h2>
+        <p className="lede" style={{ marginBottom: 18 }}>
+          Eight written handoffs of varying quality. Some anticipate what might go
+          wrong tonight; some were written by someone already halfway out of the
+          building. You can re-read any of them from the patient's chart later.
+        </p>
         {CASES.map((c) => (
           <div key={c.id} className="handoff">
             <div className="handoff-top">
@@ -65,7 +71,7 @@ export function Briefing({ onStart, onBench }: { onStart: () => void; onBench: (
               {c.codeStatus !== 'Full Code' && <span className="tag dnr">{c.codeStatus}</span>}
             </div>
             <div className="handoff-dx">{c.admissionDx}</div>
-            <div className="handoff-body">{c.signout}</div>
+            <HandoffCard handoff={c.handoff} />
             <div className="handoff-hx">PMH: {c.history.join(' · ')} · Allergies: {c.allergies}</div>
           </div>
         ))}

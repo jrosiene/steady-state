@@ -5,6 +5,7 @@ import { ORDER_BY_ID } from '../orders';
 import { assessAppearance, describeAppearance, acuityLabel } from '../clinical';
 import { DEFAULT_PARAMS, DEFAULT_STATE } from '../../engine/constants';
 import { snapshot as computeSnapshot } from '../../engine/hemodynamics';
+import { buildReport } from '../scoring';
 import type { PatientCase, PatientRuntime } from '../types';
 import { SHIFT_DURATION_SEC } from '../types';
 
@@ -571,4 +572,60 @@ describe('comfort and routine orders', () => {
       control.snapshot(patient(control, 'whitfield')).map,
     );
   });
+});
+
+describe('day team handoffs', () => {
+  it('gives every patient a handoff with a summary and an author', () => {
+    for (const c of CASES) {
+      expect(c.handoff.summary.length, c.id).toBeGreaterThan(40);
+      expect(c.handoff.author.length, c.id).toBeGreaterThan(0);
+      expect(['thorough', 'adequate', 'thin']).toContain(c.handoff.quality);
+    }
+  });
+
+  it('varies in completeness across the ward', () => {
+    const qualities = new Set(CASES.map((c) => c.handoff.quality));
+    // All three grades must be represented, or the variation teaches nothing.
+    expect(qualities.size).toBe(3);
+
+    const withPlan = CASES.filter((c) => c.handoff.contingencies.length > 0);
+    const without = CASES.filter((c) => c.handoff.contingencies.length === 0);
+    expect(withPlan.length).toBeGreaterThan(0);
+    expect(without.length).toBeGreaterThan(0);
+  });
+
+  it('leaves the thinnest handoffs on patients who deteriorate', () => {
+    // The point of the variation: sign-out quality tracks how interesting the day
+    // team found someone, not how sick they are about to become.
+    const thin = CASES.filter((c) => c.handoff.quality === 'thin').map((c) => c.id);
+    expect(thin).toContain('whitfield');
+    expect(thin).toContain('okonkwo');
+
+    // And the fullest one is on the patient who needs it least.
+    const fitz = CASES.find((c) => c.id === 'fitzgerald')!;
+    expect(fitz.handoff.quality).toBe('thorough');
+  });
+
+  it('buries the decisive clue in a routine task list', () => {
+    // Held anticoagulation is the whole reason she embolises, and it is filed as
+    // an errand rather than flagged as a risk.
+    const okonkwo = CASES.find((c) => c.id === 'okonkwo')!;
+    expect(okonkwo.handoff.todo.join(' ')).toMatch(/enoxaparin|prophylaxis/i);
+    expect(okonkwo.handoff.contingencies).toHaveLength(0);
+  });
+
+  it('records the day team severity call, right or wrong', () => {
+    // Two of the patients signed out as "stable" are dead by morning if ignored.
+    const whitfield = CASES.find((c) => c.id === 'whitfield')!;
+    expect(whitfield.handoff.severity).toBe('stable');
+  });
+
+  it('names what the player was working from in the debrief', () => {
+    const engine = started(only('whitfield'));
+    run(engine, SHIFT_DURATION_SEC, 300);
+
+    const report = buildReport(engine.patients);
+    const d = report.debriefs[0];
+    expect(d.handoffNote).toMatch(/stable|contingency|very little/i);
+  }, 20_000);
 });
