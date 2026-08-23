@@ -3,7 +3,7 @@ import { DEFAULT_PARAMS, DEFAULT_STATE } from '../engine/constants';
 import { snapshot as computeSnapshot, applyInterventions, interventionEffect } from '../engine/hemodynamics';
 import { clampEffective } from '../engine/solver';
 import { stepPhysics, WARD_PHYSICS_DT } from './physics';
-import { CASES } from './cases';
+import { generateWard } from './content/generate';
 import { ORDER_BY_ID, O2_LABEL_PREFIX } from './orders';
 import { chartVitals, resolveLabPanel, clockTime } from './clinical';
 import { answerQuestion, vitalsConcern, NURSE_QUESTIONS } from './nurse';
@@ -90,8 +90,18 @@ export class ShiftEngine {
 
   private snapshots = new Map<string, Snapshot>();
 
-  constructor(cases: PatientCase[] = CASES) {
-    this.patients = cases.map((c) => createRuntime(c));
+  /** The seed this ward was generated from, so a shift can be replayed. */
+  readonly seed: string;
+
+  constructor(cases?: PatientCase[], seed?: string) {
+    if (cases) {
+      this.seed = seed ?? 'custom';
+      this.patients = cases.map((c) => createRuntime(c));
+    } else {
+      const ward = generateWard({ seed });
+      this.seed = ward.seed;
+      this.patients = ward.cases.map((c) => createRuntime(c));
+    }
     this.refreshSnapshots();
   }
 
@@ -350,8 +360,8 @@ export class ShiftEngine {
         'nurse',
         p.case.nurse,
         transferPending
-          ? `I can't start ${order.label.toLowerCase()} until she's physically in the unit — we're still waiting on the bed.`
-          : `I can't run ${order.label.toLowerCase()} on the floor. She'd need to go to the unit first.`,
+          ? `I can't start ${order.label.toLowerCase()} until ${p.case.voice.subj} ${p.case.voice.is} physically in the unit — we're still waiting on the bed.`
+          : `I can't run ${order.label.toLowerCase()} on the floor. ${p.case.voice.Subj} would need to go to the unit first.`,
         'reply',
         false,
       );
@@ -372,7 +382,8 @@ export class ShiftEngine {
     this.post(p, 'doctor', 'You', `Order: ${order.label}`, 'order');
     // Acknowledgements are not news — the player is looking at this thread right
     // now, having just acted in it. Counting them as unread would bury real pages.
-    this.post(p, 'nurse', p.case.nurse, order.ack, 'ack', false, true);
+    const ack = typeof order.ack === 'function' ? order.ack(p.case.voice) : order.ack;
+    this.post(p, 'nurse', p.case.nurse, ack, 'ack', false, true);
 
     // Oxygen devices replace one another rather than stacking.
     if (order.o2Device) {
@@ -452,7 +463,7 @@ export class ShiftEngine {
 
       case 'consult-gi':
       case 'consult-cards':
-        this.post(p, 'system', 'Consult', specialtyAdvice(orderId, this.snapshot(p)), 'reply');
+        this.post(p, 'system', 'Consult', specialtyAdvice(orderId, p, this.snapshot(p)), 'reply');
         break;
 
       case 'comfort-care':
@@ -549,7 +560,7 @@ export class ShiftEngine {
         'Ward',
         comfortFocused
           ? `${p.case.name} died peacefully at ${clockTime(this.time)}. The family were at the bedside.`
-          : `${p.case.name} died at ${clockTime(this.time)}. Her code status was honoured — no resuscitation was attempted.`,
+          : `${p.case.name} died at ${clockTime(this.time)}. The code status was honoured — no resuscitation was attempted.`,
         'event',
         true,
       );

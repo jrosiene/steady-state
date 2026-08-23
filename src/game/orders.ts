@@ -31,7 +31,7 @@ export const ORDERS: OrderDef[] = [
     category: 'comfort',
     detail: 'Sleep aid with no haemodynamic effect. The safe choice in the elderly and the delirious.',
     leadTimeSec: 900,
-    ack: "I'll give it with her evening meds.",
+    ack: (v) => `I'll give it with ${v.poss} evening meds.`,
   },
   {
     id: 'trazodone',
@@ -53,7 +53,7 @@ export const ORDERS: OrderDef[] = [
     detail: 'Analgesic and antipyretic. Lowers the recorded temperature without touching the cause.',
     leadTimeSec: 600,
     antipyreticHours: 5,
-    ack: "Given. I'll recheck her temp in a bit.",
+    ack: (v) => `Given. I'll recheck ${v.poss} temp in a bit.`,
   },
   {
     id: 'delirium-precautions',
@@ -62,7 +62,7 @@ export const ORDERS: OrderDef[] = [
     detail: 'Lights down, reorientation, hearing aids and glasses on, mobilise, remove unnecessary lines.',
     leadTimeSec: 600,
     once: true,
-    ack: "Good — I'll get her glasses in and turn the lights down. I'll take the telemetry leads off if you don't need them.",
+    ack: (v) => `Good — I'll get ${v.poss} glasses in and turn the lights down. I'll take the telemetry leads off if you don't need them.`,
   },
   {
     id: 'haloperidol',
@@ -70,7 +70,7 @@ export const ORDERS: OrderDef[] = [
     category: 'comfort',
     detail: 'Low-dose antipsychotic for agitated delirium. A last resort after non-pharmacologic measures.',
     leadTimeSec: 900,
-    ack: "I'll hold it unless she's a danger to herself — I'll try redirecting first.",
+    ack: (v) => `I'll hold it unless ${v.subj} ${v.is} a danger to ${v.obj}self — I'll try redirecting first.`,
   },
   {
     id: 'ondansetron',
@@ -104,7 +104,7 @@ export const ORDERS: OrderDef[] = [
     detail: 'Hourly while awake. Recruits basal atelectasis and improves V/Q matching a little.',
     leadTimeSec: 600,
     once: true,
-    ack: "I'll set her up with it and coach her.",
+    ack: (v) => `I'll set ${v.obj} up with it and coach ${v.obj}.`,
     interventions: [
       { label: 'Incentive spirometry', category: 'treatment', kind: 'infusion', target: 'qsQt', delta: -0.03, tauOn: 1800, eliminationHalfLife: 10800 },
     ],
@@ -115,7 +115,7 @@ export const ORDERS: OrderDef[] = [
     category: 'comfort',
     detail: 'Relieves the sensation of breathlessness. Blunts respiratory drive — appropriate when comfort is the goal, harmful when it is not.',
     leadTimeSec: 600,
-    ack: "I'll give it and stay with her.",
+    ack: (v) => `I'll give it and stay with ${v.obj}.`,
     interventions: [
       // Hypoventilation reduces functional residual capacity and worsens V/Q —
       // an accepted trade when the goal is comfort, and a harm when it is not.
@@ -223,7 +223,7 @@ export const ORDERS: OrderDef[] = [
     detail: 'Low-flow oxygen, FiO2 ≈ 0.28.',
     leadTimeSec: 120,
     o2Device: '2L NC',
-    ack: "He's on 2 litres.",
+    ack: (v) => `${v.Subj} ${v.is} on 2 litres.`,
     interventions: [
       { label: `${O2_LABEL_PREFIX} 2L NC`, category: 'treatment', kind: 'infusion', target: 'fiO2', delta: 0.07, tauOn: 60, eliminationHalfLife: 120 },
     ],
@@ -235,7 +235,7 @@ export const ORDERS: OrderDef[] = [
     detail: 'High-flow nasal oxygen, FiO2 ≈ 0.44.',
     leadTimeSec: 120,
     o2Device: '6L NC',
-    ack: "Turned him up to 6 litres.",
+    ack: (v) => `Turned ${v.obj} up to 6 litres.`,
     interventions: [
       { label: `${O2_LABEL_PREFIX} 6L NC`, category: 'treatment', kind: 'infusion', target: 'fiO2', delta: 0.23, tauOn: 60, eliminationHalfLife: 120 },
     ],
@@ -330,7 +330,7 @@ export const ORDERS: OrderDef[] = [
     category: 'meds',
     detail: 'Loop diuretic. Offloads preload — helps congestion, harms hypovolaemia.',
     leadTimeSec: 300,
-    ack: "Lasix in. I'll watch her urine output.",
+    ack: (v) => `Lasix in. I'll watch ${v.poss} urine output.`,
     interventions: [
       { label: 'Furosemide (preload↓)', category: 'treatment', kind: 'bolus', target: 'edv', delta: -38, tauOn: 900, eliminationHalfLife: 10800 },
       { label: 'Furosemide (CVP↓)', category: 'treatment', kind: 'bolus', target: 'cvp', delta: -4, tauOn: 900, eliminationHalfLife: 10800 },
@@ -421,7 +421,7 @@ export const ORDERS: OrderDef[] = [
     leadTimeSec: 300,
     once: true,
     startsMonitoring: true,
-    ack: "Putting her on the monitor and pulse ox.",
+    ack: (v) => `Putting ${v.obj} on the monitor and pulse ox.`,
   },
   {
     id: 'sit-up',
@@ -429,7 +429,7 @@ export const ORDERS: OrderDef[] = [
     category: 'nursing',
     detail: 'Upright positioning improves V/Q matching and work of breathing.',
     leadTimeSec: 60,
-    ack: "Sat him all the way up.",
+    ack: (v) => `Sat ${v.obj} all the way up.`,
     interventions: [
       { label: 'Upright positioning', category: 'treatment', kind: 'infusion', target: 'qsQt', delta: -0.03, tauOn: 300, eliminationHalfLife: 1800 },
     ],
@@ -454,7 +454,7 @@ export const ORDERS: OrderDef[] = [
     leadTimeSec: 900,
     once: true,
     startsMonitoring: true,
-    ack: "ICU has a bed — I'll get report and we'll move her.",
+    ack: (v) => `ICU has a bed — I'll get report and we'll move ${v.obj}.`,
   },
   {
     id: 'call-attending',

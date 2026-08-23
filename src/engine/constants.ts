@@ -27,6 +27,9 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   // Normal: (120-20) × 0.2 / 2.0 = 10 mmHg  ✓
   // Cardiogenic (EDV=160, emax=0.8): (140) × 0.2 / 0.8 = 35 mmHg ✓
   lvEdpvrStiffness: 0.2,
+  // Above this the alveoli are frankly flooded; the model has nothing further to
+  // say, and letting the number run turns a dying patient into a divergence.
+  pcwpMax: 55,
 
   // --- Baroreflex ---
   mapSetpoint: 90,

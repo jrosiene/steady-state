@@ -5,6 +5,8 @@ import type {
   InterventionKind,
   Snapshot,
 } from '../engine/types';
+import type { Severity } from './content/severity';
+import type { Voice } from './content/voice';
 
 // ─── Time ───────────────────────────────────────────────────────────────────
 
@@ -130,8 +132,13 @@ export interface OrderDef {
    * Models the real latency of nursing, pharmacy verification, and administration.
    */
   leadTimeSec: number;
-  /** What the nurse says back when the order is placed. */
-  ack: string;
+  /**
+   * What the nurse says back when the order is placed.
+   *
+   * A function where the reply needs to refer to the patient, so acknowledgements
+   * read correctly for whoever the order was actually placed on.
+   */
+  ack: string | ((v: Voice) => string);
   interventions?: InterventionSpec[];
   /** For diagnostic orders: the panel to resolve and how long it takes. */
   lab?: { panel: string; turnaroundSec: number };
@@ -222,10 +229,24 @@ export interface Handoff {
 }
 
 export interface PatientCase {
+  /** Unique within a ward. Not stable across seeds — use archetypeId in tests. */
   id: string;
+  /**
+   * Stable identifier for the clinical content, independent of who has it.
+   *
+   * This is the durable handle: patient names, ages and rooms are sampled per
+   * shift, so anything that needs to refer to a case — a test, the debrief, a
+   * calibration run — refers to the archetype and severity instead.
+   */
+  archetypeId: string;
+  /** How hard this instance of the case bites tonight. */
+  severity: Severity;
   name: string;
   age: number;
-  sex: 'M' | 'F';
+  /** Charted sex marker. */
+  sex: string;
+  /** Pronouns and verb agreement, so generated prose reads correctly. */
+  voice: Voice;
   room: string;
   nurse: string;
   codeStatus: CodeStatus;
@@ -253,6 +274,14 @@ export interface PatientCase {
    * resting tachypnoea is often the first thing a nurse notices.
    */
   rrOffset?: number;
+  /**
+   * Sim-time at which this case first declares itself.
+   *
+   * Recorded explicitly so that anything reasoning about the case — a test, the
+   * calibration harness — can express itself relative to the moment the problem
+   * starts, rather than against a wall-clock time that changes with every seed.
+   */
+  declaresAt: number;
   /** Illness script. */
   events: CaseEvent[];
   /** Order ids that represent correct management, for the debrief. */

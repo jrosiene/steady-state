@@ -32,6 +32,7 @@ export function answerQuestion(
   snap: Snapshot,
 ): string {
   const inIcu = patient.location === 'icu';
+  const v = patient.case.voice;
 
   switch (questionId) {
     case 'look':
@@ -39,9 +40,15 @@ export function answerQuestion(
 
     case 'mental':
       if (snap.cardiovascularStatus === 'arrest') return 'Unresponsive. No pulse.';
-      if (snap.map < 55) return "Barely rousable — I get a groan when I press on his nail bed, that's about it.";
-      if (snap.map < 65) return "Confused. She keeps asking me what year it is and trying to climb out of bed.";
-      if (snap.lactate > 4) return 'Drowsy. Wakes to voice but drifts straight back off.';
+      if (snap.map < 55) {
+        return `Barely rousable — I get a groan when I press on a nail bed, and that ${v.is} about it.`;
+      }
+      if (snap.map < 65) {
+        return `Confused. ${v.Subj} ${v.verb('keep')} asking me what year it is and trying to climb out of bed.`;
+      }
+      if (snap.lactate > 4) {
+        return `Drowsy. ${v.Subj} ${v.verb('wake')} to voice but ${v.verb('drift')} straight back off.`;
+      }
       return 'Alert and oriented. Same as earlier.';
 
     case 'breathing': {
@@ -49,10 +56,18 @@ export function answerQuestion(
       // saturation has already fallen. A wet patient is breathless well before
       // they are hypoxaemic, and that gap is the window worth acting in.
       const sat = `sat ${pct(snap.spO2)}% on ${patient.o2Device}`;
-      const wet = snap.pcwp > 22 ? ' Crackles up both bases and he will not lie flat.' : '';
-      if (snap.spO2 < 0.85) return `Terrible — ${sat}, using every accessory muscle he has.${wet}`;
-      if (snap.spO2 < 0.90) return `Laboured. ${capitalise(sat)}, respiratory rate in the thirties, only managing short phrases.${wet}`;
-      if (snap.pcwp > 28) return `He is drowning. ${capitalise(sat)}, pink frothy sputum, and he is bolt upright.`;
+      const wet = snap.pcwp > 22
+        ? ` Crackles up both bases, and ${v.subj} ${v.isnt} tolerating lying flat.`
+        : '';
+      if (snap.spO2 < 0.85) {
+        return `Terrible — ${sat}, using every accessory muscle ${v.subj} ${v.has}.${wet}`;
+      }
+      if (snap.spO2 < 0.90) {
+        return `Laboured. ${capitalise(sat)}, respiratory rate in the thirties, only managing short phrases.${wet}`;
+      }
+      if (snap.pcwp > 28) {
+        return `${v.Subj} ${v.is} drowning. ${capitalise(sat)}, pink frothy sputum, and bolt upright.`;
+      }
       if (snap.pcwp > 22) return `Wet. ${capitalise(sat)}.${wet}`;
       if (snap.spO2 < 0.94) return `A bit fast, ${sat}. Not distressed, but not comfortable either.`;
       return `Easy, ${sat}. No distress.`;
@@ -61,28 +76,30 @@ export function answerQuestion(
     case 'urine':
       // Urine output tracks renal perfusion pressure — an early, sensitive marker
       // that is available on the floor without any monitor at all.
-      if (snap.map < 55) return "Nothing in the bag for the last few hours. I don't think he's making any.";
-      if (snap.map < 65) return "Very little — maybe 15 mL an hour. It's dark.";
+      if (snap.map < 55) {
+        return `Nothing in the bag for the last few hours. I don't think ${v.subj} ${v.is} making any.`;
+      }
+      if (snap.map < 65) return "Very little — maybe 15 mL an hour, and it's dark.";
       if (snap.map < 75) return 'Slowing down a bit. Maybe 25 mL an hour.';
       return 'Yes, good output. Nothing concerning.';
 
     case 'access':
       return inIcu
-        ? 'She has a central line in the right IJ and an arterial line. Good access.'
+        ? `${v.Subj} ${v.has} a central line in the right IJ and an arterial line. Good access.`
         : 'Two peripherals — a 20 in the left forearm and a 22 in the hand. The 22 is positional.';
 
     case 'meds': {
       const running = activeTreatmentLabels(patient);
       if (running.length === 0) {
-        return "Nothing running at the moment besides maintenance fluids.";
+        return 'Nothing running at the moment besides maintenance fluids.';
       }
       return `Right now: ${running.join(', ')}.`;
     }
 
     case 'callback':
       return patient.monitored
-        ? "Will do. She's on the monitor so I'll see any change straight away."
-        : "Of course. I'll lay eyes on him again shortly and let you know.";
+        ? `Will do. ${v.Subj} ${v.is} on the monitor so I'll see any change straight away.`
+        : `Of course. I'll lay eyes on ${v.obj} again shortly and let you know.`;
 
     default:
       return 'Sorry, not sure what you mean.';

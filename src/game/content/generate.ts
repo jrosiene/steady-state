@@ -1,0 +1,248 @@
+import type { Handoff, HandoffQuality, PatientCase } from '../types';
+import { SHIFT_DURATION_SEC } from '../types';
+import { makeRng, randomSeed, type Rng } from './rng';
+import { makeCast } from './demographics';
+import { ARCHETYPES, ARCHETYPE_BY_ID, type ArchetypeContext, type CaseArchetype, type HandoffDraft } from './archetypes';
+import { SEVERITIES, type Severity } from './severity';
+
+const MIN = 60;
+
+/** Default ward size. Eight is what one covering doctor is realistically holding. */
+export const WARD_SIZE = 8;
+
+/**
+ * The composition rule for a night.
+ *
+ * Fixed ratios rather than a free draw: a ward of eight benign patients is not a
+ * shift, and a ward of eight crashing ones is not a shift either — it is a queue.
+ * The tension the game is built on needs a majority of quiet patients so that
+ * finding the sick one is an act of triage rather than of arithmetic.
+ */
+const COMPOSITION = { critical: 3, ward: 3, benign: 2 } as const;
+
+export interface WardOptions {
+  seed?: string;
+  size?: number;
+  /** Force particular archetypes, for tests and for teaching a specific case. */
+  only?: string[];
+  /** Force a severity across the ward, for tests. */
+  severity?: Severity;
+  /** Force when every case declares. Tests use this to get a known clock. */
+  declareAt?: number;
+}
+
+export interface GeneratedWard {
+  seed: string;
+  cases: PatientCase[];
+}
+
+/**
+ * Build one night's ward.
+ *
+ * Deterministic in the seed: the same seed yields the same eight patients, the
+ * same severities, and the same event times. That is what makes generated
+ * content testable and a good shift replayable.
+ */
+export function generateWard(options: WardOptions = {}): GeneratedWard {
+  const seed = options.seed ?? randomSeed();
+  const rng = makeRng(seed);
+  const size = options.size ?? WARD_SIZE;
+
+  const chosen = options.only
+    ? options.only.map((id) => requireArchetype(id))
+    : chooseArchetypes(rng, size);
+
+  // Declaration slots spread across the shift so concerns arrive in sequence
+  // rather than all at once, with each case given room to play out before 07:00.
+  const slots = options.declareAt !== undefined
+    ? chosen.map(() => options.declareAt!)
+    : declarationSlots(rng, chosen);
+  const nextDemographics = makeCast(rng, chosen.length);
+
+  const cases = chosen.map((archetype, i) => {
+    const severity = options.severity ?? pickSeverity(rng, archetype);
+    const demo = nextDemographics(archetype.ageRange);
+    const ctx: ArchetypeContext = {
+      severity,
+      rng,
+      voice: demo.voice,
+      name: demo.name,
+      room: demo.room,
+      age: demo.age,
+      declareAt: slots[i],
+    };
+
+    const base = archetype.baseline(ctx);
+    return {
+      id: `${archetype.id}-${demo.room}`,
+      archetypeId: archetype.id,
+      severity,
+      name: demo.name,
+      age: demo.age,
+      sex: demo.voice.marker,
+      voice: demo.voice,
+      room: demo.room,
+      nurse: demo.nurse,
+      codeStatus: archetype.codeStatus?.(ctx) ?? 'Full Code',
+      allergies: demo.allergies,
+      admissionDx: archetype.admissionDx,
+      history: archetype.history(ctx),
+      handoff: buildHandoff(rng, archetype, ctx),
+      hiddenDx: archetype.hiddenDx,
+      teachingPoint: archetype.teachingPoint,
+      paramOverrides: base.paramOverrides,
+      stateOverrides: base.stateOverrides,
+      tempOffset: base.tempOffset,
+      rrOffset: base.rrOffset,
+      declaresAt: slots[i],
+      events: archetype.script(ctx).sort((a, b) => a.at - b.at),
+      expectedOrders: archetype.expectedOrders,
+      contraindicatedOrders: archetype.contraindicatedOrders,
+    } satisfies PatientCase;
+  });
+
+  // Present the board in room order, the way a real list is kept.
+  cases.sort((a, b) => a.room.localeCompare(b.room));
+  return { seed, cases };
+}
+
+function requireArchetype(id: string): CaseArchetype {
+  const archetype = ARCHETYPE_BY_ID[id];
+  if (!archetype) throw new Error(`Unknown archetype: ${id}`);
+  return archetype;
+}
+
+/** Draw archetypes to the composition, without repeating a diagnosis. */
+function chooseArchetypes(rng: Rng, size: number): CaseArchetype[] {
+  const byTier = {
+    critical: ARCHETYPES.filter((a) => a.tier === 'critical'),
+    ward: ARCHETYPES.filter((a) => a.tier === 'ward'),
+    benign: ARCHETYPES.filter((a) => a.tier === 'benign'),
+  };
+
+  const picked: CaseArchetype[] = [
+    ...rng.sample(byTier.critical, COMPOSITION.critical),
+    ...rng.sample(byTier.ward, COMPOSITION.ward),
+    ...rng.sample(byTier.benign, COMPOSITION.benign),
+  ];
+
+  // Top up or trim if the caller asked for a different ward size.
+  const remaining = ARCHETYPES.filter((a) => !picked.includes(a));
+  while (picked.length < size && remaining.length > 0) {
+    picked.push(remaining.splice(rng.int(0, remaining.length - 1), 1)[0]);
+  }
+  return rng.shuffle(picked).slice(0, size);
+}
+
+/**
+ * Severity, biased by what the archetype is for.
+ *
+ * Benign cases have no severity worth speaking of. Critical ones lean moderate
+ * so most nights are winnable, with a real chance of a severe case that will not
+ * wait — which is the variation that makes a replay feel different rather than
+ * merely reshuffled.
+ */
+function pickSeverity(rng: Rng, archetype: CaseArchetype): Severity {
+  if (archetype.tier === 'benign') return 'mild';
+  const roll = rng.next();
+  if (archetype.tier === 'critical') {
+    return roll < 0.28 ? 'mild' : roll < 0.72 ? 'moderate' : 'severe';
+  }
+  return roll < 0.4 ? 'mild' : roll < 0.85 ? 'moderate' : 'severe';
+}
+
+/**
+ * When each case declares itself.
+ *
+ * Cases are spread across the usable part of the shift and nudged apart, so the
+ * player faces a sequence of problems rather than a simultaneous pile-up. Each
+ * slot leaves room for the case to run its course before the shift ends.
+ */
+function declarationSlots(rng: Rng, chosen: CaseArchetype[]): number[] {
+  const earliest = 12 * MIN;
+  const order = rng.shuffle(chosen.map((_, i) => i));
+  const slots: number[] = new Array(chosen.length);
+
+  order.forEach((caseIndex, position) => {
+    const archetype = chosen[caseIndex];
+    // Leave an hour after the last scripted beat so outcomes land inside the shift.
+    const latest = Math.max(earliest, SHIFT_DURATION_SEC - archetype.span - 60 * MIN);
+    const band = (latest - earliest) / Math.max(1, chosen.length);
+    const start = earliest + band * position;
+    slots[caseIndex] = Math.round(Math.min(latest, start + rng.real(0, band * 0.85)));
+  });
+
+  return slots;
+}
+
+/**
+ * Turn the archetype's full draft into the handoff that actually got written.
+ *
+ * Quality is sampled, so the same clinical case can arrive well or badly handed
+ * over on different nights. A thorough sign-out carries everything; an adequate
+ * one keeps a single line — and where the day team had anchored on the wrong
+ * diagnosis, that line is the confidently wrong one, which is more dangerous than
+ * silence. A thin one leaves the night doctor with nothing to work from.
+ */
+function buildHandoff(rng: Rng, archetype: CaseArchetype, ctx: ArchetypeContext): Handoff {
+  const draft: HandoffDraft = archetype.handoff(ctx);
+  const quality = pickQuality(rng, archetype);
+  const author = `${rng.pick(AUTHORS)}, ${rng.pick(ROLES)}`;
+
+  let contingencies: string[];
+  switch (quality) {
+    case 'thorough':
+      contingencies = draft.contingencies;
+      break;
+    case 'adequate':
+      contingencies = draft.misleading
+        ? [draft.misleading]
+        : draft.contingencies.slice(0, 1);
+      break;
+    default:
+      contingencies = [];
+  }
+
+  return {
+    author,
+    severity: quality === 'thin' ? downgrade(draft.severityCall) : draft.severityCall,
+    summary: draft.summary,
+    // A thin handoff loses the detail as well as the planning.
+    todo: quality === 'thin' ? draft.todo.slice(0, 1) : draft.todo,
+    contingencies,
+    quality,
+  };
+}
+
+/**
+ * How well this patient got handed over.
+ *
+ * Independent of how sick they are, which is the observation worth encoding:
+ * sign-out quality tracks how much time the day team had and how interesting they
+ * found the patient, not how much trouble the night is about to bring.
+ */
+function pickQuality(rng: Rng, archetype: CaseArchetype): HandoffQuality {
+  const roll = rng.next();
+  if (archetype.tier === 'benign') {
+    // Nobody is rushed writing up the patient going home tomorrow.
+    return roll < 0.55 ? 'thorough' : 'adequate';
+  }
+  return roll < 0.3 ? 'thorough' : roll < 0.68 ? 'adequate' : 'thin';
+}
+
+/** A rushed sign-out also under-calls how sick the patient is. */
+function downgrade(severity: Handoff['severity']): Handoff['severity'] {
+  return severity === 'unstable' ? 'watcher' : 'stable';
+}
+
+const AUTHORS = [
+  'Dr Okafor', 'Dr Lindqvist', 'Dr Nakamura', 'Dr Achterberg', 'Dr Sridhar',
+  'Dr Villanueva', 'Dr Considine', 'Ms Halvorsen', 'Mr Trakas', 'Dr Bello',
+];
+
+const ROLES = [
+  'day intern', 'day resident', 'day hospitalist', 'physician associate',
+  'day registrar', 'covering resident',
+];
+
+export { SEVERITIES };

@@ -26,7 +26,11 @@ import { computeRVSV } from './frank-starling';
  *   - Diastolic failure (stiff LV, high emax in HFpEF): LVEDP elevated for given EDV
  *   - Systolic failure (dilated LV, low emax in HFrEF): LVEDP elevated because EDV is high
  *
- * Floor at 2 mmHg to prevent physiologically impossible values.
+ * Bounded at both ends. The floor keeps the value physiologically possible; the
+ * ceiling matters more, because dividing by emax diverges as contractility
+ * approaches zero and a failing ventricle would otherwise report a wedge of
+ * several hundred mmHg — a number with no physical meaning that nonetheless
+ * propagates into mPAP, into alveolar flooding, and back into contractility.
  */
 export function computePCWP(
   edv: number,
@@ -34,7 +38,7 @@ export function computePCWP(
   params: HemodynamicParams,
 ): number {
   const lvedp = (Math.max(0, edv - params.v0) * params.lvEdpvrStiffness) / emax;
-  return Math.max(2, lvedp);
+  return Math.min(params.pcwpMax, Math.max(2, lvedp));
 }
 
 /**

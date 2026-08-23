@@ -174,6 +174,20 @@ export interface HemodynamicParams {
 
   // --- LV EDPVR (for PCWP) ---
   /**
+   * Ceiling on pulmonary capillary wedge pressure (mmHg).
+   *
+   * LVEDP is computed as (EDV − V0) × stiffness / emax, which diverges as
+   * contractility approaches its clamp floor: a near-arrest ventricle produced
+   * wedge pressures in the hundreds. That was harmless while PCWP only fed mPAP,
+   * but once it drives alveolar flooding it becomes a positive feedback loop —
+   * unbounded wedge → unbounded shunt → hypoxaemia → lower contractility.
+   *
+   * A wedge cannot rise without limit in any case. Beyond roughly 45–55 mmHg the
+   * alveoli are frankly flooded and the pulmonary capillaries are failing; there
+   * is no physiology left above that, only arithmetic.
+   */
+  pcwpMax: number;
+  /**
    * LV chamber stiffness constant.
    * LVEDP = (EDV - V0) × lvEdpvrStiffness / emax
    * Tuned so normal EDV/emax → PCWP ≈ 10 mmHg.

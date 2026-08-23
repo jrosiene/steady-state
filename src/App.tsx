@@ -113,6 +113,7 @@ export default function App() {
   };
 
   const restart = () => {
+    // A fresh seed, so the next night is a different ward rather than a retry.
     setEngine(new ShiftEngine());
     setSelectedId(null);
     setPaused(false);
@@ -144,6 +145,9 @@ export default function App() {
     return (
       <div className="app">
         <Briefing
+          cases={engine.patients.map((p) => p.case)}
+          seed={engine.seed}
+          onReroll={(seed) => setEngine(new ShiftEngine(undefined, seed))}
           onStart={() => {
             engine.start();
             setSelectedId(engine.patients[0]?.case.id ?? null);
@@ -174,7 +178,7 @@ export default function App() {
         <div>
           <div className="clock">{clockTime(engine.time)}</div>
           <div className="clock-sub">
-            night shift · {Math.round(progress * 100)}% through
+            night shift · {Math.round(progress * 100)}% through · ward {engine.seed}
           </div>
         </div>
 

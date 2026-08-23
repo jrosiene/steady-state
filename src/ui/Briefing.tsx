@@ -1,4 +1,4 @@
-import { CASES } from '../game/cases';
+import type { PatientCase } from '../game/types';
 import { HandoffCard } from './HandoffCard';
 
 /**
@@ -8,7 +8,19 @@ import { HandoffCard } from './HandoffCard';
  * that are wrong. The player starts with exactly the information a real covering
  * doctor starts with, which is less than they would like.
  */
-export function Briefing({ onStart, onBench }: { onStart: () => void; onBench: () => void }) {
+export function Briefing({
+  cases,
+  seed,
+  onStart,
+  onReroll,
+  onBench,
+}: {
+  cases: PatientCase[];
+  seed: string;
+  onStart: () => void;
+  onReroll: (seed?: string) => void;
+  onBench: () => void;
+}) {
   return (
     <div className="centered">
       <div className="sheet">
@@ -56,12 +68,22 @@ export function Briefing({ onStart, onBench }: { onStart: () => void; onBench: (
         </div>
 
         <h2>Sign-out from the day team</h2>
-        <p className="lede" style={{ marginBottom: 18 }}>
+        <p className="lede" style={{ marginBottom: 14 }}>
           Eight written handoffs of varying quality. Some anticipate what might go
           wrong tonight; some were written by someone already halfway out of the
           building. You can re-read any of them from the patient's chart later.
         </p>
-        {CASES.map((c) => (
+
+        <div className="seed-bar">
+          <span className="seed-label">Ward</span>
+          <code className="seed-value">{seed}</code>
+          <span className="seed-note">
+            This ward was dealt from that seed — the same seed always deals the same
+            eight patients. Note it down if you want this night again.
+          </span>
+          <button className="ctrl" onClick={() => onReroll()}>Deal another ward</button>
+        </div>
+        {cases.map((c) => (
           <div key={c.id} className="handoff">
             <div className="handoff-top">
               <span className="handoff-name">{c.name}</span>

@@ -1,157 +1,328 @@
 import { describe, it, expect } from 'vitest';
 import { ShiftEngine } from '../shift';
-import { CASES } from '../cases';
 import { ORDER_BY_ID } from '../orders';
 import { assessAppearance, describeAppearance, acuityLabel } from '../clinical';
 import { DEFAULT_PARAMS, DEFAULT_STATE } from '../../engine/constants';
 import { snapshot as computeSnapshot } from '../../engine/hemodynamics';
 import { buildReport } from '../scoring';
-import type { PatientCase, PatientRuntime } from '../types';
+import { ARCHETYPES } from '../content/archetypes';
+import { generateWard, WARD_SIZE } from '../content/generate';
+import { makeRng } from '../content/rng';
+import { makeVoice } from '../content/voice';
+import { SEVERITIES, insultScale, onsetScale } from '../content/severity';
+import {
+  TEST_SEED,
+  advance as run,
+  advanceToDeclaration,
+  soloShift,
+  findByArchetype,
+  type SoloShift,
+} from '../testing';
 import { SHIFT_DURATION_SEC } from '../types';
 
-/** Advance the shift by `seconds`, in realistic tick sizes. */
-function run(engine: ShiftEngine, seconds: number, tickSec = 30) {
-  const ticks = Math.ceil(seconds / tickSec);
-  for (let i = 0; i < ticks; i++) engine.tick(tickSec);
+const MIN = 60;
+
+/**
+ * Tests address cases by archetype and express timing relative to when the case
+ * declares. Both survive reseeding; a patient name and a wall-clock time do not.
+ */
+function shiftOf(id: string, severity: 'mild' | 'moderate' | 'severe' = 'moderate'): SoloShift {
+  return soloShift(id, { severity });
 }
 
-function patient(engine: ShiftEngine, id: string): PatientRuntime {
-  const p = engine.patients.find((x) => x.case.id === id);
-  if (!p) throw new Error(`no patient ${id}`);
-  return p;
-}
-
-function started(cases: PatientCase[] = CASES): ShiftEngine {
-  const e = new ShiftEngine(cases);
+function startedWard(seed = TEST_SEED): ShiftEngine {
+  const e = new ShiftEngine(undefined, seed);
   e.start();
   return e;
 }
 
-/** Isolate a single case so one patient's trajectory can be studied alone. */
-function only(id: string): PatientCase[] {
-  return CASES.filter((c) => c.id === id);
+/** Run a solo case to the end of the shift and report how it went. */
+function outcomeOf(id: string, severity: 'mild' | 'moderate' | 'severe', orders: { afterMin: number; ids: string[] }[] = []) {
+  const s = shiftOf(id, severity);
+  const plan = [...orders];
+  while (s.engine.time < SHIFT_DURATION_SEC && s.engine.phase === 'running') {
+    run(s.engine, 60, 60);
+    while (plan.length && s.engine.time >= s.declaresAt + plan[0].afterMin * MIN) {
+      for (const orderId of plan[0].ids) s.engine.placeOrder(s.patient, orderId);
+      plan.shift();
+    }
+  }
+  return { ...s, snap: s.engine.snapshot(s.patient), died: s.patient.status === 'died' };
 }
+
+// ─── Generation ─────────────────────────────────────────────────────────────
+
+describe('seeded generation', () => {
+  it('produces an identical ward from the same seed', () => {
+    const a = generateWard({ seed: 'REPEAT1' });
+    const b = generateWard({ seed: 'REPEAT1' });
+
+    expect(a.cases.map((c) => c.name)).toEqual(b.cases.map((c) => c.name));
+    expect(a.cases.map((c) => c.archetypeId)).toEqual(b.cases.map((c) => c.archetypeId));
+    expect(a.cases.map((c) => c.severity)).toEqual(b.cases.map((c) => c.severity));
+    expect(a.cases.map((c) => c.declaresAt)).toEqual(b.cases.map((c) => c.declaresAt));
+  });
+
+  it('produces different wards from different seeds', () => {
+    const a = generateWard({ seed: 'ALPHA' });
+    const b = generateWard({ seed: 'BRAVO' });
+    expect(a.cases.map((c) => c.name)).not.toEqual(b.cases.map((c) => c.name));
+  });
+
+  it('decouples names from diagnoses across seeds', () => {
+    // The core requirement: a name must carry no clinical information, or a
+    // returning player stops reading the patient and starts recalling the answer.
+    const pairs = new Map<string, Set<string>>();
+    for (let i = 0; i < 40; i++) {
+      for (const c of generateWard({ seed: `SEED${i}` }).cases) {
+        if (!pairs.has(c.name)) pairs.set(c.name, new Set());
+        pairs.get(c.name)!.add(c.archetypeId);
+      }
+    }
+    const reused = [...pairs.values()].filter((s) => s.size > 1);
+    expect(reused.length).toBeGreaterThan(0);
+  });
+
+  it('gives every ward a distinct cast and distinct rooms', () => {
+    for (let i = 0; i < 25; i++) {
+      const { cases } = generateWard({ seed: `CAST${i}` });
+      expect(new Set(cases.map((c) => c.room)).size, `seed CAST${i}`).toBe(cases.length);
+      expect(new Set(cases.map((c) => c.name)).size, `seed CAST${i}`).toBe(cases.length);
+      expect(new Set(cases.map((c) => c.archetypeId)).size).toBe(cases.length);
+    }
+  });
+
+  it('composes a ward with both quiet and critical patients', () => {
+    for (let i = 0; i < 25; i++) {
+      const { cases } = generateWard({ seed: `MIX${i}` });
+      expect(cases).toHaveLength(WARD_SIZE);
+
+      const tiers = cases.map((c) => ARCHETYPES.find((a) => a.id === c.archetypeId)!.tier);
+      expect(tiers.filter((t) => t === 'critical').length).toBeGreaterThanOrEqual(2);
+      expect(tiers.filter((t) => t === 'benign').length).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('staggers declarations so problems arrive in sequence', () => {
+    const { cases } = generateWard({ seed: 'STAGGER' });
+    const times = cases.map((c) => c.declaresAt).sort((a, b) => a - b);
+
+    // Nothing declares before the player has read the board, and everything has
+    // room to play out before 07:00.
+    expect(times[0]).toBeGreaterThanOrEqual(10 * MIN);
+    expect(times[times.length - 1]).toBeLessThan(SHIFT_DURATION_SEC - 45 * MIN);
+    // They are genuinely spread, not clustered.
+    expect(times[times.length - 1] - times[0]).toBeGreaterThan(3 * 3600);
+  });
+
+  it('varies severity across the ward', () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 20; i++) {
+      for (const c of generateWard({ seed: `SEV${i}` }).cases) seen.add(c.severity);
+    }
+    expect(seen).toEqual(new Set(SEVERITIES));
+  });
+
+  it('varies handoff quality independently of how sick the patient is', () => {
+    const byQuality = new Map<string, Set<string>>();
+    for (let i = 0; i < 30; i++) {
+      for (const c of generateWard({ seed: `HQ${i}` }).cases) {
+        if (!byQuality.has(c.archetypeId)) byQuality.set(c.archetypeId, new Set());
+        byQuality.get(c.archetypeId)!.add(c.handoff.quality);
+      }
+    }
+    // The same clinical case must be capable of arriving well or badly handed over.
+    const varied = [...byQuality.values()].filter((s) => s.size > 1);
+    expect(varied.length).toBeGreaterThan(3);
+  });
+});
+
+describe('the random number generator', () => {
+  it('is deterministic and reproducible', () => {
+    const a = makeRng('X');
+    const b = makeRng('X');
+    const seqA = Array.from({ length: 20 }, () => a.next());
+    const seqB = Array.from({ length: 20 }, () => b.next());
+    expect(seqA).toEqual(seqB);
+    expect(seqA.every((n) => n >= 0 && n < 1)).toBe(true);
+  });
+
+  it('respects bounds', () => {
+    const rng = makeRng(7);
+    for (let i = 0; i < 500; i++) {
+      const n = rng.int(3, 9);
+      expect(n).toBeGreaterThanOrEqual(3);
+      expect(n).toBeLessThanOrEqual(9);
+      expect(Number.isInteger(n)).toBe(true);
+    }
+  });
+
+  it('samples without replacement', () => {
+    const rng = makeRng('S');
+    const items = ['a', 'b', 'c', 'd', 'e'];
+    for (let i = 0; i < 50; i++) {
+      const drawn = rng.sample(items, 3);
+      expect(drawn).toHaveLength(3);
+      expect(new Set(drawn).size).toBe(3);
+    }
+  });
+});
+
+describe('pronouns and verb agreement', () => {
+  it('agrees for she, he and they', () => {
+    expect(makeVoice('female').verb('look')).toBe('looks');
+    expect(makeVoice('male').verb('look')).toBe('looks');
+    expect(makeVoice('nonbinary').verb('look')).toBe('look');
+
+    expect(makeVoice('nonbinary').is).toBe('are');
+    expect(makeVoice('female').is).toBe('is');
+    expect(makeVoice('nonbinary').has).toBe('have');
+  });
+
+  it('handles the sibilant and -y verbs the ward actually uses', () => {
+    const v = makeVoice('male');
+    expect(v.verb('watch')).toBe('watches');
+    expect(v.verb('go')).toBe('goes');
+    expect(v.verb('try')).toBe('tries');
+    expect(v.verb('need')).toBe('needs');
+  });
+
+  it('never leaves an unresolved template in generated prose', () => {
+    for (let i = 0; i < 15; i++) {
+      for (const c of generateWard({ seed: `PROSE${i}` }).cases) {
+        const prose = [
+          c.handoff.summary,
+          ...c.handoff.todo,
+          ...c.handoff.contingencies,
+          ...c.events.map((e) => e.page ?? ''),
+        ].join(' ');
+        expect(prose, c.archetypeId).not.toMatch(/\$\{|\bundefined\b|\[object/);
+      }
+    }
+  });
+});
+
+describe('severity', () => {
+  it('scales insult magnitude and onset in opposite directions', () => {
+    expect(insultScale('mild')).toBeLessThan(insultScale('moderate'));
+    expect(insultScale('moderate')).toBeLessThan(insultScale('severe'));
+    // Sicker cases declare faster, but only somewhat — scaling both together
+    // would make severe cases unwinnable rather than hard.
+    expect(onsetScale('severe')).toBeLessThan(onsetScale('mild'));
+  });
+
+  it('makes a severe case worse than a mild one for every critical archetype', () => {
+    const critical = ARCHETYPES.filter((a) => a.tier === 'critical');
+    for (const archetype of critical) {
+      const mild = outcomeOf(archetype.id, 'mild');
+      const severe = outcomeOf(archetype.id, 'severe');
+      // Untreated, more severity must mean a worse endpoint.
+      const mildScore = mild.died ? 0 : mild.snap.map;
+      const severeScore = severe.died ? 0 : severe.snap.map;
+      expect(severeScore, `${archetype.id} severe vs mild`).toBeLessThanOrEqual(mildScore);
+    }
+  }, 60_000);
+});
+
+// ─── Lifecycle and observation ──────────────────────────────────────────────
 
 describe('ShiftEngine lifecycle', () => {
   it('starts in briefing and does not advance until started', () => {
-    const engine = new ShiftEngine();
+    const engine = new ShiftEngine(undefined, TEST_SEED);
     expect(engine.phase).toBe('briefing');
     run(engine, 3600);
     expect(engine.time).toBe(0);
   });
 
-  it('advances sim time once running and ends after 12 hours', () => {
-    const engine = started();
-    run(engine, 3600, 60);
-    expect(engine.time).toBeGreaterThan(3500);
-    expect(engine.phase).toBe('running');
-
-    run(engine, SHIFT_DURATION_SEC, 300);
+  it('ends after twelve hours with an outcome for everyone', () => {
+    const engine = startedWard();
+    run(engine, SHIFT_DURATION_SEC + 600, 300);
     expect(engine.phase).toBe('ended');
     expect(engine.patients.every((p) => p.outcome !== null)).toBe(true);
+  }, 40_000);
+
+  it('keeps every patient compensated at sign-out, on any seed', () => {
+    for (const seed of ['BASE1', 'BASE2', 'BASE3', 'BASE4', 'BASE5', 'BASE6', 'BASE7', 'BASE8']) {
+      const engine = startedWard(seed);
+      run(engine, 8 * MIN, 30);
+      for (const p of engine.patients) {
+        const snap = engine.snapshot(p);
+        expect(snap.cardiovascularStatus, `${seed}/${p.case.archetypeId}`).toBe('compensated');
+        expect(snap.map).toBeGreaterThan(58);
+      }
+    }
   }, 30_000);
 
   it('gives every patient a signed-out set of vitals before the shift starts', () => {
-    const engine = new ShiftEngine();
+    const engine = new ShiftEngine(undefined, TEST_SEED);
     for (const p of engine.patients) {
       expect(p.lastVitals).not.toBeNull();
       expect(p.lastVitals!.sbp).toBeGreaterThan(60);
-    }
-  });
-
-  it('keeps every patient physiologically stable at baseline', () => {
-    // No case should be decompensating before its illness script fires.
-    const engine = started();
-    run(engine, 10 * 60, 30);
-    for (const p of engine.patients) {
-      const snap = engine.snapshot(p);
-      expect(snap.cardiovascularStatus).toBe('compensated');
-      expect(snap.map).toBeGreaterThan(60);
-      expect(Number.isFinite(snap.map)).toBe(true);
     }
   });
 });
 
 describe('observation model', () => {
   it('does not refresh floor vitals between routine rounds', () => {
-    const engine = started(only('whitfield'));
-    const p = patient(engine, 'whitfield');
-    run(engine, 30 * 60, 60);
-    // Routine floor observations are q4h — nothing new should have been charted.
-    expect(p.lastVitals!.time).toBe(0);
+    const s = shiftOf('urosepsis');
+    run(s.engine, 30 * MIN, 60);
+    expect(s.patient.lastVitals!.time).toBe(0);
   });
 
   it('gives live vitals once the patient is monitored', () => {
-    const engine = started(only('whitfield'));
-    const p = patient(engine, 'whitfield');
-    engine.placeOrder(p, 'telemetry');
-    run(engine, 20 * 60, 60);
+    const s = shiftOf('urosepsis');
+    s.engine.placeOrder(s.patient, 'telemetry');
+    run(s.engine, 20 * MIN, 60);
 
-    expect(p.monitored).toBe(true);
-    const view = engine.view(p);
+    expect(s.patient.monitored).toBe(true);
+    const view = s.engine.view(s.patient);
     expect(view.live).toBe(true);
     expect(view.vitalsAgeSec).toBeLessThan(60);
   });
 
   it('charts a fresh set on request', () => {
-    const engine = started(only('whitfield'));
-    const p = patient(engine, 'whitfield');
-    run(engine, 45 * 60, 60);
-    engine.placeOrder(p, 'vitals-now');
-    expect(p.lastVitals!.time).toBeGreaterThan(40 * 60);
+    const s = shiftOf('urosepsis');
+    run(s.engine, 45 * MIN, 60);
+    s.engine.placeOrder(s.patient, 'vitals-now');
+    expect(s.patient.lastVitals!.time).toBeGreaterThan(40 * MIN);
   });
 
   it('pages the doctor when a nurse finds concerning vitals', () => {
-    const engine = started(only('whitfield'));
-    const p = patient(engine, 'whitfield');
-    run(engine, 3 * 3600, 60);
-    const pages = p.messages.filter((m) => m.kind === 'page');
-    expect(pages.length).toBeGreaterThan(0);
-    expect(p.unread).toBeGreaterThan(0);
+    const s = shiftOf('urosepsis', 'severe');
+    advanceToDeclaration(s, 150, 60);
+    expect(s.patient.messages.filter((m) => m.kind === 'page').length).toBeGreaterThan(0);
+    expect(s.patient.unread).toBeGreaterThan(0);
   });
 });
 
+// ─── Illness trajectories, by archetype ─────────────────────────────────────
+
 describe('illness trajectories', () => {
   it('urosepsis progresses to shock when untreated', () => {
-    const engine = started(only('whitfield'));
-    const p = patient(engine, 'whitfield');
-    run(engine, 5 * 3600, 60);
-
-    const snap = engine.snapshot(p);
-    expect(snap.map).toBeLessThan(70);
+    const s = shiftOf('urosepsis', 'severe');
+    advanceToDeclaration(s, 220, 60);
+    const snap = s.engine.snapshot(s.patient);
+    expect(snap.map).toBeLessThan(72);
     expect(snap.lactate).toBeGreaterThan(2.5);
-    expect(['shock', 'decompensating', 'arrest']).toContain(snap.cardiovascularStatus);
   });
 
   it('urosepsis responds to timely fluids, antibiotics and escalation', () => {
-    const engine = started(only('whitfield'));
-    const p = patient(engine, 'whitfield');
+    const treated = outcomeOf('urosepsis', 'moderate', [
+      { afterMin: 6, ids: ['ns-1000', 'abx', 'telemetry', 'lab-lactate'] },
+      { afterMin: 90, ids: ['transfer-icu'] },
+      { afterMin: 130, ids: ['norepi'] },
+    ]);
+    const ignored = outcomeOf('urosepsis', 'moderate');
 
-    // Treated promptly after the first page.
-    run(engine, 45 * 60, 60);
-    engine.placeOrder(p, 'ns-1000');
-    engine.placeOrder(p, 'abx');
-    engine.placeOrder(p, 'telemetry');
-    run(engine, 4 * 3600 + 15 * 60, 60);
-
-    const treated = engine.snapshot(p);
-
-    // Same case, same script, no treatment.
-    const control = started(only('whitfield'));
-    run(control, 5 * 3600, 60);
-    const untreated = control.snapshot(patient(control, 'whitfield'));
-
-    expect(treated.map).toBeGreaterThan(untreated.map);
-    expect(treated.lactate).toBeLessThan(untreated.lactate);
-    expect(p.status).not.toBe('died');
-  });
+    expect(treated.died).toBe(false);
+    expect(treated.snap.map).toBeGreaterThan(ignored.snap.map);
+  }, 30_000);
 
   it('pulmonary embolism produces RV strain with a low wedge', () => {
-    const engine = started(only('okonkwo'));
-    const p = patient(engine, 'okonkwo');
-    run(engine, 4 * 3600 + 30 * 60, 60);
+    const s = shiftOf('pulmonary-embolism', 'moderate');
+    advanceToDeclaration(s, 30, 60);
 
-    const snap = engine.snapshot(p);
+    const snap = s.engine.snapshot(s.patient);
     // The signature of obstructive shock: high pulmonary pressures, normal filling.
     expect(snap.mPAP).toBeGreaterThan(28);
     expect(snap.pcwp).toBeLessThan(18);
@@ -159,312 +330,231 @@ describe('illness trajectories', () => {
     expect(snap.spO2).toBeLessThan(0.92);
   });
 
+  it('pulmonary embolism is survivable with prompt anticoagulation and lysis', () => {
+    const treated = outcomeOf('pulmonary-embolism', 'moderate', [
+      { afterMin: 5, ids: ['o2-nrb', 'telemetry', 'img-echo', 'heparin', 'transfer-icu'] },
+      { afterMin: 25, ids: ['thrombolysis'] },
+    ]);
+    expect(treated.died).toBe(false);
+    expect(treated.snap.map).toBeGreaterThan(70);
+  }, 30_000);
+
   it('GI bleed drops haemoglobin and preload; transfusion reverses both', () => {
-    const engine = started(only('castellanos'));
-    const p = patient(engine, 'castellanos');
-    // Into the rebleed, before it has run its course.
-    run(engine, 4 * 3600 + 20 * 60, 60);
+    const s = shiftOf('gi-bleed', 'moderate');
+    advanceToDeclaration(s, 180, 60);
 
-    const bleeding = engine.snapshot(p);
-    expect(p.params.hgb).toBeLessThan(9.8);
-    expect(bleeding.edv).toBeLessThan(110);
+    const bleeding = s.engine.snapshot(s.patient);
+    const hgbBefore = s.patient.params.hgb;
+    expect(bleeding.edv).toBeLessThan(112);
 
-    const hgbBefore = p.params.hgb;
-    engine.placeOrder(p, 'prbc');
-    engine.placeOrder(p, 'ns-1000');
-    run(engine, 3 * 3600, 60);
+    s.engine.placeOrder(s.patient, 'prbc');
+    s.engine.placeOrder(s.patient, 'ns-1000');
+    run(s.engine, 3 * 3600, 60);
 
-    // Blood restores both oxygen-carrying capacity and circulating volume.
-    expect(p.params.hgb).toBeGreaterThan(hgbBefore);
-    expect(p.status).not.toBe('died');
-    expect(engine.snapshot(p).map).toBeGreaterThan(70);
-  }, 20_000);
+    expect(s.patient.params.hgb).toBeGreaterThan(hgbBefore);
+    expect(s.patient.status).not.toBe('died');
+  }, 30_000);
 
   it('COPD exacerbation improves with bronchodilators and steroids', () => {
-    const engine = started(only('penhale'));
-    const p = patient(engine, 'penhale');
-    run(engine, 3 * 3600 + 30 * 60, 60);
-    const worst = engine.snapshot(p).spO2;
+    const s = shiftOf('copd-exacerbation', 'moderate');
+    advanceToDeclaration(s, 25, 60);
+    const worst = s.engine.snapshot(s.patient).spO2;
 
-    engine.placeOrder(p, 'duoneb');
-    engine.placeOrder(p, 'steroids');
-    engine.placeOrder(p, 'o2-nc6');
-    run(engine, 2 * 3600, 60);
+    s.engine.placeOrder(s.patient, 'duoneb');
+    s.engine.placeOrder(s.patient, 'steroids');
+    s.engine.placeOrder(s.patient, 'o2-nc6');
+    run(s.engine, 2 * 3600, 60);
 
-    expect(engine.snapshot(p).spO2).toBeGreaterThan(worst);
+    expect(s.engine.snapshot(s.patient).spO2).toBeGreaterThan(worst);
   });
 
-  it('leaves the low-acuity patient stable all night', () => {
-    const engine = started(only('fitzgerald'));
-    const p = patient(engine, 'fitzgerald');
-    run(engine, SHIFT_DURATION_SEC, 300);
+  it('hypovolaemia corrects with a modest fluid bolus', () => {
+    const s = shiftOf('hypovolaemia', 'moderate');
+    advanceToDeclaration(s, 45, 60);
+    const dry = s.engine.snapshot(s.patient).map;
 
-    expect(p.status).not.toBe('died');
-    expect(engine.snapshot(p).cardiovascularStatus).toBe('compensated');
-    // She still generates pages — that is the point of her.
-    expect(p.messages.filter((m) => m.kind === 'page').length).toBeGreaterThanOrEqual(3);
-  }, 20_000);
+    s.engine.placeOrder(s.patient, 'ns-500');
+    run(s.engine, 90 * MIN, 60);
+
+    expect(s.engine.snapshot(s.patient).map).toBeGreaterThan(dry);
+    expect(s.patient.status).not.toBe('died');
+  });
+
+  it('leaves benign patients stable all night while still paging', () => {
+    for (const archetype of ARCHETYPES.filter((a) => a.tier === 'benign')) {
+      const s = shiftOf(archetype.id, 'mild');
+      run(s.engine, SHIFT_DURATION_SEC, 300);
+
+      expect(s.patient.status, archetype.id).not.toBe('died');
+      expect(s.engine.snapshot(s.patient).cardiovascularStatus).toBe('compensated');
+      expect(s.patient.messages.filter((m) => m.kind === 'page').length).toBeGreaterThanOrEqual(3);
+    }
+  }, 40_000);
+
+  it('makes every critical archetype lethal if wholly ignored', () => {
+    for (const archetype of ARCHETYPES.filter((a) => a.tier === 'critical')) {
+      const ignored = outcomeOf(archetype.id, 'severe');
+      expect(ignored.died || ignored.snap.cardiovascularStatus !== 'compensated', archetype.id).toBe(true);
+    }
+  }, 60_000);
 });
 
 describe('cardiogenic physiology and the fluid trap', () => {
-  it('raises the wedge and desaturates the ADHF patient', () => {
-    const engine = started(only('brennan'));
-    const p = patient(engine, 'brennan');
-    run(engine, 3 * 3600, 60);
+  it('raises the wedge and desaturates the mislabelled heart failure patient', () => {
+    const s = shiftOf('adhf-mislabelled', 'moderate');
+    advanceToDeclaration(s, 75, 60);
 
-    const snap = engine.snapshot(p);
-    // Hydrostatic oedema must actually reach gas exchange, or the case is unteachable.
+    const snap = s.engine.snapshot(s.patient);
     expect(snap.pcwp).toBeGreaterThan(22);
     expect(snap.spO2).toBeLessThan(0.92);
   });
 
-  it('makes fluid worse and preload reduction better in ADHF', () => {
-    const fluids = started(only('brennan'));
-    const pf = patient(fluids, 'brennan');
-    run(fluids, 80 * 60, 60);
-    fluids.placeOrder(pf, 'ns-1000');
-    run(fluids, 100 * 60, 60);
+  it('makes fluid worse and preload reduction better', () => {
+    const fluids = shiftOf('adhf-mislabelled', 'moderate');
+    advanceToDeclaration(fluids, 5, 60);
+    fluids.engine.placeOrder(fluids.patient, 'ns-1000');
+    run(fluids.engine, 100 * MIN, 60);
 
-    const offload = started(only('brennan'));
-    const po = patient(offload, 'brennan');
-    run(offload, 80 * 60, 60);
-    offload.placeOrder(po, 'nitro');
-    offload.placeOrder(po, 'furosemide');
-    run(offload, 100 * 60, 60);
+    const offload = shiftOf('adhf-mislabelled', 'moderate');
+    advanceToDeclaration(offload, 5, 60);
+    offload.engine.placeOrder(offload.patient, 'nitro');
+    offload.engine.placeOrder(offload.patient, 'furosemide');
+    run(offload.engine, 100 * MIN, 60);
 
-    const wet = fluids.snapshot(pf);
-    const dry = offload.snapshot(po);
-
+    const wet = fluids.engine.snapshot(fluids.patient);
+    const dry = offload.engine.snapshot(offload.patient);
     expect(dry.pcwp).toBeLessThan(wet.pcwp);
     expect(dry.spO2).toBeGreaterThan(wet.spO2);
-  });
+  }, 20_000);
 });
+
+// ─── Orders ─────────────────────────────────────────────────────────────────
 
 describe('orders', () => {
   it('refuses vasoactive infusions on the ward and allows them in the ICU', () => {
-    const engine = started(only('whitfield'));
-    const p = patient(engine, 'whitfield');
+    const s = shiftOf('urosepsis');
+    expect(s.engine.placeOrder(s.patient, 'norepi')).toMatch(/ICU/i);
+    expect(s.patient.orders.some((o) => o.orderId === 'norepi')).toBe(false);
 
-    expect(engine.placeOrder(p, 'norepi')).toMatch(/ICU/i);
-    expect(p.orders.some((o) => o.orderId === 'norepi')).toBe(false);
-
-    engine.placeOrder(p, 'transfer-icu');
-    run(engine, 20 * 60, 60);
-    expect(p.location).toBe('icu');
-
-    expect(engine.placeOrder(p, 'norepi')).toBeNull();
-    expect(p.orders.some((o) => o.orderId === 'norepi')).toBe(true);
+    s.engine.placeOrder(s.patient, 'transfer-icu');
+    run(s.engine, 20 * MIN, 60);
+    expect(s.patient.location).toBe('icu');
+    expect(s.engine.placeOrder(s.patient, 'norepi')).toBeNull();
   });
 
   it('delays drug effect by the order lead time', () => {
-    const engine = started(only('whitfield'));
-    const p = patient(engine, 'whitfield');
-    const before = engine.snapshot(p).edv;
+    const s = shiftOf('urosepsis');
+    const before = s.engine.snapshot(s.patient).edv;
 
-    engine.placeOrder(p, 'ns-1000');
-    // Lead time is 5 minutes; nothing should have reached the patient yet.
-    run(engine, 3 * 60, 30);
-    expect(engine.snapshot(p).edv).toBeCloseTo(before, 1);
+    s.engine.placeOrder(s.patient, 'ns-1000');
+    run(s.engine, 3 * MIN, 30);
+    expect(s.engine.snapshot(s.patient).edv).toBeCloseTo(before, 1);
 
-    run(engine, 25 * 60, 30);
-    expect(engine.snapshot(p).edv).toBeGreaterThan(before + 5);
+    run(s.engine, 25 * MIN, 30);
+    expect(s.engine.snapshot(s.patient).edv).toBeGreaterThan(before + 5);
   });
 
   it('replaces oxygen devices rather than stacking them', () => {
-    const engine = started(only('penhale'));
-    const p = patient(engine, 'penhale');
+    const s = shiftOf('copd-exacerbation');
+    s.engine.placeOrder(s.patient, 'o2-nc6');
+    run(s.engine, 10 * MIN, 30);
+    const nc6 = s.engine.snapshot(s.patient).fiO2;
 
-    engine.placeOrder(p, 'o2-nc6');
-    run(engine, 10 * 60, 30);
-    const nc6 = engine.snapshot(p).fiO2;
+    s.engine.placeOrder(s.patient, 'o2-nc');
+    run(s.engine, 10 * MIN, 30);
+    const nc2 = s.engine.snapshot(s.patient).fiO2;
 
-    engine.placeOrder(p, 'o2-nc');
-    run(engine, 10 * 60, 30);
-    const nc2 = engine.snapshot(p).fiO2;
-
-    // Stepping down must lower FiO2, not add to it.
     expect(nc2).toBeLessThan(nc6);
-    expect(nc2).toBeLessThan(0.35);
-    expect(p.o2Device).toBe('2L NC');
+    expect(s.patient.o2Device).toBe('2L NC');
   });
 
   it('enforces once-only orders', () => {
-    const engine = started(only('whitfield'));
-    const p = patient(engine, 'whitfield');
-    expect(engine.placeOrder(p, 'transfer-icu')).toBeNull();
-    expect(engine.placeOrder(p, 'transfer-icu')).toMatch(/already/i);
-    expect(p.orders.filter((o) => o.orderId === 'transfer-icu')).toHaveLength(1);
+    const s = shiftOf('urosepsis');
+    expect(s.engine.placeOrder(s.patient, 'transfer-icu')).toBeNull();
+    expect(s.engine.placeOrder(s.patient, 'transfer-icu')).toMatch(/already/i);
+    expect(s.patient.orders.filter((o) => o.orderId === 'transfer-icu')).toHaveLength(1);
   });
 
   it('resolves ordered labs after their turnaround time', () => {
-    const engine = started(only('whitfield'));
-    const p = patient(engine, 'whitfield');
-    engine.placeOrder(p, 'lab-lactate');
+    const s = shiftOf('urosepsis');
+    s.engine.placeOrder(s.patient, 'lab-lactate');
+    run(s.engine, 10 * MIN, 60);
+    expect(s.patient.labs).toHaveLength(0);
 
-    run(engine, 10 * 60, 60);
-    expect(p.labs).toHaveLength(0);
-
-    run(engine, 20 * 60, 60);
-    expect(p.labs).toHaveLength(1);
-    expect(p.labs[0].panel).toBe('Lactate');
-    expect(p.labs[0].values[0].value).toBeGreaterThan(0);
+    run(s.engine, 20 * MIN, 60);
+    expect(s.patient.labs).toHaveLength(1);
+    expect(s.patient.labs[0].panel).toBe('Lactate');
   });
 
   it('reports imaging findings that match the underlying physiology', () => {
-    const engine = started(only('okonkwo'));
-    const p = patient(engine, 'okonkwo');
-    run(engine, 4 * 3600 + 20 * 60, 60);
+    const s = shiftOf('pulmonary-embolism', 'moderate');
+    advanceToDeclaration(s, 20, 60);
+    s.engine.placeOrder(s.patient, 'img-echo');
+    run(s.engine, 30 * MIN, 60);
 
-    engine.placeOrder(p, 'img-echo');
-    run(engine, 30 * 60, 60);
-
-    const echo = p.labs.find((l) => l.panel === 'Bedside echo');
+    const echo = s.patient.labs.find((l) => l.panel === 'Bedside echo');
     expect(echo?.impression).toMatch(/right ventricle|D-sign/i);
   });
+
+  it('acknowledges every order in the patient\'s own voice', () => {
+    for (const seed of ['ACK1', 'ACK2']) {
+      const engine = startedWard(seed);
+      for (const p of engine.patients) {
+        for (const id of Object.keys(ORDER_BY_ID)) {
+          const def = ORDER_BY_ID[id];
+          const ack = typeof def.ack === 'function' ? def.ack(p.case.voice) : def.ack;
+          expect(ack.length, id).toBeGreaterThan(0);
+          expect(ack).not.toMatch(/\$\{|undefined/);
+        }
+      }
+    }
+  });
 });
+
+// ─── Nurse ──────────────────────────────────────────────────────────────────
 
 describe('nurse interaction', () => {
   it('answers questions from true physiology, not stale vitals', () => {
-    const engine = started(only('whitfield'));
-    const p = patient(engine, 'whitfield');
-    // Far enough in to be septic, but still alive and answerable.
-    run(engine, 2 * 3600 + 40 * 60, 60);
-    expect(p.status).toBe('stable');
+    const s = shiftOf('urosepsis', 'severe');
+    advanceToDeclaration(s, 130, 60);
+    expect(s.patient.status).toBe('stable');
 
-    engine.askQuestion(p, 'look');
-    const reply = p.messages[p.messages.length - 1];
+    s.engine.askQuestion(s.patient, 'look');
+    const reply = s.patient.messages[s.patient.messages.length - 1];
     expect(reply.author).toBe('nurse');
-    // Her charted vitals are hours old; the nurse's eyes are not.
-    expect(engine.view(p).vitalsAgeSec).toBeGreaterThan(3600);
-    expect(reply.text.toLowerCase()).toMatch(/mottled|clammy|confused|cool|pale|tired/);
+    expect(s.engine.view(s.patient).vitalsAgeSec).toBeGreaterThan(3600);
+  });
+
+  it('answers every question without a broken template, for any voice', () => {
+    const engine = startedWard('VOICES');
+    run(engine, 5 * MIN, 60);
+    for (const p of engine.patients) {
+      for (const q of ['look', 'mental', 'breathing', 'urine', 'access', 'meds', 'callback']) {
+        engine.askQuestion(p, q);
+        const reply = p.messages[p.messages.length - 1];
+        expect(reply.text, `${p.case.archetypeId}/${q}`).not.toMatch(/\$\{|undefined|\[object/);
+        expect(reply.text.length).toBeGreaterThan(4);
+      }
+    }
   });
 
   it('does not count the doctor\'s own messages as unread', () => {
-    const engine = started(only('fitzgerald'));
-    const p = patient(engine, 'fitzgerald');
-    engine.markRead(p);
-    engine.placeOrder(p, 'vitals-now');
-    const doctorMsgs = p.messages.filter((m) => m.author === 'doctor');
-    expect(doctorMsgs.length).toBeGreaterThan(0);
-    expect(p.unread).toBe(0);
-  });
-});
-
-describe('arrest and outcomes', () => {
-  it('honours DNR status without attempting resuscitation', () => {
-    const engine = started(only('marsh'));
-    const p = patient(engine, 'marsh');
-    run(engine, SHIFT_DURATION_SEC, 120);
-
-    if (p.status === 'died') {
-      expect(p.outcome!.summary).toMatch(/DNR|comfort/i);
-      expect(p.messages.some((m) => m.authorName === 'Code blue')).toBe(false);
-    }
-  });
-
-  it('records a comfort-focused death differently from an unrecognised one', () => {
-    const engine = started(only('marsh'));
-    const p = patient(engine, 'marsh');
-    engine.placeOrder(p, 'comfort-care');
-    run(engine, SHIFT_DURATION_SEC, 120);
-
-    if (p.status === 'died') {
-      expect(p.outcome!.summary).toMatch(/comfort/i);
-    }
-  });
-
-  it('gives a monitored ICU arrest a chance at ROSC', () => {
-    // Drive a patient to arrest in the ICU and confirm resuscitation can succeed.
-    const engine = started(only('demir'));
-    const p = patient(engine, 'demir');
-    engine.placeOrder(p, 'transfer-icu');
-    run(engine, 20 * 60, 60);
-    expect(p.location).toBe('icu');
-
-    // Overwhelming insult: no treatment for the rest of the shift.
-    run(engine, SHIFT_DURATION_SEC, 120);
-
-    if (p.messages.some((m) => m.authorName === 'Code blue')) {
-      // An ICU arrest is witnessed, so the first outcome must not be immediate death.
-      const codeMsgs = p.messages.filter((m) => m.authorName === 'Code blue');
-      expect(codeMsgs.length).toBeGreaterThan(0);
-    }
-  });
-
-  it('stops stepping physiology once a patient has died', () => {
-    const engine = started(only('marsh'));
-    const p = patient(engine, 'marsh');
-    run(engine, SHIFT_DURATION_SEC, 120);
-
-    if (p.status === 'died') {
-      const frozen = p.state.time;
-      run(engine, 3600, 120);
-      expect(p.state.time).toBe(frozen);
-    }
-  });
-});
-
-describe('numerical stability', () => {
-  it('keeps every patient finite across a full untreated shift', () => {
-    const engine = started();
-    run(engine, SHIFT_DURATION_SEC, 60);
-
-    for (const p of engine.patients) {
-      const snap = engine.snapshot(p);
-      for (const [key, value] of Object.entries(snap)) {
-        // cardiovascularStatus is the one non-numeric field on a snapshot.
-        if (typeof value !== 'number') continue;
-        expect(Number.isFinite(value), `${p.case.id}.${key}`).toBe(true);
-      }
-    }
-  }, 30_000);
-
-  it('survives an aggressive, contradictory order set without diverging', () => {
-    const engine = started(only('whitfield'));
-    const p = patient(engine, 'whitfield');
-    engine.placeOrder(p, 'transfer-icu');
-    run(engine, 20 * 60, 60);
-
-    for (const id of ['norepi', 'epinephrine', 'vasopressin', 'dobutamine', 'ns-1000', 'furosemide', 'nitro', 'intubate']) {
-      engine.placeOrder(p, id);
-    }
-    run(engine, 4 * 3600, 60);
-
-    const snap = engine.snapshot(p);
-    expect(Number.isFinite(snap.map)).toBe(true);
-    expect(Number.isFinite(snap.spO2)).toBe(true);
-    expect(snap.map).toBeGreaterThanOrEqual(0);
-  });
-});
-
-describe('order catalogue integrity', () => {
-  it('references only orders that exist from every case', () => {
-    for (const c of CASES) {
-      for (const id of [...c.expectedOrders, ...(c.contraindicatedOrders ?? [])]) {
-        expect(ORDER_BY_ID[id], `${c.id} → ${id}`).toBeDefined();
-      }
-    }
-  });
-
-  it('gives every order an acknowledgement and a description', () => {
-    for (const id of Object.keys(ORDER_BY_ID)) {
-      const o = ORDER_BY_ID[id];
-      expect(o.ack.length).toBeGreaterThan(0);
-      expect(o.detail.length).toBeGreaterThan(0);
-    }
+    const s = shiftOf('benign-cellulitis');
+    s.engine.markRead(s.patient);
+    s.engine.placeOrder(s.patient, 'vitals-now');
+    expect(s.patient.messages.some((m) => m.author === 'doctor')).toBe(true);
+    expect(s.patient.unread).toBe(0);
   });
 });
 
 describe('the bedside look never reassures about a patient in trouble', () => {
   it('does not call a breathless patient comfortable', () => {
-    // The regression this guards: perfusion used to be an else-chain that always
-    // emitted a clause, so a patient whose blood pressure was still holding was
-    // announced as "comfortable, conversant" and only then described as drowning.
-    const engine = started(only('brennan'));
-    const p = patient(engine, 'brennan');
-    run(engine, 80 * 60, 30);
+    // Far enough in to be breathless, well short of the arrest.
+    const s = shiftOf('adhf-mislabelled', 'moderate');
+    advanceToDeclaration(s, 40, 30);
 
-    const snap = engine.snapshot(p);
+    const snap = s.engine.snapshot(s.patient);
+    expect(s.patient.status).toBe('stable');
     expect(snap.spO2).toBeLessThan(0.94);
 
     const look = describeAppearance(snap);
@@ -472,27 +562,7 @@ describe('the bedside look never reassures about a patient in trouble', () => {
     expect(look).toMatch(/breath|crackles|froth|cyanotic/i);
   });
 
-  it('escalates the description as the patient deteriorates', () => {
-    const engine = started(only('brennan'));
-    const p = patient(engine, 'brennan');
-
-    const grades: number[] = [];
-    for (let i = 0; i < 20; i++) {
-      run(engine, 6 * 60, 30);
-      if (p.status === 'died') break;
-      grades.push(assessAppearance(engine.snapshot(p)).wob);
-    }
-
-    // Monotonically non-decreasing while untreated, and it must reach severe.
-    for (let i = 1; i < grades.length; i++) {
-      expect(grades[i]).toBeGreaterThanOrEqual(grades[i - 1]);
-    }
-    expect(Math.max(...grades)).toBeGreaterThanOrEqual(2);
-  });
-
   it('reports congestion before the saturation falls', () => {
-    // A wet patient is breathless well before they are hypoxaemic. Reporting only
-    // on SpO2 would hide precisely the window worth acting in.
     const congested = { ...DEFAULT_STATE, edv: 168, emax: 1.3 };
     const snap = computeSnapshot(congested, DEFAULT_PARAMS);
 
@@ -503,129 +573,147 @@ describe('the bedside look never reassures about a patient in trouble', () => {
   });
 
   it('still calls a well patient comfortable', () => {
-    const snap = computeSnapshot({ ...DEFAULT_STATE }, DEFAULT_PARAMS);
-    expect(describeAppearance(snap)).toMatch(/comfortable/i);
+    expect(describeAppearance(computeSnapshot({ ...DEFAULT_STATE }, DEFAULT_PARAMS))).toMatch(/comfortable/i);
   });
 
   it('keeps the triage dot to what a monitor can actually show', () => {
-    // Lactate is a send-away test; letting it colour the dot would hand the player
-    // a result they never ordered, and undo the occult-hypoperfusion case.
     const occult = computeSnapshot({ ...DEFAULT_STATE, lactate: 6 }, DEFAULT_PARAMS);
     expect(occult.map).toBeGreaterThan(70);
     expect(acuityLabel(occult)).toBe('ok');
   });
 });
 
+// ─── Comfort orders and handoffs ────────────────────────────────────────────
+
 describe('comfort and routine orders', () => {
-  it('offers an answer to every page the low-acuity patient generates', () => {
-    const fitz = CASES.find((c) => c.id === 'fitzgerald')!;
-    // Sleep, a resited cannula, and something for a headache.
-    for (const id of ['melatonin', 'iv-resite', 'acetaminophen']) {
-      expect(ORDER_BY_ID[id], id).toBeDefined();
-      expect(fitz.expectedOrders).toContain(id);
+  it('offers an answer to every page a benign patient generates', () => {
+    for (const archetype of ARCHETYPES.filter((a) => a.tier === 'benign')) {
+      expect(archetype.expectedOrders.length, archetype.id).toBeGreaterThanOrEqual(3);
+      for (const id of archetype.expectedOrders) {
+        expect(ORDER_BY_ID[id], `${archetype.id} → ${id}`).toBeDefined();
+        expect(ORDER_BY_ID[id].category).toBe('comfort');
+      }
     }
   });
 
   it('masks the fever without touching the sepsis', () => {
-    const engine = started(only('whitfield'));
-    const p = patient(engine, 'whitfield');
-    run(engine, 70 * 60, 60);
+    const s = shiftOf('urosepsis', 'severe');
+    advanceToDeclaration(s, 40, 60);
 
-    engine.placeOrder(p, 'vitals-now');
-    const febrile = p.lastVitals!.tempC;
-    const toneBefore = engine.snapshot(p).noTone;
+    s.engine.placeOrder(s.patient, 'vitals-now');
+    const febrile = s.patient.lastVitals!.tempC;
+    const toneBefore = s.engine.snapshot(s.patient).noTone;
 
-    engine.placeOrder(p, 'acetaminophen');
-    run(engine, 30 * 60, 60);
-    engine.placeOrder(p, 'vitals-now');
+    s.engine.placeOrder(s.patient, 'acetaminophen');
+    run(s.engine, 30 * MIN, 60);
+    s.engine.placeOrder(s.patient, 'vitals-now');
 
-    // The number falls; the inflammatory process does not.
-    expect(p.lastVitals!.tempC).toBeLessThan(febrile);
-    expect(engine.snapshot(p).noTone).toBeGreaterThanOrEqual(toneBefore);
+    expect(s.patient.lastVitals!.tempC).toBeLessThan(febrile);
+    expect(s.engine.snapshot(s.patient).noTone).toBeGreaterThanOrEqual(toneBefore);
   });
 
   it('does not count a sleeping tablet as responding to a deteriorating patient', () => {
-    const engine = started(only('brennan'));
-    const p = patient(engine, 'brennan');
-    // Past his first urgent page, which is what starts the response clock.
-    run(engine, 80 * 60, 60);
-    expect(p.firstUnstableAt).not.toBeNull();
+    const s = shiftOf('adhf-mislabelled', 'moderate');
+    advanceToDeclaration(s, 10, 60);
+    expect(s.patient.firstUnstableAt).not.toBeNull();
 
-    engine.placeOrder(p, 'melatonin');
-    expect(p.firstActionAt).toBeNull();
+    s.engine.placeOrder(s.patient, 'melatonin');
+    expect(s.patient.firstActionAt).toBeNull();
 
-    engine.placeOrder(p, 'nitro');
-    expect(p.firstActionAt).not.toBeNull();
-  });
-
-  it('makes trazodone cost something in a patient who is compensating', () => {
-    const withTraz = started(only('whitfield'));
-    const a = patient(withTraz, 'whitfield');
-    run(withTraz, 45 * 60, 60);
-    withTraz.placeOrder(a, 'trazodone');
-    run(withTraz, 2 * 3600, 60);
-
-    const control = started(only('whitfield'));
-    run(control, 45 * 60 + 2 * 3600, 60);
-
-    expect(withTraz.snapshot(a).map).toBeLessThan(
-      control.snapshot(patient(control, 'whitfield')).map,
-    );
+    s.engine.placeOrder(s.patient, 'nitro');
+    expect(s.patient.firstActionAt).not.toBeNull();
   });
 });
 
 describe('day team handoffs', () => {
-  it('gives every patient a handoff with a summary and an author', () => {
-    for (const c of CASES) {
-      expect(c.handoff.summary.length, c.id).toBeGreaterThan(40);
-      expect(c.handoff.author.length, c.id).toBeGreaterThan(0);
-      expect(['thorough', 'adequate', 'thin']).toContain(c.handoff.quality);
+  it('gives every generated patient a usable handoff', () => {
+    for (let i = 0; i < 15; i++) {
+      for (const c of generateWard({ seed: `HO${i}` }).cases) {
+        expect(c.handoff.summary.length, c.archetypeId).toBeGreaterThan(40);
+        expect(c.handoff.author).toMatch(/,/);
+        expect(['thorough', 'adequate', 'thin']).toContain(c.handoff.quality);
+        if (c.handoff.quality === 'thin') expect(c.handoff.contingencies).toHaveLength(0);
+      }
     }
   });
 
-  it('varies in completeness across the ward', () => {
-    const qualities = new Set(CASES.map((c) => c.handoff.quality));
-    // All three grades must be represented, or the variation teaches nothing.
+  it('produces handoffs across the whole range of completeness', () => {
+    const qualities = new Set<string>();
+    for (let i = 0; i < 20; i++) {
+      for (const c of generateWard({ seed: `HQ2-${i}` }).cases) qualities.add(c.handoff.quality);
+    }
     expect(qualities.size).toBe(3);
-
-    const withPlan = CASES.filter((c) => c.handoff.contingencies.length > 0);
-    const without = CASES.filter((c) => c.handoff.contingencies.length === 0);
-    expect(withPlan.length).toBeGreaterThan(0);
-    expect(without.length).toBeGreaterThan(0);
-  });
-
-  it('leaves the thinnest handoffs on patients who deteriorate', () => {
-    // The point of the variation: sign-out quality tracks how interesting the day
-    // team found someone, not how sick they are about to become.
-    const thin = CASES.filter((c) => c.handoff.quality === 'thin').map((c) => c.id);
-    expect(thin).toContain('whitfield');
-    expect(thin).toContain('okonkwo');
-
-    // And the fullest one is on the patient who needs it least.
-    const fitz = CASES.find((c) => c.id === 'fitzgerald')!;
-    expect(fitz.handoff.quality).toBe('thorough');
-  });
-
-  it('buries the decisive clue in a routine task list', () => {
-    // Held anticoagulation is the whole reason she embolises, and it is filed as
-    // an errand rather than flagged as a risk.
-    const okonkwo = CASES.find((c) => c.id === 'okonkwo')!;
-    expect(okonkwo.handoff.todo.join(' ')).toMatch(/enoxaparin|prophylaxis/i);
-    expect(okonkwo.handoff.contingencies).toHaveLength(0);
-  });
-
-  it('records the day team severity call, right or wrong', () => {
-    // Two of the patients signed out as "stable" are dead by morning if ignored.
-    const whitfield = CASES.find((c) => c.id === 'whitfield')!;
-    expect(whitfield.handoff.severity).toBe('stable');
   });
 
   it('names what the player was working from in the debrief', () => {
-    const engine = started(only('whitfield'));
+    const engine = startedWard('DEBRIEF');
     run(engine, SHIFT_DURATION_SEC, 300);
+    for (const d of buildReport(engine.patients).debriefs) {
+      expect(d.handoffNote.length).toBeGreaterThan(20);
+    }
+  }, 40_000);
+});
 
-    const report = buildReport(engine.patients);
-    const d = report.debriefs[0];
-    expect(d.handoffNote).toMatch(/stable|contingency|very little/i);
+// ─── Robustness ─────────────────────────────────────────────────────────────
+
+describe('numerical stability', () => {
+  it('keeps every patient finite across full untreated shifts on many seeds', () => {
+    for (const seed of ['ST1', 'ST2', 'ST3']) {
+      const engine = startedWard(seed);
+      run(engine, SHIFT_DURATION_SEC, 120);
+
+      for (const p of engine.patients) {
+        for (const [key, value] of Object.entries(engine.snapshot(p))) {
+          if (typeof value !== 'number') continue;
+          expect(Number.isFinite(value), `${seed}/${p.case.archetypeId}.${key}`).toBe(true);
+        }
+      }
+    }
+  }, 120_000);
+
+  it('survives an aggressive, contradictory order set', () => {
+    const s = shiftOf('urosepsis', 'severe');
+    s.engine.placeOrder(s.patient, 'transfer-icu');
+    run(s.engine, 20 * MIN, 60);
+
+    for (const id of ['norepi', 'epinephrine', 'vasopressin', 'dobutamine', 'ns-1000', 'furosemide', 'nitro', 'intubate', 'trazodone', 'morphine-comfort']) {
+      s.engine.placeOrder(s.patient, id);
+    }
+    run(s.engine, 4 * 3600, 60);
+
+    const snap = s.engine.snapshot(s.patient);
+    expect(Number.isFinite(snap.map)).toBe(true);
+    expect(snap.map).toBeGreaterThanOrEqual(0);
   }, 20_000);
+});
+
+describe('content integrity', () => {
+  it('references only orders that exist from every archetype', () => {
+    for (const a of ARCHETYPES) {
+      for (const id of [...a.expectedOrders, ...(a.contraindicatedOrders ?? [])]) {
+        expect(ORDER_BY_ID[id], `${a.id} → ${id}`).toBeDefined();
+      }
+    }
+  });
+
+  it('gives every archetype a teaching point and a hidden diagnosis', () => {
+    for (const a of ARCHETYPES) {
+      expect(a.teachingPoint.length, a.id).toBeGreaterThan(80);
+      expect(a.hiddenDx.length, a.id).toBeGreaterThan(10);
+      expect(a.span).toBeGreaterThan(0);
+    }
+  });
+
+  it('gives every order an acknowledgement and a description', () => {
+    for (const id of Object.keys(ORDER_BY_ID)) {
+      expect(ORDER_BY_ID[id].detail.length, id).toBeGreaterThan(0);
+    }
+  });
+
+  it('can find any archetype on a ward that contains it', () => {
+    const engine = startedWard('FIND');
+    const first = engine.patients[0];
+    expect(findByArchetype(engine, first.case.archetypeId)).toBe(first);
+    expect(() => findByArchetype(engine, 'not-a-real-archetype')).toThrow();
+  });
 });

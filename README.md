@@ -59,24 +59,49 @@ paracetamol, delirium precautions, a bowel regimen, resiting a cannula) alongsid
 the resuscitation drugs. Note that paracetamol lowers the *charted* temperature
 without touching the sepsis underneath it.
 
-### The ward
+### The ward is dealt, not written
 
-Eight patients, each built around one decision:
+Every shift is generated from a seed. Patients are drawn from a library of
+**case archetypes** — the clinical content — and then assigned names, ages,
+pronouns, rooms and nurses sampled independently. A name carries no clinical
+information, so a returning player has to read the patient in front of them
+rather than recall what a given name did last time.
 
-| Patient | Presents as | Actually |
+| Archetype | Presents as | Actually |
 |---|---|---|
-| Whitfield, 78F | Pyelonephritis, improving | Urosepsis → septic shock |
-| Brennan, 71M | COPD exacerbation | Decompensated heart failure — the admission diagnosis is wrong |
-| Okonkwo, 54F | POD#2 knee replacement | Massive PE with RV failure |
-| Castellanos, 63M | Stable GI bleed | Rebleeding ulcer → haemorrhagic shock |
-| Penhale, 68M | COPD exacerbation | COPD exacerbation — the obvious answer is correct |
-| Demir, 59M | Chest pain, troponins negative | Anterior STEMI → cardiogenic shock |
-| Marsh, 84F | Aspiration pneumonia, DNR/DNI | Dying. The intervention is a goals-of-care conversation |
-| Fitzgerald, 44F | Cellulitis, improving | Nothing. She just cannot sleep |
+| `urosepsis` | Pyelonephritis, improving | Urosepsis → septic shock |
+| `pneumonia-sepsis` | Community-acquired pneumonia | Sepsis with a widening shunt |
+| `adhf-mislabelled` | COPD exacerbation | Decompensated heart failure — the diagnosis is wrong |
+| `pulmonary-embolism` | Routine post-op day 2 | Massive PE with RV failure |
+| `gi-bleed` | Stable GI bleed | Rebleeding ulcer → haemorrhagic shock |
+| `acs-cardiogenic` | Chest pain, troponins negative | Anterior STEMI → cardiogenic shock |
+| `copd-exacerbation` | COPD exacerbation | COPD exacerbation — the obvious answer is right |
+| `hypovolaemia` | Poor intake, AKI | Dry. A bolus fixes it |
+| `end-of-life-pneumonia` | Aspiration pneumonia, DNR/DNI | Dying. The intervention is a conversation |
+| `benign-cellulitis`, `benign-post-op-pain` | Improving | Nothing is wrong |
+
+Each ward draws three critical cases, three ward-level ones and two benign, and
+staggers when they declare so problems arrive in sequence rather than all at once.
+Because `adhf-mislabelled` and `copd-exacerbation` are both admitted as "COPD
+exacerbation", a ward can hold two of them — and telling which is which is the
+whole job.
+
+### Severity
+
+Every case is dealt at **mild**, **moderate** or **severe**, which changes both
+the starting physiology and the size of the insult. Severity raises the ceiling
+on how bad things get; it deliberately does *not* shorten the window in which the
+player can act, because scaling magnitude and speed together produces cases that
+test reaction time rather than reasoning.
+
+What it does change is the *management*. A mild decompensation forgives a slow,
+adequate response. A severe one needs escalation and an inotrope, not just a
+diuretic — the correct answer is different, not merely more urgent.
 
 Because outcomes come from physiology rather than from a script, the traps are
-real: a fluid bolus in Brennan raises his wedge, floods more alveoli, and drops
-his saturation. Nothing special-cases it — that is simply what the model does.
+real: a fluid bolus in the mislabelled heart failure patient raises the wedge,
+floods more alveoli, and drops the saturation. Nothing special-cases it — that is
+simply what the model does.
 
 At 07:00 you get a debrief: what was actually wrong with each patient, what you
 ordered, how long you took from the moment they became unstable, and the teaching
@@ -146,12 +171,20 @@ src/engine/          Physiology. Pure functions, no UI, no game concepts.
 src/game/            The night shift.
   physics.ts         stepPhysics() — one patient, one timestep (shared by bench and ward)
   shift.ts           ShiftEngine: owns every patient, every channel, every outcome
-  cases.ts           The eight patients and their illness scripts
   orders.ts          Order catalogue with lead times and ICU gating
   clinical.ts        Physiology → charted vitals, labs, imaging, gestalt
   nurse.ts           Nurse replies and escalation thresholds
   consults.ts        Attending and specialty advice, reasoned from live physiology
   scoring.ts         End-of-shift debrief
+  testing.ts         Reference helpers for addressing generated content
+
+src/game/content/    Ward generation.
+  archetypes.ts      The clinical library, written against no particular patient
+  demographics.ts    Names, ages, rooms, nurses — sampled independently
+  severity.ts        How hard a case bites tonight
+  voice.ts           Pronouns and verb agreement for generated prose
+  rng.ts             Seeded PRNG — a shift is fully determined by its seed
+  generate.ts        Composes a balanced ward from a seed
 
 src/ui/              React components for the shift.
 src/bench/           The original single-patient engine test bench.
@@ -172,13 +205,25 @@ interventions; it never reaches in to set an outcome.
 happening; `runtime.lastVitals` is what the player knows. Only monitoring closes
 the gap. The UI renders the observed state and never leaks the true one.
 
+**Content is addressed by archetype, never by name.** Patient names, ages and
+rooms are sampled per shift, so nothing durable can refer to them. Tests,
+calibration runs and the debrief all address a case by `archetypeId` and
+`severity`, and express timing relative to `declaresAt` rather than to a
+wall-clock time that moves with the seed. `src/game/testing.ts` provides the
+helpers — `soloShift`, `advanceToDeclaration`, `findByArchetype` — that make a
+generated ward testable.
+
+**Every shift is reproducible.** The seed is shown on the briefing and in the top
+bar during play. The same seed always deals the same eight patients, at the same
+severities, declaring at the same times.
+
 ---
 
 ## Development
 
 ```bash
 npm run dev      # dev server
-npm test         # 250 unit tests (Vitest)
+npm test         # 264 unit tests (Vitest)
 npm run lint
 npm run build    # production build → dist/
 ```
