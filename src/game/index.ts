@@ -12,8 +12,13 @@ export { makeRng, randomSeed } from './content/rng';
 export type { Rng } from './content/rng';
 export { makeVoice } from './content/voice';
 export type { Voice, Gender } from './content/voice';
-export { SEVERITIES, insultScale, onsetScale, severityLabel } from './content/severity';
-export type { Severity } from './content/severity';
+export {
+  SEVERITY_BANDS, bandOf, severityOf, clampSeverity, lerp,
+  insultScale, onsetScale, bloodLossScale, sampleSeverity, varyAxis, severityLabel,
+} from './content/severity';
+export type { Severity, SeverityBand } from './content/severity';
+export { COMORBIDITIES, sampleComorbidities } from './content/modifiers';
+export type { Comorbidity } from './content/modifiers';
 export { ORDERS, ORDER_BY_ID, ORDER_CATEGORIES, O2_LABEL_PREFIX } from './orders';
 export { NURSE_QUESTIONS, answerQuestion, vitalsConcern } from './nurse';
 export { attendingAdvice, specialtyAdvice } from './consults';

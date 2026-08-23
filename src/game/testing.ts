@@ -1,7 +1,7 @@
 import { ShiftEngine } from './shift';
 import { generateWard } from './content/generate';
 import { ARCHETYPE_BY_ID } from './content/archetypes';
-import type { Severity } from './content/severity';
+import { severityOf, type Severity, type SeverityBand } from './content/severity';
 import type { PatientCase, PatientRuntime } from './types';
 
 /**
@@ -20,7 +20,14 @@ export const TEST_SEED = 'STEADYSTATE';
 const MIN = 60;
 
 export interface CaseOptions {
-  severity?: Severity;
+  /**
+   * Either a band name or a raw value in [0, 1].
+   *
+   * Tests mostly want to say "a severe urosepsis" rather than "a urosepsis at
+   * 0.85", so band names resolve to a representative value; a number is passed
+   * through for tests that need to walk the continuum.
+   */
+  severity?: Severity | SeverityBand;
   seed?: string;
   /** When the case declares. Defaults to early, leaving the shift to play out. */
   declareAt?: number;
@@ -29,13 +36,20 @@ export interface CaseOptions {
 /** One archetype, alone on the ward, deterministically. */
 export function makeCase(archetypeId: string, options: CaseOptions = {}): PatientCase {
   if (!ARCHETYPE_BY_ID[archetypeId]) throw new Error(`Unknown archetype: ${archetypeId}`);
+  const severity = resolveSeverity(options.severity);
   const ward = generateWard({
-    seed: options.seed ?? `${TEST_SEED}:${archetypeId}:${options.severity ?? 'moderate'}`,
+    seed: options.seed ?? `${TEST_SEED}:${archetypeId}:${severity.toFixed(2)}`,
     only: [archetypeId],
-    severity: options.severity ?? 'moderate',
+    severity,
     declareAt: options.declareAt ?? 20 * MIN,
   });
   return ward.cases[0];
+}
+
+/** Band names resolve to a representative value; numbers pass through. */
+export function resolveSeverity(severity: Severity | SeverityBand | undefined): Severity {
+  if (severity === undefined) return severityOf('moderate');
+  return typeof severity === 'number' ? severity : severityOf(severity);
 }
 
 export interface SoloShift {

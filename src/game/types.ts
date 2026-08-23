@@ -5,7 +5,7 @@ import type {
   InterventionKind,
   Snapshot,
 } from '../engine/types';
-import type { Severity } from './content/severity';
+import type { Severity, SeverityBand } from './content/severity';
 import type { Voice } from './content/voice';
 
 // ─── Time ───────────────────────────────────────────────────────────────────
@@ -239,8 +239,12 @@ export interface PatientCase {
    * calibration run — refers to the archetype and severity instead.
    */
   archetypeId: string;
-  /** How hard this instance of the case bites tonight. */
+  /** How hard this instance bites tonight, continuous from 0 to 1. */
   severity: Severity;
+  /** Coarse label for the same thing, for display and grouping. */
+  severityBand: SeverityBand;
+  /** Background conditions this patient brought with them. */
+  comorbidities: string[];
   name: string;
   age: number;
   /** Charted sex marker. */

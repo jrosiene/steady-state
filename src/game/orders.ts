@@ -123,6 +123,15 @@ export const ORDERS: OrderDef[] = [
     ],
   },
 
+  {
+    id: 'lorazepam',
+    label: 'Lorazepam 0.5 mg',
+    category: 'comfort',
+    detail: 'Short-acting benzodiazepine for acute anxiety or withdrawal. Sedating, and deliriogenic in the elderly.',
+    leadTimeSec: 600,
+    ack: 'Given.',
+  },
+
   // ─── Fluids / blood ───────────────────────────────────────────────────────
   {
     id: 'ns-500',
@@ -296,6 +305,21 @@ export const ORDERS: OrderDef[] = [
     interventions: [
       { label: 'Duonebs (V/Q)', category: 'treatment', kind: 'bolus', target: 'qsQt', delta: -0.10, tauOn: 600, eliminationHalfLife: 7200 },
       { label: 'Duonebs (chrono)', category: 'treatment', kind: 'bolus', target: 'hrMod', delta: 12, tauOn: 600, eliminationHalfLife: 5400 },
+    ],
+  },
+
+  {
+    id: 'chest-drain',
+    label: 'Insert chest drain',
+    category: 'respiratory',
+    detail: 'Definitive treatment for a pneumothorax. Re-expands the lung and relieves any tension.',
+    leadTimeSec: 1200,
+    once: true,
+    ack: "I'll get the chest drain trolley and page the registrar to put it in.",
+    interventions: [
+      { label: 'Chest drain: re-expansion', category: 'treatment', kind: 'bolus', target: 'qsQt', delta: -0.13, tauOn: 900, eliminationHalfLife: 86400 },
+      { label: 'Chest drain: decompression', category: 'treatment', kind: 'bolus', target: 'cvp', delta: -9, tauOn: 300, eliminationHalfLife: 86400 },
+      { label: 'Chest drain: venous return', category: 'treatment', kind: 'bolus', target: 'edv', delta: 26, tauOn: 600, eliminationHalfLife: 86400 },
     ],
   },
 

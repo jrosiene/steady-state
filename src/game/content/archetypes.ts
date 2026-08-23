@@ -1,7 +1,7 @@
 import type { CaseEvent, CodeStatus, HandoffSeverity, InterventionSpec } from '../types';
 import type { Rng } from './rng';
 import type { Voice } from './voice';
-import { bloodLossScale, insultScale, onsetScale, type Severity } from './severity';
+import { bloodLossScale, insultScale, lerp, onsetScale, varyAxis, type Severity } from './severity';
 
 const MIN = 60;
 const HOUR = 3600;
@@ -12,6 +12,7 @@ const HOUR = 3600;
  * patient, which is the whole point of the split.
  */
 export interface ArchetypeContext {
+  /** Continuous, 0 (mildest form worth paging about) to 1 (as bad as it gets). */
   severity: Severity;
   rng: Rng;
   voice: Voice;
@@ -68,18 +69,34 @@ export interface CaseArchetype {
 
 // ─── Scaling helpers ────────────────────────────────────────────────────────
 
-/** Scale an insult's magnitude and onset by the case's severity. */
+/**
+ * Scale an insult by the case's severity, with its own draw around it.
+ *
+ * Each insult varies independently, so a sepsis can arrive with marked vasoplegia
+ * and modest third-spacing, or the reverse, at the same overall severity. That
+ * per-axis spread is what makes two instances of the same archetype present as
+ * different patients rather than the same one twice.
+ */
 function insult(ctx: ArchetypeContext, spec: InterventionSpec): InterventionSpec {
+  const axis = varyAxis(ctx.rng, ctx.severity);
   return {
     ...spec,
-    delta: spec.delta * insultScale(ctx.severity),
-    tauOn: spec.tauOn * onsetScale(ctx.severity),
+    delta: spec.delta * insultScale(axis),
+    tauOn: spec.tauOn * onsetScale(axis),
   };
 }
 
-/** Pick a value by severity. Clearer than scaling a starting state blindly. */
-function bySeverity<T>(ctx: ArchetypeContext, mild: T, moderate: T, severe: T): T {
-  return ctx.severity === 'mild' ? mild : ctx.severity === 'severe' ? severe : moderate;
+/**
+ * A starting value interpolated across the severity range.
+ * Archetypes state the mildest and worst forms; everything between is real.
+ */
+function bySeverity(ctx: ArchetypeContext, atMild: number, atSevere: number): number {
+  return lerp(ctx.severity, atMild, atSevere);
+}
+
+/** As `bySeverity`, rounded — for volumes and rates that are charted as integers. */
+function bySeverityInt(ctx: ArchetypeContext, atMild: number, atSevere: number): number {
+  return Math.round(bySeverity(ctx, atMild, atSevere));
 }
 
 /** Jitter a scripted time so repeat plays don't share a metronome. */
@@ -111,10 +128,10 @@ export const ARCHETYPES: CaseArchetype[] = [
         hr: ctx.rng.int(78, 90),
         svr: 15.5,
         edv: ctx.rng.int(102, 114),
-        noTone: bySeverity(ctx, 0.06, 0.12, 0.2),
+        noTone: bySeverity(ctx, 0.05, 0.21),
       },
       rrOffset: 4,
-      tempOffset: bySeverity(ctx, 0, 0.1, 0.25),
+      tempOffset: bySeverity(ctx, 0, 0.28),
     }),
     script: (ctx) => {
       const v = ctx.voice;
@@ -181,8 +198,8 @@ export const ARCHETYPES: CaseArchetype[] = [
         hr: ctx.rng.int(84, 96),
         svr: 14.5,
         edv: ctx.rng.int(100, 112),
-        qsQt: bySeverity(ctx, 0.07, 0.1, 0.13),
-        noTone: bySeverity(ctx, 0.08, 0.15, 0.22),
+        qsQt: bySeverity(ctx, 0.06, 0.14),
+        noTone: bySeverity(ctx, 0.07, 0.24),
       },
       rrOffset: 7,
       tempOffset: 0.3,
@@ -245,8 +262,8 @@ export const ARCHETYPES: CaseArchetype[] = [
       stateOverrides: {
         hr: ctx.rng.int(82, 94),
         svr: 16.5,
-        emax: bySeverity(ctx, 1.4, 1.25, 1.18),
-        edv: bySeverity(ctx, 144, 152, 156),
+        emax: bySeverity(ctx, 1.45, 1.16),
+        edv: bySeverityInt(ctx, 142, 158),
         qsQt: 0.05,
       },
       // Eccentric remodelling: a chronically dilated ventricle lives at volumes
@@ -254,7 +271,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       // It scales with severity because the more advanced the cardiomyopathy, the
       // more dilated and the more volume-tolerant the ventricle already is — without
       // that, a severe case starts further up the curve and falls off it immediately.
-      paramOverrides: { edvCritBase: bySeverity(ctx, 380, 420, 480) },
+      paramOverrides: { edvCritBase: bySeverity(ctx, 370, 490) },
       rrOffset: 7,
     }),
     script: (ctx) => {
@@ -379,7 +396,7 @@ export const ARCHETYPES: CaseArchetype[] = [
     ],
     baseline: (ctx) => ({
       stateOverrides: { hr: ctx.rng.int(90, 100), svr: 13, edv: ctx.rng.int(100, 110) },
-      paramOverrides: { hgb: bySeverity(ctx, 10.6, 9.8, 8.9) },
+      paramOverrides: { hgb: bySeverity(ctx, 10.9, 8.7) },
       rrOffset: 4,
     }),
     script: (ctx) => {
@@ -503,7 +520,7 @@ export const ARCHETYPES: CaseArchetype[] = [
         hr: ctx.rng.int(82, 92),
         svr: 14,
         edv: ctx.rng.int(108, 120),
-        qsQt: bySeverity(ctx, 0.1, 0.13, 0.16),
+        qsQt: bySeverity(ctx, 0.09, 0.17),
         pvr: 2.4,
       },
       rrOffset: 8,
@@ -558,7 +575,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       stateOverrides: {
         hr: ctx.rng.int(82, 94),
         svr: 15,
-        edv: bySeverity(ctx, 100, 94, 88),
+        edv: bySeverityInt(ctx, 102, 86),
       },
       rrOffset: 2,
     }),
@@ -609,9 +626,9 @@ export const ARCHETYPES: CaseArchetype[] = [
     baseline: (ctx) => ({
       stateOverrides: {
         hr: ctx.rng.int(88, 98),
-        svr: 14.5,
-        edv: ctx.rng.int(98, 108),
-        qsQt: bySeverity(ctx, 0.13, 0.16, 0.19),
+        svr: 13.5,
+        edv: ctx.rng.int(92, 102),
+        qsQt: bySeverity(ctx, 0.12, 0.2),
         noTone: 0.2,
       },
       rrOffset: 9,
@@ -652,6 +669,225 @@ export const ARCHETYPES: CaseArchetype[] = [
     }),
     expectedOrders: ['comfort-care', 'call-attending', 'morphine-comfort', 'delirium-precautions'],
     contraindicatedOrders: ['intubate', 'norepi', 'transfer-icu'],
+  },
+
+  {
+    id: 'pneumothorax',
+    label: 'Post-procedural pneumothorax',
+    tier: 'ward',
+    ageRange: [34, 82],
+    span: 90 * MIN,
+    admissionDx: 'Pleural effusion — drained this afternoon',
+    hiddenDx: 'Pneumothorax following pleural drainage, enlarging overnight',
+    teachingPoint:
+      'Obstructive physiology after a procedure is a mechanical problem with a mechanical answer. ' +
+      'Rising filling pressure with a falling stroke volume and a unilaterally quiet chest is a pneumothorax ' +
+      'until a film says otherwise — and no amount of oxygen or fluid substitutes for decompressing it.',
+    history: (ctx) => ctx.rng.sample(
+      ['Malignant pleural effusion', 'Heart failure', 'Previous thoracic surgery', 'COPD', 'Recent pleural tap'],
+      2,
+    ),
+    baseline: (ctx) => ({
+      stateOverrides: {
+        hr: ctx.rng.int(80, 92),
+        svr: 15.5,
+        edv: ctx.rng.int(112, 124),
+        qsQt: bySeverity(ctx, 0.04, 0.08),
+      },
+      rrOffset: 5,
+    }),
+    script: (ctx) => {
+      const v = ctx.voice;
+      return [
+        {
+          at: ctx.declareAt,
+          urgent: true,
+          page: `${ctx.name} in ${ctx.room} is more breathless since the drain came out, and the saturations ` +
+            `have come down. Air entry sounds much quieter on one side to me.`,
+          interventions: [
+            insult(ctx, { label: 'Pneumothorax: shunt↑', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.13, tauOn: 1500, eliminationHalfLife: 86400 }),
+            insult(ctx, { label: 'Pneumothorax: intrathoracic pressure', category: 'scenario', kind: 'scenario', target: 'cvp', delta: 8, tauOn: 1800, eliminationHalfLife: 86400 }),
+            insult(ctx, { label: 'Pneumothorax: venous return↓', category: 'scenario', kind: 'scenario', target: 'edv', delta: -24, tauOn: 1800, eliminationHalfLife: 86400 }),
+          ],
+        },
+        {
+          at: jitter(ctx, ctx.declareAt + 90 * MIN),
+          urgent: true,
+          page: `${v.Subj} ${v.is} worse — really struggling now, and the pressure has come down with it.`,
+          interventions: [
+            insult(ctx, { label: 'Pneumothorax: enlarging', category: 'scenario', kind: 'scenario', target: 'cvp', delta: 5, tauOn: 1200, eliminationHalfLife: 86400 }),
+            insult(ctx, { label: 'Pneumothorax: venous return↓↓', category: 'scenario', kind: 'scenario', target: 'edv', delta: -16, tauOn: 1200, eliminationHalfLife: 86400 }),
+          ],
+        },
+      ];
+    },
+    handoff: (ctx) => ({
+      severityCall: 'watcher',
+      summary: `Pleural effusion drained this afternoon — 1.2 litres off, ${ctx.voice.subj} felt much better afterwards. Post-procedure film was reported as satisfactory.`,
+      todo: ['Repeat chest film in the morning.'],
+      contingencies: [
+        'If the breathlessness comes back after a drain, get a film before anything else — a post-procedural pneumothorax can declare hours later.',
+      ],
+    }),
+    expectedOrders: ['img-cxr', 'o2-nrb', 'chest-drain', 'vitals-now'],
+    contraindicatedOrders: ['ns-1000', 'furosemide'],
+  },
+
+  {
+    id: 'aspiration-event',
+    label: 'Witnessed aspiration',
+    tier: 'ward',
+    ageRange: [58, 90],
+    span: 2 * HOUR,
+    admissionDx: 'Stroke — dysphagia, on modified diet',
+    hiddenDx: 'Aspiration during the evening meal, with a developing chemical pneumonitis',
+    teachingPoint:
+      'A witnessed aspiration is one of the few overnight events where you know the mechanism at the time it ' +
+      'happens. The work is supportive and immediate — position, suction, oxygen — and the judgement call is ' +
+      'antibiotics, which treat infection that has not happened yet rather than the chemical injury that has.',
+    history: (ctx) => [
+      'Recent stroke with dysphagia',
+      ...ctx.rng.sample(['Atrial fibrillation', 'Hypertension', 'Previous aspiration', 'Reduced consciousness', 'Nasogastric feeding'], 2),
+    ],
+    baseline: (ctx) => ({
+      stateOverrides: { hr: ctx.rng.int(78, 90), svr: 15, edv: ctx.rng.int(108, 120) },
+      rrOffset: 4,
+    }),
+    script: (ctx) => {
+      const v = ctx.voice;
+      return [
+        {
+          at: ctx.declareAt,
+          urgent: true,
+          page: `${ctx.name} coughed and choked during the evening meal and now ${v.subj} ${v.verb('sound')} wet and ` +
+            `${v.is} desaturating. I've sat ${v.obj} up and suctioned.`,
+          interventions: [
+            insult(ctx, { label: 'Aspiration: shunt↑', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.15, tauOn: 900, eliminationHalfLife: 43200 }),
+            insult(ctx, { label: 'Aspiration: inflammation', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.14, tauOn: 3600, eliminationHalfLife: 43200 }),
+          ],
+        },
+        {
+          at: jitter(ctx, ctx.declareAt + 110 * MIN),
+          page: `Still needing more oxygen than before, and ${v.subj} ${v.verb('sound')} rattly. Temperature is creeping up.`,
+          interventions: [
+            insult(ctx, { label: 'Pneumonitis: progression', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.14, tauOn: 3600, eliminationHalfLife: 43200 }),
+          ],
+        },
+      ];
+    },
+    handoff: (ctx) => ({
+      severityCall: 'watcher',
+      summary: `Stroke with dysphagia. Speech and language have ${ctx.voice.obj} on a modified diet with thickened fluids; ${ctx.voice.subj} ${ctx.voice.verb('cough')} on thin fluids.`,
+      todo: ['Modified diet only — nothing thin by mouth.', 'Sit fully upright for meals.'],
+      contingencies: [
+        `If ${ctx.voice.subj} ${ctx.voice.verb('aspirate')}, sit ${ctx.voice.obj} up, suction, and give oxygen. Antibiotics only if a fever or infiltrate develops — the first few hours are chemical, not infective.`,
+      ],
+    }),
+    expectedOrders: ['sit-up', 'o2-nc6', 'img-cxr', 'abx'],
+    contraindicatedOrders: ['morphine-comfort', 'trazodone'],
+  },
+
+  {
+    id: 'benign-sundowning',
+    label: 'Sundowning',
+    tier: 'benign',
+    ageRange: [76, 94],
+    span: 6 * HOUR,
+    admissionDx: 'Community-acquired pneumonia, completing antibiotics',
+    hiddenDx: 'Sundowning in a patient with background cognitive impairment — no acute physiology',
+    teachingPoint:
+      'Confusion at night in an elderly inpatient is common, and the answer is almost never a sedative. ' +
+      'The hard part is that it looks exactly like the early presentation of something serious, so the right ' +
+      'move is a quick set of observations to exclude the dangerous causes and then a non-pharmacologic bundle — ' +
+      'not a workup, and not haloperidol.',
+    history: (ctx) => ctx.rng.sample(
+      ['Mild cognitive impairment', 'Hearing loss', 'Poor vision', 'Lives alone', 'Previous delirium in hospital'],
+      3,
+    ),
+    baseline: (ctx) => ({
+      stateOverrides: { hr: ctx.rng.int(76, 88), svr: 15.5, edv: ctx.rng.int(110, 122) },
+      rrOffset: 3,
+    }),
+    script: (ctx) => {
+      const v = ctx.voice;
+      return [
+        {
+          at: ctx.declareAt,
+          page: `${ctx.name} in ${ctx.room} is agitated and trying to get out of bed — ${v.subj} ${v.verb('think')} ` +
+            `${v.subj} ${v.is} at home and ${v.verb('want')} to leave. Observations are all normal. Do you want anything for it?`,
+        },
+        {
+          at: jitter(ctx, ctx.declareAt + 130 * MIN),
+          page: `Still unsettled and calling out. ${v.Subj} ${v.verb('settle')} when I sit with ${v.obj}, but I can't stay.`,
+        },
+        {
+          at: jitter(ctx, ctx.declareAt + 300 * MIN),
+          page: `${ctx.room} has finally gone off to sleep. Nothing else needed overnight.`,
+        },
+      ];
+    },
+    handoff: (ctx) => ({
+      severityCall: 'stable',
+      summary: `Community-acquired pneumonia, day 4 and much improved. Afebrile, off oxygen, eating. For discharge home once the family can collect ${ctx.voice.obj}.`,
+      todo: [`${ctx.voice.Subj} ${ctx.voice.verb('get')} muddled in the evenings — the family say this happens in hospital and settles at home.`],
+      contingencies: [
+        'If confused overnight, please check a set of observations and a glucose before assuming it is just the hospital — but this is almost certainly sundowning, and sedation will make it worse.',
+      ],
+    }),
+    expectedOrders: ['vitals-now', 'delirium-precautions'],
+    contraindicatedOrders: ['haloperidol', 'lorazepam', 'trazodone', 'img-ctpe'],
+  },
+
+  {
+    id: 'benign-anxiety',
+    label: 'Anxiety with chest tightness',
+    tier: 'benign',
+    ageRange: [24, 58],
+    span: 5 * HOUR,
+    admissionDx: 'Atypical chest pain — cardiac workup complete and negative',
+    hiddenDx: 'Anxiety. The chest pain is real and the heart is fine',
+    teachingPoint:
+      'The workup is already done and it is negative. Repeating it because the symptom recurs is not diligence, ' +
+      'it is a failure to accept a result — and it costs the patient sleep, veins, and reassurance, while the ' +
+      'time it takes belongs to somebody else on the ward.',
+    history: (ctx) => ctx.rng.sample(
+      ['Generalised anxiety disorder', 'Panic attacks', 'No cardiac risk factors', 'Reflux disease', 'Recent bereavement'],
+      2,
+    ),
+    baseline: (ctx) => ({
+      stateOverrides: { hr: ctx.rng.int(82, 94), svr: 16, edv: ctx.rng.int(116, 128) },
+      rrOffset: 3,
+    }),
+    script: (ctx) => {
+      const v = ctx.voice;
+      return [
+        {
+          at: ctx.declareAt,
+          page: `${ctx.name} has chest tightness again and ${v.is} frightened. Heart rate 94, everything else normal. ` +
+            `${v.Subj} ${v.verb('say')} it feels the same as before.`,
+        },
+        {
+          at: jitter(ctx, ctx.declareAt + 140 * MIN),
+          page: `${ctx.room} is asking whether the tests could have missed something. ${v.Subj} ${v.verb('want')} to talk to a doctor.`,
+        },
+        {
+          at: jitter(ctx, ctx.declareAt + 290 * MIN),
+          page: `Settled now after a chat. ${v.Subj} ${v.verb('say')} the tightness has gone.`,
+        },
+      ];
+    },
+    handoff: (ctx) => ({
+      severityCall: 'stable',
+      summary:
+        `Atypical chest pain. Serial troponins negative, EKGs normal, CT coronary angiogram clean. Cardiology have signed off. ` +
+        `The pain is genuine but it is not the heart, and ${ctx.voice.subj} ${ctx.voice.has} been told so.`,
+      todo: ['Discharge in the morning once the anxiety team have reviewed.'],
+      contingencies: [
+        'The tightness will very likely recur overnight. It has been fully investigated — please do not repeat the workup; reassurance is the treatment.',
+      ],
+    }),
+    expectedOrders: ['vitals-now', 'img-ekg'],
+    contraindicatedOrders: ['img-ctpe', 'transfer-icu', 'lab-trop'],
   },
 
   {

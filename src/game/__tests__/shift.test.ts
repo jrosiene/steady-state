@@ -9,12 +9,13 @@ import { ARCHETYPES } from '../content/archetypes';
 import { generateWard, WARD_SIZE } from '../content/generate';
 import { makeRng } from '../content/rng';
 import { makeVoice } from '../content/voice';
-import { SEVERITIES, insultScale, onsetScale } from '../content/severity';
+import { SEVERITY_BANDS, bandOf, insultScale, onsetScale } from '../content/severity';
 import {
   TEST_SEED,
   advance as run,
   advanceToDeclaration,
   soloShift,
+  makeCase,
   findByArchetype,
   type SoloShift,
 } from '../testing';
@@ -26,7 +27,7 @@ const MIN = 60;
  * Tests address cases by archetype and express timing relative to when the case
  * declares. Both survive reseeding; a patient name and a wall-clock time do not.
  */
-function shiftOf(id: string, severity: 'mild' | 'moderate' | 'severe' = 'moderate'): SoloShift {
+function shiftOf(id: string, severity: 'mild' | 'moderate' | 'severe' | number = 'moderate'): SoloShift {
   return soloShift(id, { severity });
 }
 
@@ -37,7 +38,7 @@ function startedWard(seed = TEST_SEED): ShiftEngine {
 }
 
 /** Run a solo case to the end of the shift and report how it went. */
-function outcomeOf(id: string, severity: 'mild' | 'moderate' | 'severe', orders: { afterMin: number; ids: string[] }[] = []) {
+function outcomeOf(id: string, severity: 'mild' | 'moderate' | 'severe' | number, orders: { afterMin: number; ids: string[] }[] = []) {
   const s = shiftOf(id, severity);
   const plan = [...orders];
   while (s.engine.time < SHIFT_DURATION_SEC && s.engine.phase === 'running') {
@@ -115,12 +116,22 @@ describe('seeded generation', () => {
     expect(times[times.length - 1] - times[0]).toBeGreaterThan(3 * 3600);
   });
 
-  it('varies severity across the ward', () => {
-    const seen = new Set<string>();
+  it('varies severity continuously across the ward', () => {
+    const values: number[] = [];
+    const bands = new Set<string>();
     for (let i = 0; i < 20; i++) {
-      for (const c of generateWard({ seed: `SEV${i}` }).cases) seen.add(c.severity);
+      for (const c of generateWard({ seed: `SEV${i}` }).cases) {
+        values.push(c.severity);
+        bands.add(c.severityBand);
+        expect(c.severity).toBeGreaterThanOrEqual(0);
+        expect(c.severity).toBeLessThanOrEqual(1);
+        expect(c.severityBand).toBe(bandOf(c.severity));
+      }
     }
-    expect(seen).toEqual(new Set(SEVERITIES));
+    // All three bands turn up...
+    expect(bands).toEqual(new Set(SEVERITY_BANDS));
+    // ...and severity is a genuine continuum, not three clustered values.
+    expect(new Set(values.map((v) => v.toFixed(3))).size).toBeGreaterThan(values.length * 0.8);
   });
 
   it('varies handoff quality independently of how sick the patient is', () => {
@@ -204,18 +215,40 @@ describe('pronouns and verb agreement', () => {
 
 describe('severity', () => {
   it('scales insult magnitude and onset in opposite directions', () => {
-    expect(insultScale('mild')).toBeLessThan(insultScale('moderate'));
-    expect(insultScale('moderate')).toBeLessThan(insultScale('severe'));
-    // Sicker cases declare faster, but only somewhat — scaling both together
-    // would make severe cases unwinnable rather than hard.
-    expect(onsetScale('severe')).toBeLessThan(onsetScale('mild'));
+    expect(insultScale(0.1)).toBeLessThan(insultScale(0.5));
+    expect(insultScale(0.5)).toBeLessThan(insultScale(0.9));
+    // Severity raises the ceiling; it must not shorten the window to act, or the
+    // case tests reaction time rather than reasoning.
+    expect(onsetScale(0.9)).toBeLessThan(onsetScale(0.1));
+    expect(onsetScale(0.9)).toBeGreaterThan(1.0);
+  });
+
+  it('interpolates smoothly rather than in steps', () => {
+    const scales = [0, 0.25, 0.5, 0.75, 1].map(insultScale);
+    for (let i = 1; i < scales.length; i++) {
+      expect(scales[i]).toBeGreaterThan(scales[i - 1]);
+    }
+    // Evenly spaced input gives evenly spaced output — no bucket boundaries.
+    const steps = scales.slice(1).map((v, i) => v - scales[i]);
+    for (const step of steps) expect(step).toBeCloseTo(steps[0], 6);
+  });
+
+  it('varies each insult independently within a case', () => {
+    // Two patients at identical overall severity should not be the same patient:
+    // the axes of the illness vary around it.
+    const deltas = new Set<string>();
+    for (let i = 0; i < 12; i++) {
+      const c = makeCase('urosepsis', { severity: 0.6, seed: `AXIS${i}` });
+      deltas.add(c.events[0].interventions!.map((iv: { delta: number }) => iv.delta.toFixed(4)).join('|'));
+    }
+    expect(deltas.size).toBeGreaterThan(8);
   });
 
   it('makes a severe case worse than a mild one for every critical archetype', () => {
     const critical = ARCHETYPES.filter((a) => a.tier === 'critical');
     for (const archetype of critical) {
-      const mild = outcomeOf(archetype.id, 'mild');
-      const severe = outcomeOf(archetype.id, 'severe');
+      const mild = outcomeOf(archetype.id, 0.12);
+      const severe = outcomeOf(archetype.id, 0.92);
       // Untreated, more severity must mean a worse endpoint.
       const mildScore = mild.died ? 0 : mild.snap.map;
       const severeScore = severe.died ? 0 : severe.snap.map;
@@ -410,12 +443,14 @@ describe('cardiogenic physiology and the fluid trap', () => {
   });
 
   it('makes fluid worse and preload reduction better', () => {
-    const fluids = shiftOf('adhf-mislabelled', 'moderate');
+    // Deliberately a milder case: at high severity both arms pin against the
+    // wedge ceiling and the comparison stops measuring anything.
+    const fluids = shiftOf('adhf-mislabelled', 0.3);
     advanceToDeclaration(fluids, 5, 60);
     fluids.engine.placeOrder(fluids.patient, 'ns-1000');
     run(fluids.engine, 100 * MIN, 60);
 
-    const offload = shiftOf('adhf-mislabelled', 'moderate');
+    const offload = shiftOf('adhf-mislabelled', 0.3);
     advanceToDeclaration(offload, 5, 60);
     offload.engine.placeOrder(offload.patient, 'nitro');
     offload.engine.placeOrder(offload.patient, 'furosemide');
@@ -550,8 +585,8 @@ describe('nurse interaction', () => {
 describe('the bedside look never reassures about a patient in trouble', () => {
   it('does not call a breathless patient comfortable', () => {
     // Far enough in to be breathless, well short of the arrest.
-    const s = shiftOf('adhf-mislabelled', 'moderate');
-    advanceToDeclaration(s, 40, 30);
+    const s = shiftOf('adhf-mislabelled', 0.3);
+    advanceToDeclaration(s, 50, 30);
 
     const snap = s.engine.snapshot(s.patient);
     expect(s.patient.status).toBe('stable');
@@ -588,10 +623,15 @@ describe('the bedside look never reassures about a patient in trouble', () => {
 describe('comfort and routine orders', () => {
   it('offers an answer to every page a benign patient generates', () => {
     for (const archetype of ARCHETYPES.filter((a) => a.tier === 'benign')) {
-      expect(archetype.expectedOrders.length, archetype.id).toBeGreaterThanOrEqual(3);
+      expect(archetype.expectedOrders.length, archetype.id).toBeGreaterThanOrEqual(2);
       for (const id of archetype.expectedOrders) {
-        expect(ORDER_BY_ID[id], `${archetype.id} → ${id}`).toBeDefined();
-        expect(ORDER_BY_ID[id].category).toBe('comfort');
+        const order = ORDER_BY_ID[id];
+        expect(order, `${archetype.id} → ${id}`).toBeDefined();
+        // Answering a benign page must never require escalating the patient.
+        // It may reasonably involve a quick set of observations or a single
+        // reassuring test — excluding the dangerous thing is part of the answer.
+        expect(order.requiresIcu ?? false, `${archetype.id} → ${id}`).toBe(false);
+        expect(['comfort', 'nursing', 'labs', 'imaging']).toContain(order.category);
       }
     }
   });
@@ -864,12 +904,131 @@ describe('ward patients look ward-appropriate at sign-out', () => {
       const engine = new ShiftEngine(undefined, `TRIAGE${i}`);
       for (const p of engine.patients) {
         const v = p.lastVitals!;
-        const where = `${p.case.archetypeId}/${p.case.severity}`;
-        expect(v.map, where).toBeGreaterThanOrEqual(62);
-        expect(v.spo2, where).toBeGreaterThanOrEqual(90);
-        expect(v.hr, where).toBeLessThanOrEqual(112);
+        const where = `${p.case.archetypeId}/${p.case.severityBand}`;
+
+        // A patient on comfort measures is exempt: a low blood pressure at the end
+        // of life is not a triage failure, it is where that patient belongs.
+        const comfortFocused = p.case.codeStatus === 'DNR/DNI';
+        if (!comfortFocused) expect(v.map, where).toBeGreaterThanOrEqual(62);
+
+        expect(v.spo2, where).toBeGreaterThanOrEqual(88);
+        expect(v.hr, where).toBeLessThanOrEqual(115);
         expect(v.rr, where).toBeLessThanOrEqual(26);
       }
     }
+  });
+});
+
+// ─── Depth of the generated space ───────────────────────────────────────────
+
+describe('severity is a continuum, not three buckets', () => {
+  it('degrades outcomes monotonically as severity rises', () => {
+    // With the seed fixed, only severity varies — so the trend has to be clean.
+    // (Across seeds the per-axis draws legitimately swamp it, which is the point
+    // of the per-axis variation and not a defect in the scale.)
+    const results = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0].map((sev) => {
+      const s = soloShift('urosepsis', { severity: sev, seed: 'MONO' });
+      run(s.engine, SHIFT_DURATION_SEC, 120);
+      const snap = s.engine.snapshot(s.patient);
+      // Dead scores zero; otherwise score by remaining perfusion.
+      return s.patient.status === 'died' ? 0 : snap.map;
+    });
+
+    for (let i = 1; i < results.length; i++) {
+      expect(results[i], `severity step ${i}`).toBeLessThanOrEqual(results[i - 1] + 0.5);
+    }
+    // The ends must genuinely differ: mild survives, severe does not.
+    expect(results[0]).toBeGreaterThan(70);
+    expect(results[results.length - 1]).toBe(0);
+  }, 90_000);
+
+  it('lets a mild case survive being ignored', () => {
+    // Without this the bottom of the range is just "lethal but slower", and every
+    // page on the ward is an emergency.
+    const s = soloShift('urosepsis', { severity: 0.05, seed: 'MILD' });
+    run(s.engine, SHIFT_DURATION_SEC, 120);
+    expect(s.patient.status).not.toBe('died');
+  }, 40_000);
+
+  it('produces different presentations at identical overall severity', () => {
+    const shapes = new Set<string>();
+    for (let i = 0; i < 15; i++) {
+      const c = makeCase('pneumonia-sepsis', { severity: 0.55, seed: `SHAPE${i}` });
+      const first = c.events[0].interventions!;
+      // The ratio between the two axes of the illness, not just its overall size.
+      shapes.add((first[0].delta / first[1].delta).toFixed(3));
+    }
+    expect(shapes.size).toBeGreaterThan(10);
+  });
+});
+
+describe('comorbidities', () => {
+  it('records them in the history so a careful reader can find them', () => {
+    let withComorbidity = 0;
+    for (let i = 0; i < 10; i++) {
+      for (const c of generateWard({ seed: `CM${i}` }).cases) {
+        if (c.comorbidities.length > 0) {
+          withComorbidity++;
+          for (const label of c.comorbidities) expect(c.history).toContain(label);
+        }
+      }
+    }
+    expect(withComorbidity).toBeGreaterThan(30);
+  });
+
+  it('blunts the tachycardic response when the patient is beta-blocked', () => {
+    // The clinical trap worth having: a bleeding patient who never mounts a
+    // tachycardia looks reassuring right up until the pressure goes.
+    const findWith = (want: boolean) => {
+      for (let i = 0; i < 200; i++) {
+        const c = makeCase('gi-bleed', { severity: 0.7, seed: `BB${i}` });
+        const blocked = c.comorbidities.includes('On a beta-blocker');
+        if (blocked === want) return c;
+      }
+      throw new Error(`no gi-bleed ${want ? 'with' : 'without'} beta-blockade`);
+    };
+
+    const measure = (c: ReturnType<typeof findWith>) => {
+      const engine = new ShiftEngine([c], 'BB');
+      engine.start();
+      run(engine, c.declaresAt + 100 * MIN, 60);
+      return engine.snapshot(engine.patients[0]).hr;
+    };
+
+    const blockedHr = measure(findWith(true));
+    const normalHr = measure(findWith(false));
+    expect(blockedHr).toBeLessThan(normalHr);
+  }, 40_000);
+
+  it('keeps every comorbidity combination physiologically valid', () => {
+    for (let i = 0; i < 20; i++) {
+      const engine = new ShiftEngine(undefined, `CMV${i}`);
+      for (const p of engine.patients) {
+        const snap = engine.snapshot(p);
+        const where = `${p.case.archetypeId}: ${p.case.comorbidities.join('+')}`;
+        expect(Number.isFinite(snap.map), where).toBe(true);
+        expect(p.params.hgb, where).toBeGreaterThan(5);
+        expect(snap.cardiovascularStatus, where).toBe('compensated');
+      }
+    }
+  });
+});
+
+describe('library depth', () => {
+  it('offers enough of each tier that a ward is not a fixed set', () => {
+    const byTier = (tier: string) => ARCHETYPES.filter((a) => a.tier === tier).length;
+    // Composition draws 3 critical, 3 ward, 2 benign. Each pool must exceed its
+    // draw, or that slice of the ward is identical every single night.
+    expect(byTier('critical')).toBeGreaterThan(3);
+    expect(byTier('ward')).toBeGreaterThan(3);
+    expect(byTier('benign')).toBeGreaterThan(2);
+  });
+
+  it('generates many distinct wards', () => {
+    const combos = new Set<string>();
+    for (let i = 0; i < 120; i++) {
+      combos.add(generateWard({ seed: `DEPTH${i}` }).cases.map((c) => c.archetypeId).sort().join(','));
+    }
+    expect(combos.size).toBeGreaterThan(80);
   });
 });

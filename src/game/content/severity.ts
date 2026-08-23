@@ -1,46 +1,65 @@
+import type { Rng } from './rng';
+
 /**
- * How hard a given case bites on this particular night.
+ * How hard a given case bites on this particular night, as a continuous quantity.
  *
- * The same clinical problem is not the same problem twice. A mild urosepsis
- * wants fluids and antibiotics and will forgive you being slow; a severe one is
- * in the unit by midnight or dead by two. Varying this across replays is what
- * stops the ward becoming a memory test — the player has to read the patient in
- * front of them rather than recall what this name did last time.
+ * 0 is the mildest form of the illness that still warrants a page; 1 is as bad as
+ * this case gets. Discrete bands were a mistake: three buckets meant every
+ * urosepsis at a given label was physiologically the same patient, so the ward
+ * had thirty-three possible setups and a returning player could recognise them.
+ * A continuous axis gives a genuine spectrum, and — because each insult within a
+ * case draws its own value around the case severity — two patients at the same
+ * overall severity still present differently.
  */
-export type Severity = 'mild' | 'moderate' | 'severe';
+export type Severity = number;
+
+/** Coarse label, for display and for grouping in tests and calibration. */
+export type SeverityBand = 'mild' | 'moderate' | 'severe';
+
+export const SEVERITY_BANDS: readonly SeverityBand[] = ['mild', 'moderate', 'severe'];
+
+export function bandOf(severity: Severity): SeverityBand {
+  if (severity < 0.34) return 'mild';
+  if (severity < 0.67) return 'moderate';
+  return 'severe';
+}
+
+/** A representative value for a band, for tests that want to name one. */
+export function severityOf(band: SeverityBand): Severity {
+  switch (band) {
+    case 'mild': return 0.18;
+    case 'severe': return 0.85;
+    default: return 0.5;
+  }
+}
+
+/** Clamp to the valid range. */
+export function clampSeverity(severity: number): Severity {
+  return Math.min(1, Math.max(0, severity));
+}
 
 /**
- * A note on what severity is allowed to mean here.
+ * Interpolate a physiologic value across the severity range.
  *
- * These are admitted acute-care medicine patients: somebody has already triaged
- * them and judged a general ward appropriate. So severity does not show up as a
- * patient who is visibly peri-arrest at sign-out — their observations at 19:00
- * look like observations a day team would have been willing to leave on the
- * floor. That is precisely why the deterioration is a surprise, and why the
- * charted numbers are worth so little on their own.
- *
- * It is also fine for a severe case to be unsalvageable. Some physiology is not
- * correctable, and a game in which every patient can be saved by finding the
- * right order teaches something false about medicine. What must never happen is
- * a case that is lost before the player can act — the difference being whether
- * the outcome turned on a decision or on a stopwatch.
+ * Archetypes state what a case looks like at its mildest and at its worst; every
+ * value in between is real rather than a bucket boundary.
  */
-
-export const SEVERITIES: readonly Severity[] = ['mild', 'moderate', 'severe'];
+export function lerp(severity: Severity, atMild: number, atSevere: number): number {
+  return atMild + (atSevere - atMild) * clampSeverity(severity);
+}
 
 /**
- * Multiplier on the size of the physiologic insult.
+ * Multiplier on the size of a physiologic insult.
  *
- * A mild case is a genuine case — it still declares itself and still deserves
- * treatment — but it has enough reserve that a merely adequate response is
- * enough. Severe cases carry roughly twice the insult of mild ones.
+ * Spans 0.55 to 1.35 across the range, so the worst form of a case carries about
+ * two and a half times the insult of the mildest.
  */
 export function insultScale(severity: Severity): number {
-  switch (severity) {
-    case 'mild': return 0.62;
-    case 'severe': return 1.3;
-    default: return 1.0;
-  }
+  // The floor matters: at 0.55 even the mildest form of a case eventually killed
+  // an untreated patient, which collapses the bottom of the range into "lethal
+  // but slower". A third of full insult leaves room for a case that genuinely
+  // does not need rescuing — which the ward needs, or every page is an emergency.
+  return lerp(severity, 0.35, 1.35);
 }
 
 /**
@@ -49,19 +68,11 @@ export function insultScale(severity: Severity): number {
  * Severity raises the ceiling on how bad things get; it does not shorten the
  * window in which the player can act. Scaling magnitude and speed together made
  * severe cases unwinnable rather than hard — a severe flash oedema arrested
- * twenty-six minutes after its first page, which no realistic response can beat,
- * and which tests reaction time rather than clinical reasoning.
- *
- * So a severe case takes marginally longer to reach a much worse endpoint, and a
- * mild one unfolds gently. Time to react stays roughly constant; what changes is
- * how much trouble is waiting at the end of it.
+ * twenty-six minutes after its first page, which no realistic response beats, and
+ * which tests reaction time rather than clinical reasoning.
  */
 export function onsetScale(severity: Severity): number {
-  switch (severity) {
-    case 'mild': return 1.25;
-    case 'severe': return 1.08;
-    default: return 1.0;
-  }
+  return lerp(severity, 1.3, 1.05);
 }
 
 /**
@@ -70,29 +81,38 @@ export function onsetScale(severity: Severity): number {
  * Oxygen-carrying capacity sits upstream of SvO2, lactate, and the acidosis
  * feedback loop, so it compounds far harder than a preload change of the same
  * nominal size. At full insult scaling a severe bleed reached a haemoglobin no
- * transfusion could catch up with, which turned a hard case into an unwinnable
- * one. Half the deviation keeps a severe bleed genuinely dangerous and still
- * salvageable by someone who transfuses promptly.
+ * transfusion could catch up with.
  */
 export function bloodLossScale(severity: Severity): number {
   return 1 + (insultScale(severity) - 1) * 0.5;
 }
 
 /**
- * How much physiologic reserve the patient starts the shift with.
+ * Sample a severity for a case.
  *
- * Applied to the starting state so severity is visible before anything happens —
- * a severe case is already running a little hot at sign-out, which is exactly the
- * sort of thing a careful player notices on the handoff vitals.
+ * Drawn from a triangular-ish distribution centred below the midpoint, so most
+ * nights are survivable and a genuinely dangerous case is uncommon rather than
+ * routine. Averaging two uniforms gives the central tendency without the hard
+ * edges of a clamped Gaussian.
  */
-export function reserveScale(severity: Severity): number {
-  switch (severity) {
-    case 'mild': return 1.08;
-    case 'severe': return 0.9;
-    default: return 1.0;
-  }
+export function sampleSeverity(rng: Rng, centre: number, spread: number): Severity {
+  const draw = (rng.next() + rng.next()) / 2;
+  return clampSeverity(centre + (draw - 0.5) * 2 * spread);
+}
+
+/**
+ * A severity for one insult within a case.
+ *
+ * Each axis of a case varies independently around the case severity, so a sepsis
+ * can present with marked vasoplegia and modest third-spacing, or the reverse.
+ * This is what stops two patients at the same overall severity being the same
+ * patient — and it is closer to how illness actually distributes itself.
+ */
+export function varyAxis(rng: Rng, severity: Severity, spread = 0.16): Severity {
+  return clampSeverity(severity + (rng.next() - 0.5) * 2 * spread);
 }
 
 export function severityLabel(severity: Severity): string {
-  return severity.charAt(0).toUpperCase() + severity.slice(1);
+  const band = bandOf(severity);
+  return `${band.charAt(0).toUpperCase()}${band.slice(1)}`;
 }

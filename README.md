@@ -67,6 +67,8 @@ pronouns, rooms and nurses sampled independently. A name carries no clinical
 information, so a returning player has to read the patient in front of them
 rather than recall what a given name did last time.
 
+**Critical** — can kill within the shift:
+
 | Archetype | Presents as | Actually |
 |---|---|---|
 | `urosepsis` | Pyelonephritis, improving | Urosepsis → septic shock |
@@ -75,36 +77,84 @@ rather than recall what a given name did last time.
 | `pulmonary-embolism` | Routine post-op day 2 | Massive PE with RV failure |
 | `gi-bleed` | Stable GI bleed | Rebleeding ulcer → haemorrhagic shock |
 | `acs-cardiogenic` | Chest pain, troponins negative | Anterior STEMI → cardiogenic shock |
+
+**Ward-level** — serious, and usually fixable:
+
+| Archetype | Presents as | Actually |
+|---|---|---|
 | `copd-exacerbation` | COPD exacerbation | COPD exacerbation — the obvious answer is right |
 | `hypovolaemia` | Poor intake, AKI | Dry. A bolus fixes it |
+| `pneumothorax` | Pleural effusion, drained today | Post-procedural pneumothorax, enlarging |
+| `aspiration-event` | Stroke with dysphagia | Witnessed aspiration → chemical pneumonitis |
 | `end-of-life-pneumonia` | Aspiration pneumonia, DNR/DNI | Dying. The intervention is a conversation |
-| `benign-cellulitis`, `benign-post-op-pain` | Improving | Nothing is wrong |
 
-Each ward draws three critical cases, three ward-level ones and two benign, and
+**Benign** — nothing is wrong, and the pages keep coming:
+
+| Archetype | Presents as | Actually |
+|---|---|---|
+| `benign-cellulitis` | Cellulitis, improving | Cannot sleep |
+| `benign-post-op-pain` | Day 1 post-op | Nausea, wind pain, constipation |
+| `benign-sundowning` | Pneumonia, improving | Sundowning — looks like early sepsis, is not |
+| `benign-anxiety` | Chest pain, workup negative | Anxiety. The workup is done and it was negative |
+
+Each ward draws three critical cases, three ward-level and two benign, and
 staggers when they declare so problems arrive in sequence rather than all at once.
 Because `adhf-mislabelled` and `copd-exacerbation` are both admitted as "COPD
 exacerbation", a ward can hold two of them — and telling which is which is the
 whole job.
 
-### Severity
+### Severity is continuous
 
-Every case is dealt at **mild**, **moderate** or **severe**, which changes both
-the starting physiology and the size of the insult. Severity raises the ceiling
-on how bad things get; it deliberately does *not* shorten the window in which the
-player can act, because scaling magnitude and speed together produces cases that
-test reaction time rather than reasoning.
+Severity is a number in [0, 1], not a bucket — 0 is the mildest form of the
+illness that still warrants a page, 1 is as bad as this case gets, and everything
+between is real. Archetypes state what the case looks like at each end and the
+generator interpolates. Holding the seed fixed and walking severity gives a clean
+gradient: a urosepsis that survives the night at 0.2, dies at 05:00 if ignored at
+0.6, and dies by 01:00 at 1.0.
 
-What it does change is the *management*. A mild decompensation forgives a slow,
-adequate response. A severe one needs escalation and an inotrope, not just a
-diuretic — the correct answer is different, not merely more urgent.
+Each *axis* of a case also draws its own value around the case severity, so a
+sepsis can present with marked vasoplegia and modest third-spacing, or the
+reverse. Two patients at the same overall severity are not the same patient.
+
+Severity raises the ceiling on how bad things get; it deliberately does *not*
+shorten the window in which the player can act, because scaling magnitude and
+speed together produces cases that test reaction time rather than reasoning. What
+it changes is the *management* — a mild decompensation forgives a slow, adequate
+response; a severe one needs escalation and an inotrope, not just a diuretic.
+
+### Comorbidities
+
+Nine background conditions, sampled one or two per patient and orthogonal to
+whatever is acutely wrong. Each is a real physiologic modifier and a real clinical
+trap rather than a stat adjustment — a beta-blocked patient never mounts the
+tachycardia that normally announces a bleed, a patient with pulmonary
+hypertension has far less right ventricle in reserve when it is loaded, and
+long-standing hypertension means the "normal" blood pressure that reassures you
+is already a large fall for them. They appear in the past medical history, so the
+information is always available to a player who reads the chart.
+
+### How much variety
+
+| Axis | Depth |
+|---|---|
+| Archetypes | 15 — 6 critical, 5 ward, 4 benign |
+| Severity | continuous, with per-insult variation of ±0.16 around it |
+| Comorbidities | 9, zero to two per patient |
+| Distinct archetype combinations | ~190 per 200 generated wards |
+
+On top of that: names, ages, pronouns, rooms, nurses, allergies, histories,
+handoff quality and author, and declaration times all vary per shift.
 
 These are admitted acute-care patients, already triaged to a general ward, so
 severity never shows up as someone visibly peri-arrest at sign-out. Their 19:00
 observations look like observations a day team would have been willing to leave
 on the floor — which is exactly why the deterioration is a surprise, and why the
-charted numbers are worth so little on their own. Some severe physiology is also
-simply not correctable, and the game does not pretend otherwise; what it avoids
-is a case lost before the player could act.
+charted numbers are worth so little on their own. The exception is the patient on
+comfort measures: a low blood pressure at the end of life is not a triage failure,
+it is where that patient belongs.
+
+Some severe physiology is also simply not correctable, and the game does not
+pretend otherwise; what it avoids is a case lost before the player could act.
 
 ### Codes
 
@@ -220,6 +270,7 @@ src/game/            The night shift.
 
 src/game/content/    Ward generation.
   archetypes.ts      The clinical library, written against no particular patient
+  modifiers.ts       Comorbidities — background physiology, orthogonal to the case
   demographics.ts    Names, ages, rooms, nurses — sampled independently
   severity.ts        How hard a case bites tonight
   voice.ts           Pronouns and verb agreement for generated prose
@@ -263,7 +314,7 @@ severities, declaring at the same times.
 
 ```bash
 npm run dev      # dev server
-npm test         # 274 unit tests (Vitest)
+npm test         # 284 unit tests (Vitest)
 npm run lint
 npm run build    # production build → dist/
 ```

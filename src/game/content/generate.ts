@@ -1,9 +1,10 @@
 import type { Handoff, HandoffQuality, PatientCase } from '../types';
 import { SHIFT_DURATION_SEC } from '../types';
 import { makeRng, randomSeed, type Rng } from './rng';
+import { applyComorbidities, sampleComorbidities } from './modifiers';
 import { makeCast } from './demographics';
 import { ARCHETYPES, ARCHETYPE_BY_ID, type ArchetypeContext, type CaseArchetype, type HandoffDraft } from './archetypes';
-import { SEVERITIES, type Severity } from './severity';
+import { bandOf, clampSeverity, sampleSeverity, type Severity } from './severity';
 
 const MIN = 60;
 
@@ -25,7 +26,7 @@ export interface WardOptions {
   size?: number;
   /** Force particular archetypes, for tests and for teaching a specific case. */
   only?: string[];
-  /** Force a severity across the ward, for tests. */
+  /** Force a severity across the ward, for tests. Continuous, 0 to 1. */
   severity?: Severity;
   /** Force when every case declares. Tests use this to get a known clock. */
   declareAt?: number;
@@ -60,7 +61,9 @@ export function generateWard(options: WardOptions = {}): GeneratedWard {
   const nextDemographics = makeCast(rng, chosen.length);
 
   const cases = chosen.map((archetype, i) => {
-    const severity = options.severity ?? pickSeverity(rng, archetype);
+    const severity = options.severity !== undefined
+      ? clampSeverity(options.severity)
+      : pickSeverity(rng, archetype);
     const demo = nextDemographics(archetype.ageRange);
     const ctx: ArchetypeContext = {
       severity,
@@ -73,10 +76,28 @@ export function generateWard(options: WardOptions = {}): GeneratedWard {
     };
 
     const base = archetype.baseline(ctx);
+
+    // Background physiology, layered on top of whatever is acutely wrong. Most
+    // patients carry one or two conditions; they are what make the same insult
+    // behave differently in different people.
+    const comorbidities = sampleComorbidities(
+      rng,
+      archetype.id,
+      demo.age,
+      rng.chance(0.18) ? 0 : rng.chance(0.55) ? 1 : 2,
+    );
+    const target = {
+      params: { ...(base.paramOverrides ?? {}) },
+      state: { ...(base.stateOverrides ?? {}) },
+    };
+    applyComorbidities(comorbidities, target, rng);
+
     return {
       id: `${archetype.id}-${demo.room}`,
       archetypeId: archetype.id,
       severity,
+      severityBand: bandOf(severity),
+      comorbidities: comorbidities.map((c) => c.label),
       name: demo.name,
       age: demo.age,
       sex: demo.voice.marker,
@@ -86,12 +107,15 @@ export function generateWard(options: WardOptions = {}): GeneratedWard {
       codeStatus: archetype.codeStatus?.(ctx) ?? 'Full Code',
       allergies: demo.allergies,
       admissionDx: archetype.admissionDx,
-      history: archetype.history(ctx),
+      // Comorbidities appear in the history, so the information is available to a
+      // player who reads the chart — a beta-blocker is only a trap if it was
+      // written down and overlooked.
+      history: [...archetype.history(ctx), ...comorbidities.map((c) => c.label)],
       handoff: buildHandoff(rng, archetype, ctx),
       hiddenDx: archetype.hiddenDx,
       teachingPoint: archetype.teachingPoint,
-      paramOverrides: base.paramOverrides,
-      stateOverrides: base.stateOverrides,
+      paramOverrides: target.params,
+      stateOverrides: target.state,
       tempOffset: base.tempOffset,
       rrOffset: base.rrOffset,
       declaresAt: slots[i],
@@ -135,20 +159,17 @@ function chooseArchetypes(rng: Rng, size: number): CaseArchetype[] {
 }
 
 /**
- * Severity, biased by what the archetype is for.
+ * Severity, drawn continuously and biased by what the archetype is for.
  *
- * Benign cases have no severity worth speaking of. Critical ones lean moderate
- * so most nights are winnable, with a real chance of a severe case that will not
- * wait — which is the variation that makes a replay feel different rather than
- * merely reshuffled.
+ * Critical cases centre just below the midpoint so most nights are survivable,
+ * with a long enough tail that a genuinely dangerous one turns up often enough to
+ * matter. Ward-level cases sit lower. Benign cases have no severity worth
+ * speaking of.
  */
 function pickSeverity(rng: Rng, archetype: CaseArchetype): Severity {
-  if (archetype.tier === 'benign') return 'mild';
-  const roll = rng.next();
-  if (archetype.tier === 'critical') {
-    return roll < 0.28 ? 'mild' : roll < 0.72 ? 'moderate' : 'severe';
-  }
-  return roll < 0.4 ? 'mild' : roll < 0.85 ? 'moderate' : 'severe';
+  if (archetype.tier === 'benign') return sampleSeverity(rng, 0.2, 0.18);
+  if (archetype.tier === 'critical') return sampleSeverity(rng, 0.52, 0.42);
+  return sampleSeverity(rng, 0.38, 0.36);
 }
 
 /**
@@ -245,4 +266,3 @@ const ROLES = [
   'day registrar', 'covering resident',
 ];
 
-export { SEVERITIES };
