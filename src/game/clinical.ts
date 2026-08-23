@@ -75,51 +75,100 @@ export function chartVitals(
 // ─── Gestalt ────────────────────────────────────────────────────────────────
 
 /**
- * How the patient looks from the doorway.
- *
- * This is deliberately the most valuable thing a nurse can tell you, and it is
- * available before any number changes: perfusion and mentation degrade earlier
- * and more obviously than a cuff pressure on a compensating patient.
+ * Severity on one axis of the bedside look: 0 fine, 3 dire.
  */
-export function describeAppearance(snap: Snapshot): string {
-  if (snap.cardiovascularStatus === 'arrest') {
-    return 'unresponsive, no palpable pulse';
-  }
-  const parts: string[] = [];
+export type GestaltGrade = 0 | 1 | 2 | 3;
 
-  // Perfusion / mentation
-  if (snap.map < 55) {
-    parts.push('mottled and clammy, barely rousable');
-  } else if (snap.map < 65) {
-    parts.push('cool and diaphoretic, confused');
-  } else if (snap.lactate > 4) {
-    parts.push('pale and a little out of it');
-  } else if (snap.map < 75) {
-    parts.push('tired-looking but oriented');
-  } else {
-    parts.push('comfortable, conversant');
-  }
-
-  // Respiratory
-  if (snap.spO2 < 0.85) {
-    parts.push('visibly cyanotic, using every accessory muscle');
-  } else if (snap.spO2 < 0.90) {
-    parts.push('working hard to breathe, speaking in short phrases');
-  } else if (snap.pcwp > 22) {
-    parts.push('sitting bolt upright, crackles halfway up');
-  } else if (snap.spO2 < 0.94) {
-    parts.push('breathing a bit fast');
-  }
-
-  return parts.join('; ');
+export interface Gestalt {
+  /** Work of breathing. */
+  wob: GestaltGrade;
+  /** Perfusion and mentation. */
+  perf: GestaltGrade;
+  /** Prose description, worst finding first. */
+  text: string;
 }
 
-/** A one-line triage label for the patient board. */
+/**
+ * How the patient looks from the doorway.
+ *
+ * This is the most valuable thing a nurse can tell you: perfusion, mentation and
+ * work of breathing all degrade before a cuff pressure declares itself, and
+ * asking is free.
+ *
+ * Two independent axes, deliberately. An earlier version ran perfusion as an
+ * else-chain that always emitted something and then appended the respiratory
+ * finding, so a patient whose blood pressure was still holding — the whole point
+ * of a compensating patient — was announced as "comfortable, conversant" and only
+ * then described as drowning. The reassuring half led the sentence, which is
+ * exactly the wrong signal from the channel the game asks players to trust.
+ *
+ * Rules: the worse axis speaks first, and "comfortable" is reachable only when
+ * both axes are clear.
+ */
+export function assessAppearance(snap: Snapshot): Gestalt {
+  if (snap.cardiovascularStatus === 'arrest') {
+    return { wob: 3, perf: 3, text: 'unresponsive, no palpable pulse' };
+  }
+
+  // Pulmonary congestion is visible and audible at the bedside long before it is
+  // hypoxaemic — the patient will not lie flat, and the bases crackle.
+  const congested = snap.pcwp > 22;
+  const drowning = snap.pcwp > 28;
+
+  const wob: GestaltGrade =
+    snap.spO2 < 0.85 ? 3 :
+    snap.spO2 < 0.90 || drowning ? 2 :
+    snap.spO2 < 0.93 || congested ? 1 :
+    0;
+
+  const perf: GestaltGrade =
+    snap.map < 55 ? 3 :
+    snap.map < 65 ? 2 :
+    snap.map < 73 || snap.lactate > 3.5 ? 1 :
+    0;
+
+  if (wob === 0 && perf === 0) {
+    return { wob, perf, text: 'comfortable and conversant, no distress' };
+  }
+
+  const breathing =
+    wob === 3 ? 'visibly cyanotic and exhausted, using every accessory muscle' :
+    wob === 2 ? (congested
+      ? 'fighting for breath, bolt upright, coughing up pink froth'
+      : 'working hard to breathe, managing only short phrases') :
+    wob === 1 ? (congested
+      ? "breathless and won't lie flat, crackles up both bases"
+      : 'breathing faster than earlier, still talking in sentences') :
+    null;
+
+  const perfusion =
+    perf === 3 ? 'mottled to the knees, clammy, barely rousable' :
+    perf === 2 ? 'cool and diaphoretic, confused' :
+    perf === 1 ? 'pale and tired, slow to answer' :
+    null;
+
+  // The worse axis leads; ties go to breathing, which is the more visible.
+  const parts = wob >= perf ? [breathing, perfusion] : [perfusion, breathing];
+  return { wob, perf, text: parts.filter(Boolean).join('; ') };
+}
+
+/** Prose-only convenience wrapper. */
+export function describeAppearance(snap: Snapshot): string {
+  return assessAppearance(snap).text;
+}
+
+/**
+ * A one-line triage label for the patient board.
+ *
+ * Restricted to what a monitor actually shows. Lactate is a send-away test, so
+ * letting it colour the dot would hand the player a result they never ordered —
+ * and quietly undo the case where a septic patient looks fine on the numbers.
+ */
 export function acuityLabel(snap: Snapshot): 'ok' | 'watch' | 'unstable' | 'critical' {
   if (snap.cardiovascularStatus === 'arrest') return 'critical';
   if (snap.cardiovascularStatus === 'decompensating') return 'critical';
   if (snap.cardiovascularStatus === 'shock') return 'unstable';
-  if (snap.map < 70 || snap.spO2 < 0.92 || snap.hr > 110 || snap.lactate > 2.5) return 'watch';
+  if (snap.map < 70 || snap.spO2 < 0.92 || snap.hr > 110) return 'watch';
   return 'ok';
 }
 

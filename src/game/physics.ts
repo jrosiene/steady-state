@@ -55,8 +55,23 @@ export function stepPhysics(
     const hrCeiling = p.hrMin + hrCeilingFraction * (p.hrMax - p.hrMin);
     const pWithHrCeiling = hrCeiling < p.hrMax ? { ...p, hrMax: hrCeiling } : p;
 
+    // Baroreflex drives the patient's INTRINSIC tone toward target, comparing
+    // against the BASE state — the same treatment the mediator ODEs below get.
+    //
+    // Comparing against the effective state instead puts drug overlays inside the
+    // control loop, where an integrating controller cancels them exactly: at
+    // equilibrium the reflex simply lowers base SVR by the drug's delta and
+    // effective SVR — hence MAP — is unchanged. That silently made every
+    // vasopressor in the game inert. Sensing MAP from the effective state is
+    // still correct, since that is the pressure the baroreceptors actually see;
+    // what must stay outside the loop is the drug's contribution to tone.
+    //
+    // The reflex is not thereby defeated: a pressor raises MAP, which shrinks the
+    // error term, so the response is partially opposed with finite gain —
+    // delta / (1 + gainSvr x CO) survives — which is how a real proportional
+    // reflex behaves, and why reflex bradycardia on phenylephrine still emerges.
     const { dHr, dSvr } = computeBaroreflex(
-      effective.hr, effective.svr, derived.map, effective.hrMod, pWithHrCeiling,
+      state.hr, state.svr, derived.map, effective.hrMod, pWithHrCeiling,
     );
 
     // Mediator ODEs: targets from effective SpO2/mPAP, but compared against BASE

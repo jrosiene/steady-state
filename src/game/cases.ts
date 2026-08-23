@@ -107,8 +107,12 @@ export const CASES: PatientCase[] = [
         urgent: true,
         page: "Mr Brennan in 408 is short of breath. He's satting 88% on his 2 litres and he won't lie flat. Sounds junky in both bases to me.",
         interventions: [
-          { label: 'ADHF: contractility↓', category: 'scenario', kind: 'scenario', target: 'emax', delta: -0.3, tauOn: 900, eliminationHalfLife: 36000 },
-          { label: 'ADHF: volume overload', category: 'scenario', kind: 'scenario', target: 'edv', delta: 34, tauOn: 1200, eliminationHalfLife: 36000 },
+          // Onset stretched deliberately. Flash oedema is genuinely fast, but the
+          // window from first page to arrest has to be long enough to read the
+          // thread, think, and get three orders in — otherwise the case tests
+          // reaction speed rather than clinical reasoning.
+          { label: 'ADHF: contractility↓', category: 'scenario', kind: 'scenario', target: 'emax', delta: -0.3, tauOn: 1800, eliminationHalfLife: 36000 },
+          { label: 'ADHF: volume overload', category: 'scenario', kind: 'scenario', target: 'edv', delta: 34, tauOn: 2400, eliminationHalfLife: 36000 },
         ],
       },
       {
@@ -355,7 +359,7 @@ export const CASES: PatientCase[] = [
         ],
       },
     ],
-    expectedOrders: ['comfort-care', 'call-attending'],
+    expectedOrders: ['comfort-care', 'call-attending', 'morphine-comfort', 'delirium-precautions'],
     contraindicatedOrders: ['intubate', 'norepi', 'transfer-icu'],
   },
 
@@ -394,6 +398,9 @@ export const CASES: PatientCase[] = [
         page: "410 wants to know if she can have something for a headache. She's otherwise fine, vitals stable, sleeping on and off.",
       },
     ],
-    expectedOrders: [],
+    // Each of her pages has a matching order. Answering her quickly and moving on
+    // is the correct play; working her up is the failure mode.
+    expectedOrders: ['melatonin', 'iv-resite', 'acetaminophen'],
+    contraindicatedOrders: ['img-ctpe', 'transfer-icu'],
   },
 ];

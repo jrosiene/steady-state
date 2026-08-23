@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { ShiftEngine } from '../shift';
 import { CASES } from '../cases';
 import { ORDER_BY_ID } from '../orders';
+import { assessAppearance, describeAppearance, acuityLabel } from '../clinical';
+import { DEFAULT_PARAMS, DEFAULT_STATE } from '../../engine/constants';
+import { snapshot as computeSnapshot } from '../../engine/hemodynamics';
 import type { PatientCase, PatientRuntime } from '../types';
 import { SHIFT_DURATION_SEC } from '../types';
 
@@ -448,5 +451,124 @@ describe('order catalogue integrity', () => {
       expect(o.ack.length).toBeGreaterThan(0);
       expect(o.detail.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('the bedside look never reassures about a patient in trouble', () => {
+  it('does not call a breathless patient comfortable', () => {
+    // The regression this guards: perfusion used to be an else-chain that always
+    // emitted a clause, so a patient whose blood pressure was still holding was
+    // announced as "comfortable, conversant" and only then described as drowning.
+    const engine = started(only('brennan'));
+    const p = patient(engine, 'brennan');
+    run(engine, 80 * 60, 30);
+
+    const snap = engine.snapshot(p);
+    expect(snap.spO2).toBeLessThan(0.94);
+
+    const look = describeAppearance(snap);
+    expect(look).not.toMatch(/comfortable/i);
+    expect(look).toMatch(/breath|crackles|froth|cyanotic/i);
+  });
+
+  it('escalates the description as the patient deteriorates', () => {
+    const engine = started(only('brennan'));
+    const p = patient(engine, 'brennan');
+
+    const grades: number[] = [];
+    for (let i = 0; i < 20; i++) {
+      run(engine, 6 * 60, 30);
+      if (p.status === 'died') break;
+      grades.push(assessAppearance(engine.snapshot(p)).wob);
+    }
+
+    // Monotonically non-decreasing while untreated, and it must reach severe.
+    for (let i = 1; i < grades.length; i++) {
+      expect(grades[i]).toBeGreaterThanOrEqual(grades[i - 1]);
+    }
+    expect(Math.max(...grades)).toBeGreaterThanOrEqual(2);
+  });
+
+  it('reports congestion before the saturation falls', () => {
+    // A wet patient is breathless well before they are hypoxaemic. Reporting only
+    // on SpO2 would hide precisely the window worth acting in.
+    const congested = { ...DEFAULT_STATE, edv: 168, emax: 1.3 };
+    const snap = computeSnapshot(congested, DEFAULT_PARAMS);
+
+    expect(snap.spO2).toBeGreaterThan(0.93);
+    expect(snap.pcwp).toBeGreaterThan(22);
+    expect(assessAppearance(snap).wob).toBeGreaterThanOrEqual(1);
+    expect(describeAppearance(snap)).not.toMatch(/comfortable/i);
+  });
+
+  it('still calls a well patient comfortable', () => {
+    const snap = computeSnapshot({ ...DEFAULT_STATE }, DEFAULT_PARAMS);
+    expect(describeAppearance(snap)).toMatch(/comfortable/i);
+  });
+
+  it('keeps the triage dot to what a monitor can actually show', () => {
+    // Lactate is a send-away test; letting it colour the dot would hand the player
+    // a result they never ordered, and undo the occult-hypoperfusion case.
+    const occult = computeSnapshot({ ...DEFAULT_STATE, lactate: 6 }, DEFAULT_PARAMS);
+    expect(occult.map).toBeGreaterThan(70);
+    expect(acuityLabel(occult)).toBe('ok');
+  });
+});
+
+describe('comfort and routine orders', () => {
+  it('offers an answer to every page the low-acuity patient generates', () => {
+    const fitz = CASES.find((c) => c.id === 'fitzgerald')!;
+    // Sleep, a resited cannula, and something for a headache.
+    for (const id of ['melatonin', 'iv-resite', 'acetaminophen']) {
+      expect(ORDER_BY_ID[id], id).toBeDefined();
+      expect(fitz.expectedOrders).toContain(id);
+    }
+  });
+
+  it('masks the fever without touching the sepsis', () => {
+    const engine = started(only('whitfield'));
+    const p = patient(engine, 'whitfield');
+    run(engine, 70 * 60, 60);
+
+    engine.placeOrder(p, 'vitals-now');
+    const febrile = p.lastVitals!.tempC;
+    const toneBefore = engine.snapshot(p).noTone;
+
+    engine.placeOrder(p, 'acetaminophen');
+    run(engine, 30 * 60, 60);
+    engine.placeOrder(p, 'vitals-now');
+
+    // The number falls; the inflammatory process does not.
+    expect(p.lastVitals!.tempC).toBeLessThan(febrile);
+    expect(engine.snapshot(p).noTone).toBeGreaterThanOrEqual(toneBefore);
+  });
+
+  it('does not count a sleeping tablet as responding to a deteriorating patient', () => {
+    const engine = started(only('brennan'));
+    const p = patient(engine, 'brennan');
+    // Past his first urgent page, which is what starts the response clock.
+    run(engine, 80 * 60, 60);
+    expect(p.firstUnstableAt).not.toBeNull();
+
+    engine.placeOrder(p, 'melatonin');
+    expect(p.firstActionAt).toBeNull();
+
+    engine.placeOrder(p, 'nitro');
+    expect(p.firstActionAt).not.toBeNull();
+  });
+
+  it('makes trazodone cost something in a patient who is compensating', () => {
+    const withTraz = started(only('whitfield'));
+    const a = patient(withTraz, 'whitfield');
+    run(withTraz, 45 * 60, 60);
+    withTraz.placeOrder(a, 'trazodone');
+    run(withTraz, 2 * 3600, 60);
+
+    const control = started(only('whitfield'));
+    run(control, 45 * 60 + 2 * 3600, 60);
+
+    expect(withTraz.snapshot(a).map).toBeLessThan(
+      control.snapshot(patient(control, 'whitfield')).map,
+    );
   });
 });

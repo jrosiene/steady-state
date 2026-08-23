@@ -176,6 +176,19 @@ export class ShiftEngine {
   }
 
   /**
+   * Temperature offset applied when charting, in °C.
+   *
+   * Antipyresis is deliberately modelled here rather than in the engine: it must
+   * change the recorded number without touching the inflammatory tone driving it,
+   * so a player who treats the fever and then trusts the chart has blinded one of
+   * their own instruments while the sepsis carries on underneath.
+   */
+  private tempOffsetFor(p: PatientRuntime): number {
+    const base = p.case.tempOffset ?? 0;
+    return this.time < p.antipyreticUntil ? base - 0.9 : base;
+  }
+
+  /**
    * What the player is entitled to see for one patient.
    *
    * Monitored patients render live physiology; everyone else renders the last
@@ -186,7 +199,7 @@ export class ShiftEngine {
     const snap = this.snapshot(p);
     const live = p.monitored && !isInactive(p);
     const displayVitals = live
-      ? chartVitals(snap, this.time, p.o2Device, p.case.tempOffset, p.case.rrOffset)
+      ? chartVitals(snap, this.time, p.o2Device, this.tempOffsetFor(p), p.case.rrOffset)
       : p.lastVitals;
     return {
       runtime: p,
@@ -223,6 +236,7 @@ export class ShiftEngine {
       if (ev.page) {
         this.post(p, 'nurse', p.case.nurse, ev.page, 'page', ev.urgent);
         p.lastPageAt = this.time;
+        if (ev.urgent) this.markUnstable(p);
       }
     });
   }
@@ -232,7 +246,7 @@ export class ShiftEngine {
   private routineObservations(p: PatientRuntime) {
     if (p.monitored) {
       // Continuous monitoring keeps the chart current without a nurse walking in.
-      p.lastVitals = chartVitals(this.snapshot(p), this.time, p.o2Device, p.case.tempOffset, p.case.rrOffset);
+      p.lastVitals = chartVitals(this.snapshot(p), this.time, p.o2Device, this.tempOffsetFor(p), p.case.rrOffset);
       p.lastVitalsAt = this.time;
       return;
     }
@@ -253,7 +267,7 @@ export class ShiftEngine {
    */
   takeVitals(p: PatientRuntime) {
     const snap = this.snapshot(p);
-    const vitals = chartVitals(snap, this.time, p.o2Device, p.case.tempOffset, p.case.rrOffset);
+    const vitals = chartVitals(snap, this.time, p.o2Device, this.tempOffsetFor(p), p.case.rrOffset);
     p.lastVitals = vitals;
     p.lastVitalsAt = this.time;
 
@@ -263,6 +277,7 @@ export class ShiftEngine {
     if (concern) {
       this.post(p, 'nurse', p.case.nurse, concern.text, 'page', concern.urgent);
       p.lastPageAt = this.time;
+      if (concern.urgent) this.markUnstable(p);
     }
   }
 
@@ -412,6 +427,9 @@ export class ShiftEngine {
 
     if (order.o2Device) p.o2Device = order.o2Device;
     if (order.startsMonitoring) p.monitored = true;
+    if (order.antipyreticHours) {
+      p.antipyreticUntil = this.time + order.antipyreticHours * 3600;
+    }
     if (order.raisesHgb) {
       p.hgbTarget = Math.min(18, p.hgbTarget + order.raisesHgb);
     }
@@ -447,8 +465,23 @@ export class ShiftEngine {
     }
   }
 
+  /**
+   * Start the response clock.
+   *
+   * Deliberately triggered by the first urgent page as well as by decompensation.
+   * A patient who compensates right up to the cliff — which is most of them —
+   * would otherwise leave almost no measurable window, and the question worth
+   * scoring is how long the player took from being told something was wrong, not
+   * from the moment the pressure finally failed.
+   */
+  private markUnstable(p: PatientRuntime) {
+    if (p.firstUnstableAt === null) p.firstUnstableAt = this.time;
+  }
+
   /** Record how quickly the player acted once the patient became unstable. */
   private trackResponsiveness(p: PatientRuntime, category: string) {
+    // 'comfort' is deliberately excluded: a sleeping tablet is not a response to
+    // a deteriorating patient, and counting it as one would flatter the player.
     const therapeutic = category === 'fluids' || category === 'pressors'
       || category === 'respiratory' || category === 'meds' || category === 'disposition';
     if (therapeutic && p.firstUnstableAt !== null && p.firstActionAt === null) {
@@ -493,9 +526,7 @@ export class ShiftEngine {
     }
 
     if (snap.cardiovascularStatus !== 'arrest') {
-      if (p.firstUnstableAt === null && snap.cardiovascularStatus !== 'compensated') {
-        p.firstUnstableAt = this.time;
-      }
+      if (snap.cardiovascularStatus !== 'compensated') this.markUnstable(p);
       return;
     }
 
@@ -669,6 +700,7 @@ function createRuntime(c: PatientCase): PatientRuntime {
     orders: [],
     pendingEffects: [],
     unread: 0,
+    antipyreticUntil: -Infinity,
     lastReadAt: 0,
     firedEvents: [],
     lastPageAt: -Infinity,

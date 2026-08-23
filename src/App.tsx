@@ -10,12 +10,20 @@ import { Report } from './ui/Report';
 import EngineBench from './bench/EngineBench';
 import './ui/game.css';
 
-/** Time compression options. At 60× the twelve-hour shift takes twelve minutes. */
+/**
+ * Time compression options, with the wall-clock length of the shift.
+ *
+ * The default is 30×, not 60×. Deteriorations are deliberately quick — Brennan
+ * goes from his first page to dead in about fifty sim-minutes — and at 60× that
+ * is under a minute of real time, which is not long enough to read a thread,
+ * think, and place three orders, least of all on a phone. The clock should be
+ * pressing, not simply faster than the interface.
+ */
 const SPEEDS = [
-  { value: 30, label: '30×' },
-  { value: 60, label: '60×' },
-  { value: 120, label: '120×' },
-  { value: 240, label: '240×' },
+  { value: 15, label: '15× · 48 min shift' },
+  { value: 30, label: '30× · 24 min shift' },
+  { value: 60, label: '60× · 12 min shift' },
+  { value: 120, label: '120× · 6 min shift' },
 ];
 
 /** Largest wall-clock step accepted per frame, guarding against tab-away. */
@@ -32,7 +40,7 @@ export default function App() {
 
   const [, forceRender] = useState(0);
   const [paused, setPaused] = useState(false);
-  const [timeScale, setTimeScale] = useState(60);
+  const [timeScale, setTimeScale] = useState(30);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Which column is showing on a narrow screen. Ignored by the desktop layout,
   // where all three are visible at once.
@@ -196,10 +204,16 @@ export default function App() {
       {urgent.length > 0 && (
         <div className="alert-strip">
           <span className="dot critical" />
-          <span>
-            Urgent page waiting:{' '}
-            {urgent.map((v) => `${v.runtime.case.room} ${v.runtime.case.name}`).join(' · ')}
-          </span>
+          <span>Urgent page:</span>
+          {urgent.map((v) => (
+            <button
+              key={v.runtime.case.id}
+              className="alert-jump"
+              onClick={() => selectPatient(v.runtime.case.id)}
+            >
+              {v.runtime.case.room} {v.runtime.case.name}
+            </button>
+          ))}
         </div>
       )}
 

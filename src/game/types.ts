@@ -95,6 +95,7 @@ export interface ChatMessage {
 // ─── Orders ─────────────────────────────────────────────────────────────────
 
 export type OrderCategory =
+  | 'comfort'
   | 'fluids'
   | 'pressors'
   | 'respiratory'
@@ -144,6 +145,12 @@ export interface OrderDef {
   startsMonitoring?: boolean;
   /** Changes the charted O2 delivery device. */
   o2Device?: string;
+  /**
+   * Hours of antipyresis (°C suppression of the charted temperature) this order
+   * provides. It lowers the number on the chart without touching the inflammatory
+   * process driving it — which is exactly the clinical trap worth modelling.
+   */
+  antipyreticHours?: number;
 }
 
 /** An order the player has actually placed. */
@@ -272,6 +279,14 @@ export interface PatientRuntime {
   orders: PlacedOrder[];
   pendingEffects: PendingEffect[];
   unread: number;
+  /**
+   * Sim-time until which an antipyretic is suppressing the charted temperature.
+   *
+   * Paracetamol treats the number, not the sepsis. A player who gives it and then
+   * reads the chart to decide how the patient is doing has blinded one of their
+   * own instruments while the inflammatory process carries on underneath.
+   */
+  antipyreticUntil: number;
   /**
    * Sim-time the player last opened this thread.
    *

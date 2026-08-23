@@ -23,8 +23,8 @@ npm install
 npm run dev      # http://localhost:5173
 ```
 
-Take the pager. The shift runs at 30–240× compression, so twelve hours takes
-three to twelve minutes of real time. Pause whenever you like.
+Take the pager. The shift runs at 15–120× compression — twelve hours in six to
+forty-eight minutes of real time, defaulting to 30× — and pauses whenever you like.
 
 ### What makes it hard
 
@@ -47,7 +47,10 @@ frequently the one that decides the night.
 
 **Most pages are not emergencies.** One patient asks for a sleeping tablet three
 times. The cost of treating every page as a crisis is paid by the patient down
-the hall.
+the hall — so the order set includes the ordinary night-float material (melatonin,
+paracetamol, delirium precautions, a bowel regimen, resiting a cannula) alongside
+the resuscitation drugs. Note that paracetamol lowers the *charted* temperature
+without touching the sepsis underneath it.
 
 ### The ward
 
@@ -103,6 +106,12 @@ and treatments, and watch the traces.
 Instantaneous reflexes (HPV, hypoxic vasodilation) plus ODE-integrated mediator
 tones (NO/PGI2, endothelin-1) that couple pulmonary hypertension and hypoxaemia
 back into systemic haemodynamics.
+
+### Reflex control
+The baroreflex regulates the patient's own intrinsic tone, so drug effects add on
+top of it rather than inside the loop. Vasopressors are therefore partially
+opposed — `delta / (1 + gainSvr × CO)` survives — and reflex bradycardia on a pure
+α1 agonist emerges rather than being scripted.
 
 ### Acid-base
 Lactate as a first-order ODE driven by oxygen delivery, perfusion pressure, and
@@ -162,7 +171,7 @@ the gap. The UI renders the observed state and never leaks the true one.
 
 ```bash
 npm run dev      # dev server
-npm test         # 235 unit tests (Vitest)
+npm test         # 244 unit tests (Vitest)
 npm run lint
 npm run build    # production build → dist/
 ```

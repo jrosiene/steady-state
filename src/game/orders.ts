@@ -19,6 +19,110 @@ export const O2_LABEL_PREFIX = 'O2:';
  * even when the drug is identical.
  */
 export const ORDERS: OrderDef[] = [
+  // ─── Comfort and routine ──────────────────────────────────────────────────
+  //
+  // The bulk of a real night shift. Most of these do nothing to the physiology,
+  // and that is the point: a covering doctor spends most of the night on sleep,
+  // pain, nausea, bowels and lines, and has to keep answering those pages while
+  // staying alert to the one patient who is actually deteriorating.
+  {
+    id: 'melatonin',
+    label: 'Melatonin 3 mg PO',
+    category: 'comfort',
+    detail: 'Sleep aid with no haemodynamic effect. The safe choice in the elderly and the delirious.',
+    leadTimeSec: 900,
+    ack: "I'll give it with her evening meds.",
+  },
+  {
+    id: 'trazodone',
+    label: 'Trazodone 50 mg PO',
+    category: 'comfort',
+    detail: 'Sedating antidepressant used for sleep. Blocks α1 — drops the blood pressure a little.',
+    leadTimeSec: 900,
+    ack: 'Trazodone given.',
+    interventions: [
+      // Mild α1 antagonism. Harmless in someone well-perfused, unhelpful in
+      // someone who is quietly compensating a falling blood pressure.
+      { label: 'Trazodone (α1 block)', category: 'treatment', kind: 'bolus', target: 'svr', delta: -1.3, tauOn: 1800, eliminationHalfLife: 25200 },
+    ],
+  },
+  {
+    id: 'acetaminophen',
+    label: 'Paracetamol 650 mg PO',
+    category: 'comfort',
+    detail: 'Analgesic and antipyretic. Lowers the recorded temperature without touching the cause.',
+    leadTimeSec: 600,
+    antipyreticHours: 5,
+    ack: "Given. I'll recheck her temp in a bit.",
+  },
+  {
+    id: 'delirium-precautions',
+    label: 'Delirium precautions',
+    category: 'comfort',
+    detail: 'Lights down, reorientation, hearing aids and glasses on, mobilise, remove unnecessary lines.',
+    leadTimeSec: 600,
+    once: true,
+    ack: "Good — I'll get her glasses in and turn the lights down. I'll take the telemetry leads off if you don't need them.",
+  },
+  {
+    id: 'haloperidol',
+    label: 'Haloperidol 0.5 mg',
+    category: 'comfort',
+    detail: 'Low-dose antipsychotic for agitated delirium. A last resort after non-pharmacologic measures.',
+    leadTimeSec: 900,
+    ack: "I'll hold it unless she's a danger to herself — I'll try redirecting first.",
+  },
+  {
+    id: 'ondansetron',
+    label: 'Ondansetron 4 mg IV',
+    category: 'comfort',
+    detail: 'Antiemetic for nausea.',
+    leadTimeSec: 600,
+    ack: 'Zofran given.',
+  },
+  {
+    id: 'bowel-regimen',
+    label: 'Senna and docusate',
+    category: 'comfort',
+    detail: 'Standing bowel regimen. Overdue on anyone taking opioids.',
+    leadTimeSec: 900,
+    once: true,
+    ack: "Added to the MAR, I'll give it tonight.",
+  },
+  {
+    id: 'iv-resite',
+    label: 'Resite peripheral IV',
+    category: 'comfort',
+    detail: 'Replace an infiltrated or positional cannula. Needed before anything can run reliably.',
+    leadTimeSec: 900,
+    ack: "I'll get a fresh 20 in the other arm.",
+  },
+  {
+    id: 'incentive-spirometry',
+    label: 'Incentive spirometry',
+    category: 'comfort',
+    detail: 'Hourly while awake. Recruits basal atelectasis and improves V/Q matching a little.',
+    leadTimeSec: 600,
+    once: true,
+    ack: "I'll set her up with it and coach her.",
+    interventions: [
+      { label: 'Incentive spirometry', category: 'treatment', kind: 'infusion', target: 'qsQt', delta: -0.03, tauOn: 1800, eliminationHalfLife: 10800 },
+    ],
+  },
+  {
+    id: 'morphine-comfort',
+    label: 'Morphine 2 mg for air hunger',
+    category: 'comfort',
+    detail: 'Relieves the sensation of breathlessness. Blunts respiratory drive — appropriate when comfort is the goal, harmful when it is not.',
+    leadTimeSec: 600,
+    ack: "I'll give it and stay with her.",
+    interventions: [
+      // Hypoventilation reduces functional residual capacity and worsens V/Q —
+      // an accepted trade when the goal is comfort, and a harm when it is not.
+      { label: 'Opioid hypoventilation', category: 'treatment', kind: 'bolus', target: 'qsQt', delta: 0.04, tauOn: 900, eliminationHalfLife: 14400 },
+    ],
+  },
+
   // ─── Fluids / blood ───────────────────────────────────────────────────────
   {
     id: 'ns-500',
@@ -395,6 +499,7 @@ export const ORDER_BY_ID: Record<string, OrderDef> = Object.fromEntries(
 
 export const ORDER_CATEGORIES: { id: OrderCategory; label: string }[] = [
   { id: 'nursing', label: 'Nursing' },
+  { id: 'comfort', label: 'Comfort & routine' },
   { id: 'labs', label: 'Labs' },
   { id: 'imaging', label: 'Imaging' },
   { id: 'fluids', label: 'Fluids' },

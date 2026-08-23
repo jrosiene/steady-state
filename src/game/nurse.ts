@@ -44,12 +44,19 @@ export function answerQuestion(
       if (snap.lactate > 4) return 'Drowsy. Wakes to voice but drifts straight back off.';
       return 'Alert and oriented. Same as earlier.';
 
-    case 'breathing':
-      if (snap.spO2 < 0.85) return `Terrible — sat is ${pct(snap.spO2)}%, and he's using his neck muscles with every breath.`;
-      if (snap.spO2 < 0.90) return `Laboured. Sat ${pct(snap.spO2)}%, respiratory rate in the thirties, and he's only managing short phrases.`;
-      if (snap.pcwp > 22) return `Wet. Sat ${pct(snap.spO2)}%, crackles most of the way up, and he won't tolerate lying flat.`;
-      if (snap.spO2 < 0.94) return `A bit fast, sat ${pct(snap.spO2)}%. Not distressed but not comfortable either.`;
-      return `Easy, sat ${pct(snap.spO2)}%. No distress.`;
+    case 'breathing': {
+      // Congestion is reported on its own terms rather than only when the
+      // saturation has already fallen. A wet patient is breathless well before
+      // they are hypoxaemic, and that gap is the window worth acting in.
+      const sat = `sat ${pct(snap.spO2)}% on ${patient.o2Device}`;
+      const wet = snap.pcwp > 22 ? ' Crackles up both bases and he will not lie flat.' : '';
+      if (snap.spO2 < 0.85) return `Terrible — ${sat}, using every accessory muscle he has.${wet}`;
+      if (snap.spO2 < 0.90) return `Laboured. ${capitalise(sat)}, respiratory rate in the thirties, only managing short phrases.${wet}`;
+      if (snap.pcwp > 28) return `He is drowning. ${capitalise(sat)}, pink frothy sputum, and he is bolt upright.`;
+      if (snap.pcwp > 22) return `Wet. ${capitalise(sat)}.${wet}`;
+      if (snap.spO2 < 0.94) return `A bit fast, ${sat}. Not distressed, but not comfortable either.`;
+      return `Easy, ${sat}. No distress.`;
+    }
 
     case 'urine':
       // Urine output tracks renal perfusion pressure — an early, sensitive marker
