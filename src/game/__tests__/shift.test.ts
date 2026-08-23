@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ShiftEngine } from '../shift';
+import { ShiftEngine, roscChance, causeIsBeingTreated } from '../shift';
 import { ORDER_BY_ID } from '../orders';
 import { assessAppearance, describeAppearance, acuityLabel } from '../clinical';
 import { DEFAULT_PARAMS, DEFAULT_STATE } from '../../engine/constants';
@@ -715,5 +715,161 @@ describe('content integrity', () => {
     const first = engine.patients[0];
     expect(findByArchetype(engine, first.case.archetypeId)).toBe(first);
     expect(() => findByArchetype(engine, 'not-a-real-archetype')).toThrow();
+  });
+});
+
+// ─── Resuscitation ──────────────────────────────────────────────────────────
+
+/**
+ * Drive a case to arrest and report what the code did.
+ * Preparation is varied, not the physiology, so the arms differ only in the
+ * decisions the player made before the pulse was lost.
+ */
+function codeTrial(
+  archetypeId: string,
+  seed: number,
+  opts: { monitor?: boolean; treat?: string[] } = {},
+) {
+  const s = soloShift(archetypeId, { severity: 'severe', seed: `CODE${seed}` });
+  let setup = false;
+  while (s.engine.time < SHIFT_DURATION_SEC && s.engine.phase === 'running') {
+    run(s.engine, 60, 60);
+    if (!setup && s.engine.time >= s.declaresAt) {
+      if (opts.monitor) s.engine.placeOrder(s.patient, 'telemetry');
+      for (const o of opts.treat ?? []) s.engine.placeOrder(s.patient, o);
+      setup = true;
+    }
+  }
+  return {
+    coded: s.patient.messages.some((m) => m.text.startsWith('Code blue,')),
+    roscCount: s.patient.roscCount,
+    died: s.patient.status === 'died',
+    patient: s.patient,
+  };
+}
+
+describe('code blue', () => {
+  it('runs ACLS in cycles with a rhythm, an airway and adrenaline', () => {
+    const t = codeTrial('acs-cardiogenic', 1, { monitor: true });
+    expect(t.coded).toBe(true);
+
+    const codeMsgs = t.patient.messages.filter((m) => m.authorName === 'Code blue');
+    const all = codeMsgs.map((m) => m.text).join(' ');
+    expect(all).toMatch(/rhythm is (VF|pulseless VT|PEA|asystole)/);
+    expect(all).toMatch(/airway secured/);
+    expect(all).toMatch(/adrenaline given/);
+  }, 30_000);
+
+  it('never resuscitates a patient who is DNR/DNI', () => {
+    const s = soloShift('end-of-life-pneumonia', { severity: 'severe' });
+    run(s.engine, SHIFT_DURATION_SEC, 120);
+
+    expect(s.patient.case.codeStatus).toBe('DNR/DNI');
+    expect(s.patient.messages.some((m) => m.text.startsWith('Code blue,'))).toBe(false);
+    if (s.patient.status === 'died') {
+      expect(s.patient.outcome!.summary).toMatch(/DNR|comfort/i);
+    }
+  }, 30_000);
+
+  it('gives a witnessed arrest a far better chance than an unwitnessed one', () => {
+    // The single largest determinant of surviving an in-hospital arrest, and one
+    // the player decides hours earlier by ordering monitoring.
+    let unwitnessed = 0;
+    let witnessed = 0;
+    for (let i = 0; i < 14; i++) {
+      if (codeTrial('acs-cardiogenic', i).roscCount > 0) unwitnessed++;
+      if (codeTrial('acs-cardiogenic', i, { monitor: true }).roscCount > 0) witnessed++;
+    }
+    expect(witnessed).toBeGreaterThan(unwitnessed);
+  }, 120_000);
+
+  it('improves the odds when the reversible cause is being treated', () => {
+    let untreated = 0;
+    let treated = 0;
+    for (let i = 0; i < 14; i++) {
+      if (codeTrial('acs-cardiogenic', i, { monitor: true }).roscCount > 0) untreated++;
+      const t = codeTrial('acs-cardiogenic', i, { monitor: true, treat: ['aspirin', 'transfer-icu'] });
+      if (t.roscCount > 0) treated++;
+    }
+    expect(treated).toBeGreaterThanOrEqual(untreated);
+  }, 120_000);
+
+  it('puts a resuscitated patient in the ICU, intubated and supported', () => {
+    let found = false;
+    for (let i = 0; i < 12 && !found; i++) {
+      const t = codeTrial('acs-cardiogenic', i, { monitor: true, treat: ['aspirin', 'transfer-icu'] });
+      if (t.roscCount > 0) {
+        found = true;
+        expect(t.patient.location).toBe('icu');
+        expect(t.patient.monitored).toBe(true);
+        const rosc = t.patient.messages.find((m) => m.text.startsWith('ROSC'));
+        expect(rosc?.text).toMatch(/intubated/);
+        expect(rosc?.text).toMatch(/noradrenaline/);
+      }
+    }
+    expect(found).toBe(true);
+  }, 120_000);
+
+  it('stops after repeated ROSC is lost again within minutes', () => {
+    // A team who have restarted the heart twice and watched it stop again are not
+    // going to restart it a third time; the problem is the physiology.
+    for (let i = 0; i < 12; i++) {
+      const t = codeTrial('acs-cardiogenic', i, { monitor: true });
+      expect(t.patient.roscCount).toBeLessThanOrEqual(2);
+    }
+  }, 120_000);
+
+  it('is reproducible from the seed', () => {
+    const a = codeTrial('acs-cardiogenic', 99, { monitor: true });
+    const b = codeTrial('acs-cardiogenic', 99, { monitor: true });
+    expect(a.roscCount).toBe(b.roscCount);
+    expect(a.died).toBe(b.died);
+  }, 40_000);
+
+  it('bounds and decays the per-cycle chance of ROSC', () => {
+    const snap = computeSnapshot({ ...DEFAULT_STATE }, DEFAULT_PARAMS);
+    const base = {
+      startedAt: 0, nextCycleAt: 0, rhythm: 'VF' as const, shocks: 0,
+      epiDoses: 0, intubated: true, witnessed: true, causeAddressed: true,
+    };
+    const first = roscChance({ ...base, cycle: 1 }, snap);
+    const later = roscChance({ ...base, cycle: 5 }, snap);
+
+    expect(first).toBeGreaterThan(later);
+    expect(first).toBeLessThanOrEqual(0.6);
+    expect(later).toBeGreaterThanOrEqual(0.01);
+
+    // Unwitnessed asystole is the worst case and must stay the worst case.
+    const worst = roscChance({ ...base, cycle: 1, rhythm: 'asystole', witnessed: false, causeAddressed: false }, snap);
+    expect(worst).toBeLessThan(first);
+  });
+
+  it('counts diagnostics as knowing the cause, not treating it', () => {
+    const s = soloShift('urosepsis', { severity: 'severe' });
+    s.engine.placeOrder(s.patient, 'lab-lactate');
+    s.engine.placeOrder(s.patient, 'lab-cultures');
+    expect(causeIsBeingTreated(s.patient)).toBe(false);
+
+    s.engine.placeOrder(s.patient, 'ns-1000');
+    s.engine.placeOrder(s.patient, 'abx');
+    expect(causeIsBeingTreated(s.patient)).toBe(true);
+  });
+});
+
+describe('ward patients look ward-appropriate at sign-out', () => {
+  it('hands over observations a day team would have left on the floor', () => {
+    // These patients were triaged to a general ward. Severity must express itself
+    // in how they evolve, not in a patient who is already visibly peri-arrest.
+    for (let i = 0; i < 12; i++) {
+      const engine = new ShiftEngine(undefined, `TRIAGE${i}`);
+      for (const p of engine.patients) {
+        const v = p.lastVitals!;
+        const where = `${p.case.archetypeId}/${p.case.severity}`;
+        expect(v.map, where).toBeGreaterThanOrEqual(62);
+        expect(v.spo2, where).toBeGreaterThanOrEqual(90);
+        expect(v.hr, where).toBeLessThanOrEqual(112);
+        expect(v.rr, where).toBeLessThanOrEqual(26);
+      }
+    }
   });
 });

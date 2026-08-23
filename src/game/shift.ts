@@ -4,6 +4,7 @@ import { snapshot as computeSnapshot, applyInterventions, interventionEffect } f
 import { clampEffective } from '../engine/solver';
 import { stepPhysics, WARD_PHYSICS_DT } from './physics';
 import { generateWard } from './content/generate';
+import { makeRng, type Rng } from './content/rng';
 import { ORDER_BY_ID, O2_LABEL_PREFIX } from './orders';
 import { chartVitals, resolveLabPanel, clockTime } from './clinical';
 import { answerQuestion, vitalsConcern, NURSE_QUESTIONS } from './nurse';
@@ -14,6 +15,8 @@ import {
   type MessageKind,
   type PatientCase,
   type PatientRuntime,
+  type CodeRhythm,
+  type CodeState,
   type PatientView,
   type ShiftPhase,
   type Vitals,
@@ -46,8 +49,28 @@ const NOTICE_INTERVAL_SHOCK = 45 * 60;
  */
 const TAU_HGB = 1800;
 
-/** Time from arrest to the resuscitation resolving. */
-const ARREST_RESOLUTION_SEC = 8 * 60;
+/** One ACLS cycle: rhythm check to rhythm check. */
+const CODE_CYCLE_SEC = 2 * 60;
+
+/**
+ * Cycles before the team stops.
+ *
+ * Eight two-minute cycles is sixteen minutes of ACLS, which is about how long a
+ * resuscitation runs before the room agrees there is nothing more to do.
+ */
+const MAX_CODE_CYCLES = 8;
+
+/**
+ * A re-arrest inside this window is the same resuscitation, not a new one.
+ *
+ * A patient whose circulation fails again three minutes after ROSC has not had
+ * two codes; they have had one long one that keeps failing. Logging each as a
+ * fresh event reads wrong and, worse, hands the team unlimited attempts.
+ */
+const RE_ARREST_WINDOW = 15 * 60;
+
+/** Restorations of circulation before the team accepts it is not working. */
+const MAX_ROSC_ATTEMPTS = 2;
 
 /**
  * Window after a rapid response call within which an arrest counts as witnessed
@@ -89,6 +112,12 @@ export class ShiftEngine {
   version = 0;
 
   private snapshots = new Map<string, Snapshot>();
+  /**
+   * Seeded from the ward seed, so resuscitations are reproducible.
+   * A code is the one place the game rolls dice, and a replayed seed has to
+   * replay the same night — including whether the code worked.
+   */
+  private rng: Rng;
 
   /** The seed this ward was generated from, so a shift can be replayed. */
   readonly seed: string;
@@ -102,6 +131,7 @@ export class ShiftEngine {
       this.seed = ward.seed;
       this.patients = ward.cases.map((c) => createRuntime(c));
     }
+    this.rng = makeRng(`${this.seed}:code`);
     this.refreshSnapshots();
   }
 
@@ -524,15 +554,13 @@ export class ShiftEngine {
     return p.unread > 0 && p.messages.some((m) => m.urgent && m.time > p.lastReadAt);
   }
 
-  // ─── Arrest and outcomes ──────────────────────────────────────────────────
+  // ─── Arrest and resuscitation ─────────────────────────────────────────────
 
   private resolveArrest(p: PatientRuntime) {
     const snap = this.snapshot(p);
 
     if (p.status === 'arrested') {
-      if (p.arrestResolvesAt !== null && this.time >= p.arrestResolvesAt) {
-        this.concludeResuscitation(p);
-      }
+      if (p.code && this.time >= p.code.nextCycleAt) this.runCodeCycle(p);
       return;
     }
 
@@ -541,7 +569,10 @@ export class ShiftEngine {
       return;
     }
 
-    // The patient has arrested.
+    this.beginArrest(p, snap);
+  }
+
+  private beginArrest(p: PatientRuntime, snap: Snapshot) {
     const comfortFocused = p.orders.some((o) => o.orderId === 'comfort-care');
     const dnr = p.case.codeStatus === 'DNR/DNI';
 
@@ -568,62 +599,229 @@ export class ShiftEngine {
       return;
     }
 
-    p.status = 'arrested';
-    p.arrestResolvesAt = this.time + ARREST_RESOLUTION_SEC;
-    p.monitored = true;
-    this.post(p, 'system', 'Code blue', `Code blue called on ${p.case.name} in ${p.case.room}. CPR in progress.`, 'event', true);
-    this.version += 1;
-  }
-
-  /**
-   * Decide whether the arrest is survivable.
-   *
-   * Survival turns on preparedness, not luck: an arrest that is witnessed and
-   * monitored, or one that happens somewhere with a team already at the bedside,
-   * gets immediate high-quality CPR. An unwitnessed arrest on a ward bed does not,
-   * and that difference is the whole argument for escalating early.
-   */
-  private concludeResuscitation(p: PatientRuntime) {
-    const witnessed =
-      p.location === 'icu' ||
-      (p.rapidResponseAt !== null && this.time - p.rapidResponseAt <= RRT_WITNESS_WINDOW);
-
-    if (!witnessed) {
+    // Repeated failure of the same resuscitation. A team who have restored
+    // circulation twice and watched it fail again within minutes stop, because the
+    // problem is the physiology and not the effort.
+    if (
+      p.lastRoscAt !== null &&
+      this.time - p.lastRoscAt < RE_ARREST_WINDOW &&
+      p.roscCount >= MAX_ROSC_ATTEMPTS
+    ) {
       p.status = 'died';
       p.outcome = {
         status: 'died',
         at: this.time,
         summary:
-          `Died at ${clockTime(this.time)}. Unwitnessed arrest in a ward bed; ` +
-          'down time before CPR began was not survivable.',
+          `Died at ${clockTime(this.time)} after ${p.roscCount} periods of return of circulation, ` +
+          'each lost again within minutes. The underlying cause was never reversed.',
       };
-      this.post(p, 'system', 'Code blue', `Resuscitation was unsuccessful. Time of death ${clockTime(this.time)}.`, 'event', true);
+      this.post(
+        p,
+        'system',
+        'Code blue',
+        `${p.case.name} has arrested again, minutes after the last ROSC. The team have stopped — ` +
+          `they can restart the heart but nothing has treated what is stopping it. Time of death ${clockTime(this.time)}.`,
+        'event',
+        true,
+      );
       this.version += 1;
       return;
     }
 
-    // ROSC. The patient returns on full support — intubated, on an inopressor —
-    // which buys time but does not treat whatever caused the arrest. If the
-    // underlying physiology is not corrected, they will arrest again.
+    // Witnessed means someone saw it happen or the monitor caught it. That single
+    // fact does more for survival than anything the code team will do next, and it
+    // was decided hours earlier by whether the player put them on a monitor.
+    const witnessed =
+      p.monitored ||
+      p.location === 'icu' ||
+      (p.rapidResponseAt !== null && this.time - p.rapidResponseAt <= RRT_WITNESS_WINDOW);
+
+    p.status = 'arrested';
+    p.monitored = true;
+    p.code = {
+      startedAt: this.time,
+      cycle: 0,
+      nextCycleAt: this.time + CODE_CYCLE_SEC,
+      rhythm: this.arrestRhythm(this.snapshot(p)),
+      shocks: 0,
+      epiDoses: 0,
+      // A patient who arrests again after a ROSC still has the tube in.
+      intubated: p.o2Device === 'Vent',
+      witnessed,
+      causeAddressed: causeIsBeingTreated(p),
+    };
+
+    this.post(
+      p,
+      'system',
+      'Code blue',
+      `Code blue, room ${p.case.room}. ${witnessed ? 'Witnessed arrest' : 'Found unresponsive'} — ` +
+        `CPR in progress, rhythm is ${p.code.rhythm}. Critical care are at the bedside.`,
+      'event',
+      true,
+    );
+    void snap;
+    this.version += 1;
+  }
+
+  /**
+   * What rhythm the patient arrests in, from how they got there.
+   *
+   * A primary pump failure fibrillates. Someone who has been bleeding, obstructed
+   * or hypoxic arrests in PEA — a heart still trying to beat against a problem
+   * nobody has fixed. Someone profoundly acidotic for an hour has nothing left and
+   * arrests in asystole, which is the rhythm with almost no survivors.
+   */
+  private arrestRhythm(snap: Snapshot): CodeRhythm {
+    if (snap.pH < 7.0) return this.rng.chance(0.72) ? 'asystole' : 'PEA';
+    const primaryCardiac = snap.emaxEffective < 1.0 && snap.pcwp > 20;
+    if (primaryCardiac && this.rng.chance(0.45)) {
+      return this.rng.chance(0.7) ? 'VF' : 'pulseless VT';
+    }
+    return this.rng.chance(0.78) ? 'PEA' : 'asystole';
+  }
+
+  /** One two-minute cycle of ACLS. */
+  private runCodeCycle(p: PatientRuntime) {
+    const code = p.code!;
+    code.cycle += 1;
+    code.nextCycleAt = this.time + CODE_CYCLE_SEC;
+    // Re-checked every cycle, so a player who works out the cause mid-code and
+    // orders the treatment still changes the odds.
+    code.causeAddressed = causeIsBeingTreated(p);
+
+    const t = p.state.time;
+    const beats: string[] = [];
+
+    // The airway goes in first.
+    if (!code.intubated) {
+      code.intubated = true;
+      p.o2Device = 'Vent';
+      p.interventions.push(
+        { label: `${O2_LABEL_PREFIX} Vent`, category: 'treatment', kind: 'infusion', target: 'fiO2', delta: 0.79, tauOn: 30, eliminationHalfLife: 600, startTime: t },
+        { label: 'Vent recruitment', category: 'treatment', kind: 'infusion', target: 'qsQt', delta: -0.1, tauOn: 120, eliminationHalfLife: 600, startTime: t },
+      );
+      beats.push('airway secured and the tube is confirmed');
+    }
+
+    // Shock a shockable rhythm; adrenaline every other cycle otherwise.
+    if (code.rhythm === 'VF' || code.rhythm === 'pulseless VT') {
+      code.shocks += 1;
+      beats.push(`shocked at ${code.shocks === 1 ? 200 : 360} joules`);
+      // Repeated shocks degrade a fibrillating heart toward PEA or asystole.
+      if (code.shocks >= 2 && this.rng.chance(0.4)) {
+        code.rhythm = this.rng.chance(0.6) ? 'PEA' : 'asystole';
+        beats.push(`rhythm has degenerated to ${code.rhythm}`);
+      }
+    }
+
+    if (code.cycle % 2 === 1) {
+      code.epiDoses += 1;
+      p.interventions.push(
+        { label: 'Adrenaline (code)', category: 'treatment', kind: 'bolus', target: 'svr', delta: 7, tauOn: 30, eliminationHalfLife: 180, startTime: t },
+        { label: 'Adrenaline (code, inotropy)', category: 'treatment', kind: 'bolus', target: 'emax', delta: 0.6, tauOn: 30, eliminationHalfLife: 180, startTime: t },
+      );
+      beats.push(`adrenaline given, dose ${code.epiDoses}`);
+    }
+
+    // Report what the team did before checking whether it worked. Rolling first
+    // and narrating second loses the beat entirely on a cycle that achieves ROSC —
+    // the airway went in and the adrenaline was given, and nobody heard about it.
+    const askAboutCause = code.cycle === 2 && !code.causeAddressed;
+    const detail = beats.length > 0 ? ` — ${beats.join(', ')}` : '';
+    this.post(
+      p,
+      'system',
+      'Code blue',
+      `${minutesInto(code, this.time)} minutes in. Rhythm check: ${code.rhythm}${detail}.` +
+        (askAboutCause ? ' The team are asking whether there is a reversible cause they should be treating.' : ''),
+      'event',
+      askAboutCause,
+    );
+
+    const snap = this.snapshot(p);
+    if (this.rng.chance(roscChance(code, snap))) {
+      this.achieveRosc(p, code);
+      return;
+    }
+
+    if (code.cycle >= MAX_CODE_CYCLES) {
+      this.concludeCode(p, code);
+      return;
+    }
+
+    this.version += 1;
+  }
+
+  /**
+   * Return of spontaneous circulation.
+   *
+   * The post-arrest state is set explicitly rather than integrated out of the
+   * arrest, because ROSC genuinely is a discontinuity: circulation resumes at once
+   * onto a heart that has been stunned and a metabolic debt that has not yet been
+   * repaid. Whatever caused the arrest is still running underneath, which is why a
+   * patient who is not also treated will simply arrest again.
+   */
+  private achieveRosc(p: PatientRuntime, code: CodeState) {
+    const minutes = minutesInto(code, this.time);
+    const t = p.state.time;
+
     p.status = 'stable';
-    p.arrestResolvesAt = null;
+    p.code = null;
+    p.roscCount += 1;
+    p.lastRoscAt = this.time;
     p.location = 'icu';
     p.monitored = true;
     p.o2Device = 'Vent';
 
-    const t = p.state.time;
+    p.state = {
+      ...p.state,
+      hr: 98,
+      svr: 18,
+      // Post-arrest myocardial stunning: the heart resumes, weakened.
+      emax: Math.max(0.6, p.state.emax * 0.78),
+      // The oxygen debt is real, but restored circulation starts repaying it —
+      // and leaving it at the arrest value puts the pH low enough that the
+      // acidosis penalty alone re-arrests the patient within a minute.
+      lactate: Math.min(p.state.lactate, 7),
+    };
+
     p.interventions.push(
-      { label: 'Post-arrest: vasopressor', category: 'treatment', kind: 'infusion', target: 'svr', delta: 11, tauOn: 60, eliminationHalfLife: 150, startTime: t },
-      { label: 'Post-arrest: inotrope', category: 'treatment', kind: 'infusion', target: 'emax', delta: 0.9, tauOn: 60, eliminationHalfLife: 150, startTime: t },
-      { label: `${O2_LABEL_PREFIX} Vent`, category: 'treatment', kind: 'infusion', target: 'fiO2', delta: 0.79, tauOn: 60, eliminationHalfLife: 300, startTime: t },
+      { label: 'Post-arrest: noradrenaline', category: 'treatment', kind: 'infusion', target: 'svr', delta: 9, tauOn: 60, eliminationHalfLife: 150, startTime: t },
+      { label: 'Post-arrest: inotrope', category: 'treatment', kind: 'infusion', target: 'emax', delta: 0.7, tauOn: 60, eliminationHalfLife: 150, startTime: t },
     );
 
     this.post(
       p,
       'system',
       'Code blue',
-      `ROSC after ${Math.round(ARREST_RESOLUTION_SEC / 60)} minutes of CPR. ${p.case.name} is intubated and on ` +
-      'noradrenaline in the ICU. The arrest bought time — it did not treat the cause.',
+      `ROSC at ${clockTime(this.time)}, after ${minutes} minutes of CPR and ${code.epiDoses} dose${code.epiDoses === 1 ? '' : 's'} of adrenaline. ` +
+        `${p.case.name} is intubated, on noradrenaline, and going to the unit. ` +
+        `The arrest bought time — it did not treat whatever caused it.`,
+      'event',
+      true,
+    );
+    this.version += 1;
+  }
+
+  /** The team stops. */
+  private concludeCode(p: PatientRuntime, code: CodeState) {
+    const minutes = minutesInto(code, this.time);
+    p.status = 'died';
+    p.code = null;
+    p.outcome = {
+      status: 'died',
+      at: this.time,
+      summary: code.witnessed
+        ? `Died at ${clockTime(this.time)} after ${minutes} minutes of resuscitation for ${code.rhythm}.`
+        : `Died at ${clockTime(this.time)}. Unwitnessed arrest on a ward bed; ${minutes} minutes of CPR without response.`,
+    };
+    this.post(
+      p,
+      'system',
+      'Code blue',
+      `${minutes} minutes of ACLS with no return of circulation. The team agreed to stop. ` +
+        `Time of death ${clockTime(this.time)}.`,
       'event',
       true,
     );
@@ -719,7 +917,9 @@ function createRuntime(c: PatientCase): PatientRuntime {
     firstUnstableAt: null,
     firstActionAt: null,
     rapidResponseAt: null,
-    arrestResolvesAt: null,
+    code: null,
+    roscCount: 0,
+    lastRoscAt: null,
     outcome: null,
   };
 
@@ -733,6 +933,60 @@ function createRuntime(c: PatientCase): PatientRuntime {
 /** Patients who no longer need physiology stepped or events fired. */
 export function isInactive(p: PatientRuntime): boolean {
   return p.status === 'died';
+}
+
+// ─── Resuscitation odds ─────────────────────────────────────────────────────
+
+/**
+ * Per-cycle chance of return of spontaneous circulation.
+ *
+ * Calibrated against what in-hospital arrest actually achieves. A witnessed,
+ * monitored arrest with a reversible cause already being treated comes out around
+ * 55–60% ROSC across a full code; an unwitnessed asystolic arrest in a patient who
+ * has been acidotic for an hour comes out near 10%. Those are roughly the real
+ * numbers, and the spread between them is entirely made of decisions the player
+ * took hours earlier.
+ *
+ * The per-cycle chance decays: a heart that has not restarted in the first four
+ * minutes is markedly less likely to restart in the next four.
+ */
+export function roscChance(code: CodeState, snap: Snapshot): number {
+  // Whether anyone saw it happen dominates everything else.
+  let p = code.witnessed ? 0.18 : 0.05;
+
+  // Shockable rhythms are the ones with survivors.
+  if (code.rhythm === 'VF' || code.rhythm === 'pulseless VT') p += 0.12;
+
+  // Treating the cause is what makes the arrest reversible rather than terminal.
+  if (code.causeAddressed) p += 0.1;
+
+  // A profoundly acidotic myocardium does not respond to adrenaline.
+  if (snap.pH < 7.0) p -= 0.06;
+
+  p *= Math.pow(0.7, Math.max(0, code.cycle - 1));
+  return Math.max(0.01, Math.min(0.6, p));
+}
+
+/**
+ * Whether the reversible cause is actually being treated.
+ *
+ * Read from the orders the player has standing: two or more of the case's key
+ * therapeutic measures counts as the cause being addressed. Diagnostics do not
+ * count — knowing what is wrong does not resuscitate anybody.
+ */
+export function causeIsBeingTreated(p: PatientRuntime): boolean {
+  const placed = new Set(p.orders.map((o) => o.orderId));
+  const therapeutic = p.case.expectedOrders.filter((id) => {
+    if (!placed.has(id)) return false;
+    const category = ORDER_BY_ID[id]?.category;
+    return category !== 'labs' && category !== 'imaging' && category !== 'nursing';
+  });
+  return therapeutic.length >= 2;
+}
+
+/** Whole minutes since the code started. */
+function minutesInto(code: CodeState, now: number): number {
+  return Math.max(1, Math.round((now - code.startedAt) / 60));
 }
 
 // ─── Formatting ─────────────────────────────────────────────────────────────

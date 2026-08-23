@@ -609,8 +609,8 @@ export const ARCHETYPES: CaseArchetype[] = [
     baseline: (ctx) => ({
       stateOverrides: {
         hr: ctx.rng.int(88, 98),
-        svr: 13.5,
-        edv: ctx.rng.int(92, 102),
+        svr: 14.5,
+        edv: ctx.rng.int(98, 108),
         qsQt: bySeverity(ctx, 0.13, 0.16, 0.19),
         noTone: 0.2,
       },

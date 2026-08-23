@@ -294,6 +294,43 @@ export interface PatientCase {
 
 export type PatientLocation = 'floor' | 'icu';
 
+/**
+ * Presenting rhythm at the arrest.
+ *
+ * Not cosmetic: shockable rhythms carry markedly better outcomes than PEA or
+ * asystole, and which one a patient arrests in follows from how they got there.
+ * A primary cardiac event tends to fibrillate; a patient who has been bleeding or
+ * obstructed for an hour arrests in PEA; one who has been profoundly acidotic for
+ * longer than that arrests in asystole.
+ */
+export type CodeRhythm = 'VF' | 'pulseless VT' | 'PEA' | 'asystole';
+
+/**
+ * A running resuscitation.
+ *
+ * The code team is physically at the bedside and runs ACLS themselves — the
+ * covering doctor is on the phone and does not direct compressions. What the
+ * player's decisions determine is the ground the code starts from: whether the
+ * arrest was witnessed and monitored, whether the reversible cause had been
+ * treated, and how acidotic the patient already was. Those are the things that
+ * actually move survival, and they were all decided before the pulse was lost.
+ */
+export interface CodeState {
+  startedAt: number;
+  /** Completed two-minute ACLS cycles. */
+  cycle: number;
+  /** Sim-time of the next rhythm check. */
+  nextCycleAt: number;
+  rhythm: CodeRhythm;
+  shocks: number;
+  epiDoses: number;
+  intubated: boolean;
+  /** Monitored or directly observed at the moment of arrest. */
+  witnessed: boolean;
+  /** Whether the underlying cause was being treated. Re-checked each cycle. */
+  causeAddressed: boolean;
+}
+
 export type PatientStatus =
   | 'stable'
   | 'arrested'
@@ -373,8 +410,12 @@ export interface PatientRuntime {
   firstActionAt: number | null;
   /** Sim-time a rapid response was called, if ever. */
   rapidResponseAt: number | null;
-  /** Pending arrest resolution time, once the patient has coded. */
-  arrestResolvesAt: number | null;
+  /** The running resuscitation, while one is in progress. */
+  code: CodeState | null;
+  /** How many times circulation has been restored tonight. */
+  roscCount: number;
+  /** Sim-time of the most recent ROSC, for recognising an immediate re-arrest. */
+  lastRoscAt: number | null;
   outcome: PatientOutcome | null;
 }
 

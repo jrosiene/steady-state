@@ -98,6 +98,46 @@ What it does change is the *management*. A mild decompensation forgives a slow,
 adequate response. A severe one needs escalation and an inotrope, not just a
 diuretic — the correct answer is different, not merely more urgent.
 
+These are admitted acute-care patients, already triaged to a general ward, so
+severity never shows up as someone visibly peri-arrest at sign-out. Their 19:00
+observations look like observations a day team would have been willing to leave
+on the floor — which is exactly why the deterioration is a surprise, and why the
+charted numbers are worth so little on their own. Some severe physiology is also
+simply not correctable, and the game does not pretend otherwise; what it avoids
+is a case lost before the player could act.
+
+### Codes
+
+An arrest starts a real resuscitation rather than a coin flip. The critical care
+team run ACLS in two-minute cycles — rhythm checks, an airway, adrenaline,
+defibrillation where the rhythm is shockable — for up to sixteen minutes, and the
+messages report it as it happens.
+
+The rhythm follows from how the patient got there: a primary pump failure
+fibrillates, a bleeding or obstructed patient arrests in PEA, and one who has been
+profoundly acidotic for an hour arrests in asystole. Return of circulation is
+rolled per cycle from the things that actually move in-hospital arrest survival —
+whether it was witnessed, whether the rhythm is shockable, whether the reversible
+cause is being treated, and how acidotic the myocardium already is — decaying with
+each failed cycle.
+
+The resulting rates land about where the real ones do:
+
+| Preparation | ROSC |
+|---|---|
+| Unwitnessed, cause untreated | ~15% |
+| Monitored, cause untreated | ~30–45% |
+| Monitored, cause being treated | ~60% |
+
+Every one of those differences was decided hours before the pulse was lost. ROSC
+puts the patient in the ICU, intubated and on noradrenaline, with a stunned
+myocardium and an oxygen debt — and whatever caused the arrest still running
+underneath. A team who restore circulation twice and lose it again within minutes
+stop, because at that point the problem is the physiology and not the effort.
+
+The clearest result from calibrating it: with the cause properly treated, most
+patients never arrest at all.
+
 Because outcomes come from physiology rather than from a script, the traps are
 real: a fluid bolus in the mislabelled heart failure patient raises the wedge,
 floods more alveoli, and drops the saturation. Nothing special-cases it — that is
@@ -223,7 +263,7 @@ severities, declaring at the same times.
 
 ```bash
 npm run dev      # dev server
-npm test         # 264 unit tests (Vitest)
+npm test         # 274 unit tests (Vitest)
 npm run lint
 npm run build    # production build → dist/
 ```

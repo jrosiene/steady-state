@@ -9,6 +9,23 @@
  */
 export type Severity = 'mild' | 'moderate' | 'severe';
 
+/**
+ * A note on what severity is allowed to mean here.
+ *
+ * These are admitted acute-care medicine patients: somebody has already triaged
+ * them and judged a general ward appropriate. So severity does not show up as a
+ * patient who is visibly peri-arrest at sign-out — their observations at 19:00
+ * look like observations a day team would have been willing to leave on the
+ * floor. That is precisely why the deterioration is a surprise, and why the
+ * charted numbers are worth so little on their own.
+ *
+ * It is also fine for a severe case to be unsalvageable. Some physiology is not
+ * correctable, and a game in which every patient can be saved by finding the
+ * right order teaches something false about medicine. What must never happen is
+ * a case that is lost before the player can act — the difference being whether
+ * the outcome turned on a decision or on a stopwatch.
+ */
+
 export const SEVERITIES: readonly Severity[] = ['mild', 'moderate', 'severe'];
 
 /**
