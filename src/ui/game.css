@@ -50,6 +50,9 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 
 .app {
   height: 100vh;
+  /* Mobile browsers shrink the visible area as their chrome appears; dvh tracks
+     the real viewport so the layout never hides content behind the URL bar. */
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -111,6 +114,10 @@ select.ctrl { padding: 6px 8px; }
 
 .column {
   min-height: 0;
+  /* Grid children default to min-width:auto and refuse to shrink below their
+     content. Without this, a horizontally scrollable descendant (the ask-bar)
+     stretches the whole column to its intrinsic width rather than scrolling. */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border);
@@ -577,7 +584,117 @@ select.ctrl { padding: 6px 8px; }
 }
 .link-btn:hover { color: var(--accent); }
 
+/* ─── Mobile pane switcher ───────────────────────────────────────────────── */
+
+/* Hidden on desktop, where all three columns are visible at once. */
+.tabbar { display: none; }
+
 @media (max-width: 1150px) {
-  .workspace { grid-template-columns: 240px minmax(0, 1fr) 330px; }
+  .workspace { grid-template-columns: 220px minmax(0, 1fr) 320px; }
   .rules, .debrief-cols { grid-template-columns: 1fr; }
+}
+
+/*
+  Below 860px there is no room for three columns side by side, so the workspace
+  becomes one column and a bottom tab bar switches between them. Only the active
+  pane is mounted in the layout; the others are display:none rather than
+  unmounted, so scroll position and the order palette's open tab survive a switch.
+*/
+@media (max-width: 860px) {
+  .workspace {
+    /* minmax(0, 1fr), not 1fr — see the min-width note on .column. */
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .column {
+    border-right: none;
+    display: none;
+  }
+  .workspace[data-pane='patients'] .column-patients,
+  .workspace[data-pane='thread'] .column-thread,
+  .workspace[data-pane='chart'] .column-chart {
+    display: flex;
+  }
+
+  .tabbar {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    flex: 0 0 auto;
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    /* Keep the bar clear of the iOS home indicator. */
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  .tab {
+    background: none;
+    border: none;
+    border-top: 2px solid transparent;
+    color: var(--text-faint);
+    padding: 11px 4px;
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 46px;
+  }
+  .tab.active { color: var(--accent); border-top-color: var(--accent); background: var(--panel-2); }
+
+  /* Topbar has to survive a 360px-wide phone. */
+  .topbar { gap: 10px; padding: 8px 12px; flex-wrap: wrap; }
+  .brand { font-size: 13px; }
+  .clock { font-size: 19px; }
+  .clock-sub { font-size: 10px; }
+  .topbar .ctrl { padding: 8px 10px; font-size: 12px; min-height: 40px; }
+
+  .detail { padding: 12px; }
+  .thread { padding: 12px; }
+  .msg { max-width: 88%; }
+
+  /*
+    The question chips wrap to five rows on a phone, crowding out the conversation
+    they are attached to. One swipeable row instead: the thread keeps the screen.
+  */
+  .ask-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 9px 12px;
+  }
+  .ask-bar::-webkit-scrollbar { display: none; }
+  .ask-btn { flex: 0 0 auto; white-space: nowrap; }
+
+  /* The tab bar already carries the unread count; the topbar copy is redundant. */
+  .topbar .unread-note { display: none; }
+
+  /* Bigger touch targets throughout. */
+  .ask-btn { padding: 9px 12px; font-size: 12.5px; min-height: 38px; }
+  .order-tab { padding: 8px 11px; font-size: 12px; min-height: 36px; }
+  .order-btn { padding: 11px 12px; }
+  .patient-card { padding: 12px 14px; }
+
+  .sheet { padding: 24px 16px 48px; }
+  .sheet h1 { font-size: 24px; }
+  .sheet .lede { font-size: 14px; }
+  .scoreboard { grid-template-columns: repeat(2, 1fr); }
+  .vitals-grid { grid-template-columns: repeat(3, 1fr); }
+  .start-btn { width: 100%; padding: 15px 20px; }
+}
+
+@media (max-width: 400px) {
+  .vitals-grid { grid-template-columns: repeat(2, 1fr); }
+  .pc-vitals { font-size: 11px; gap: 8px; }
+}
+
+/* Count of unread messages sitting on a pane the player is not currently looking at. */
+.tab-badge {
+  background: var(--critical);
+  color: #1a0505;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 9px;
+  padding: 1px 6px;
 }

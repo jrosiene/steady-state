@@ -34,6 +34,9 @@ export default function App() {
   const [paused, setPaused] = useState(false);
   const [timeScale, setTimeScale] = useState(60);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Which column is showing on a narrow screen. Ignored by the desktop layout,
+  // where all three are visible at once.
+  const [pane, setPane] = useState<MobilePane>('patients');
   const [showBench, setShowBench] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
 
@@ -69,11 +72,17 @@ export default function App() {
   const views = engine.views();
   const selected = views.find((v) => v.runtime.case.id === selectedId) ?? null;
 
-  // Clear the unread badge while the player is actually reading the thread.
+  // Clear the unread badge only while the thread is genuinely on screen.
+  //
+  // On a phone the thread shares the viewport with two other panes, so a selected
+  // patient is not necessarily a visible one. Marking read on selection alone
+  // would swallow pages the player never saw — the opposite of what this game is
+  // about — so the narrow layout additionally requires the thread pane to be open.
   useEffect(() => {
-    if (selected && selected.runtime.unread > 0) {
-      engine.markRead(selected.runtime);
-    }
+    if (!selected || selected.runtime.unread === 0) return;
+    const narrow = window.matchMedia('(max-width: 860px)').matches;
+    if (narrow && pane !== 'thread') return;
+    engine.markRead(selected.runtime);
   });
 
   // These are plain functions rather than useCallback: the engine is mutable and
@@ -82,6 +91,7 @@ export default function App() {
   const selectPatient = (id: string) => {
     setSelectedId(id);
     setRefusal(null);
+    setPane('thread');
   };
 
   const handleOrder = (orderId: string) => {
@@ -99,6 +109,7 @@ export default function App() {
     setSelectedId(null);
     setPaused(false);
     setRefusal(null);
+    setPane('patients');
   };
 
   // Unopened urgent pages, surfaced as a banner so a crashing patient cannot be
@@ -128,6 +139,7 @@ export default function App() {
           onStart={() => {
             engine.start();
             setSelectedId(engine.patients[0]?.case.id ?? null);
+            setPane('patients');
             forceRender((n) => n + 1);
           }}
           onBench={() => setShowBench(true)}
@@ -161,7 +173,7 @@ export default function App() {
         <span className="spacer" />
 
         {engine.unreadTotal > 0 && (
-          <span className="clock-sub">
+          <span className="clock-sub unread-note">
             {engine.unreadTotal} unread message{engine.unreadTotal === 1 ? '' : 's'}
           </span>
         )}
@@ -199,13 +211,13 @@ export default function App() {
         </div>
       )}
 
-      <div className="workspace">
-        <div className="column">
+      <div className="workspace" data-pane={pane}>
+        <div className="column column-patients">
           <div className="column-head">Patients ({views.filter((v) => v.runtime.status !== 'died').length})</div>
           <PatientBoard views={views} selectedId={selectedId} onSelect={selectPatient} />
         </div>
 
-        <div className="column">
+        <div className="column column-thread">
           <div className="column-head">
             {selected
               ? `${selected.runtime.case.nurse} · Room ${selected.runtime.case.room}`
@@ -225,7 +237,7 @@ export default function App() {
           )}
         </div>
 
-        <div className="column">
+        <div className="column column-chart">
           <div className="column-head">Chart &amp; orders</div>
           {selected ? (
             <PatientDetail view={selected} onOrder={handleOrder} time={engine.time} />
@@ -234,6 +246,35 @@ export default function App() {
           )}
         </div>
       </div>
+
+      <nav className="tabbar">
+        <button
+          className={`tab${pane === 'patients' ? ' active' : ''}`}
+          onClick={() => setPane('patients')}
+        >
+          Patients
+          {engine.unreadTotal > 0 && <span className="tab-badge">{engine.unreadTotal}</span>}
+        </button>
+        <button
+          className={`tab${pane === 'thread' ? ' active' : ''}`}
+          onClick={() => setPane('thread')}
+          disabled={!selected}
+        >
+          Messages
+          {selected && selected.runtime.unread > 0 && (
+            <span className="tab-badge">{selected.runtime.unread}</span>
+          )}
+        </button>
+        <button
+          className={`tab${pane === 'chart' ? ' active' : ''}`}
+          onClick={() => setPane('chart')}
+          disabled={!selected}
+        >
+          Chart &amp; orders
+        </button>
+      </nav>
     </div>
   );
 }
+
+type MobilePane = 'patients' | 'thread' | 'chart';
