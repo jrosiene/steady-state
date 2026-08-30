@@ -6,11 +6,12 @@ import { stepPhysics, WARD_PHYSICS_DT } from './physics';
 import { generateWard } from './content/generate';
 import { makeRng, type Rng } from './content/rng';
 import { ORDER_BY_ID, O2_LABEL_PREFIX } from './orders';
-import { chartVitals, resolveLabPanel, clockTime } from './clinical';
+import { assessAppearance, chartVitals, resolveLabPanel, clockTime, type Gestalt } from './clinical';
 import { answerQuestion, vitalsConcern, NURSE_QUESTIONS } from './nurse';
 import { attendingAdvice, specialtyAdvice } from './consults';
 import {
   SHIFT_DURATION_SEC,
+  type CaseEvent,
   type ChatMessage,
   type MessageKind,
   type PatientCase,
@@ -22,9 +23,27 @@ import {
   type Vitals,
 } from './types';
 
+/**
+ * How long a nurse holds a page that the patient has not yet earned.
+ *
+ * Thirty minutes: long enough that a slow-burning case declares itself on the
+ * physiology rather than on a timer, short enough that a genuinely mild problem
+ * still gets mentioned before the night is over.
+ */
+const PAGE_PATIENCE = 30 * 60;
+
 /** Routine observation intervals, in sim-seconds. */
 const VITALS_INTERVAL_FLOOR = 4 * 3600;
 const VITALS_INTERVAL_ICU = 3600;
+/**
+ * Observations on someone the nurse is already worried about.
+ *
+ * Forty minutes: a ward patient escalated to hourly-or-better obs, which is what
+ * happens in practice the moment anyone rings the doctor about them.
+ */
+const VITALS_INTERVAL_WATCHED = 40 * 60;
+/** Minimum gap between nurse-initiated calls, so a fast decline is not a wall of text. */
+const CALLBACK_COOLDOWN = 8 * 60;
 
 /**
  * How long a deteriorating patient can go unnoticed before the nurse happens to
@@ -174,6 +193,7 @@ export class ShiftEngine {
       this.fireCaseEvents(p);
       this.resolveLabs(p);
       this.routineObservations(p);
+      this.checkGestaltRise(p);
       this.checkDeterioration(p);
       this.resolveArrest(p);
       this.pruneInterventions(p);
@@ -273,12 +293,65 @@ export class ShiftEngine {
       if (ev.hgbDelta) {
         p.hgbTarget = Math.max(3, p.hgbTarget + ev.hgbDelta);
       }
-      if (ev.page) {
-        this.post(p, 'nurse', p.case.nurse, ev.page, 'page', ev.urgent);
-        p.lastPageAt = this.time;
-        if (ev.urgent) this.markUnstable(p);
+      if (!ev.page) return;
+
+      // The insult starts now; the phone call waits for the patient to show it.
+      if (ev.pageWhen) {
+        p.pendingPages.push({ event: i, sendBy: this.time + (ev.pageWhen.by ?? PAGE_PATIENCE) });
+        return;
       }
+      this.sendPage(p, ev.page, ev.urgent === true);
     });
+
+    this.drainPendingPages(p);
+  }
+
+  /**
+   * Release held pages once the bedside catches up with the script.
+   *
+   * A page is sent when the axis it is about reaches the grade it describes, or
+   * when the nurse's patience runs out — whichever comes first. Either way the
+   * words are generated against the gestalt at the moment of sending, so a page
+   * that goes out early because the deadline expired describes a patient who is
+   * only slightly off rather than one who is dying.
+   */
+  private drainPendingPages(p: PatientRuntime) {
+    if (p.pendingPages.length === 0) return;
+
+    const gestalt = assessAppearance(this.snapshot(p), p.case.baselineDrive);
+    const still: { event: number; sendBy: number }[] = [];
+
+    for (const pending of p.pendingPages) {
+      const ev = p.case.events[pending.event];
+      const trigger = ev.pageWhen!;
+      const grade = trigger.axis === 'wob' ? gestalt.wob
+        : trigger.axis === 'perf' ? gestalt.perf
+        : Math.max(gestalt.wob, gestalt.perf);
+
+      if (grade < (trigger.grade ?? 1) && this.time < pending.sendBy) {
+        still.push(pending);
+        continue;
+      }
+      // Urgency is what the nurse finds, not what the script hoped for.
+      this.sendPage(p, ev.page!, grade >= 2, gestalt);
+    }
+
+    p.pendingPages = still;
+  }
+
+  private sendPage(
+    p: PatientRuntime,
+    page: NonNullable<CaseEvent['page']>,
+    urgent: boolean,
+    gestalt?: Gestalt,
+  ) {
+    const body = typeof page === 'string'
+      ? page
+      : page(gestalt ?? assessAppearance(this.snapshot(p), p.case.baselineDrive));
+
+    this.post(p, 'nurse', p.case.nurse, body, 'page', urgent);
+    p.lastPageAt = this.time;
+    if (urgent) this.markUnstable(p);
   }
 
   // ─── Observation ──────────────────────────────────────────────────────────
@@ -291,7 +364,11 @@ export class ShiftEngine {
       return;
     }
 
-    const interval = p.location === 'icu' ? VITALS_INTERVAL_ICU : VITALS_INTERVAL_FLOOR;
+    // A patient the nurse has already reported on is being watched, not left for
+    // the next routine round.
+    const interval = p.location === 'icu' ? VITALS_INTERVAL_ICU
+      : p.reportedGrade > 0 ? VITALS_INTERVAL_WATCHED
+      : VITALS_INTERVAL_FLOOR;
     if (this.time - p.lastVitalsAt < interval) return;
 
     this.takeVitals(p);
@@ -305,7 +382,7 @@ export class ShiftEngine {
    * and a badge on every observation round would drown the pages that matter.
    * Concern is what raises the alarm.
    */
-  takeVitals(p: PatientRuntime) {
+  takeVitals(p: PatientRuntime, { silent = false } = {}) {
     const snap = this.snapshot(p);
     const vitals = chartVitals(snap, this.time, p.o2Device, this.tempOffsetFor(p), p.case.rrOffset);
     p.lastVitals = vitals;
@@ -313,12 +390,61 @@ export class ShiftEngine {
 
     this.post(p, 'nurse', p.case.nurse, formatVitals(vitals), 'vitals', false, true);
 
-    const concern = vitalsConcern(vitals, snap);
+    // `silent` charts the numbers without the commentary, for the case where the
+    // nurse has just said the same thing in their own words.
+    const concern = silent ? null : vitalsConcern(vitals, snap, p.case.baselineDrive);
     if (concern) {
       this.post(p, 'nurse', p.case.nurse, concern.text, 'page', concern.urgent);
       p.lastPageAt = this.time;
       if (concern.urgent) this.markUnstable(p);
     }
+  }
+
+  /**
+   * The call-back: a nurse rings again when the patient is worse than the last
+   * thing they told you.
+   *
+   * Without this the only unprompted channel was `checkDeterioration`, which
+   * keys off cardiovascular status — so a patient drowning at a saturation of 60%
+   * with an intact blood pressure was 'compensated', said nothing, and turned up
+   * four hours later on the routine observation round already unsalvageable. That
+   * is not how a ward works. Whoever paged you about someone keeps looking at
+   * them, and rings back when the picture changes for the worse.
+   *
+   * The trigger is a *rise* against what has already been reported, which is why
+   * a patient who was handed over unwell does not page immediately, and a patient
+   * who improves and then deteriorates again pages a second time.
+   */
+  private checkGestaltRise(p: PatientRuntime) {
+    if (p.status !== 'stable' || isInactive(p)) return;
+
+    const snap = this.snapshot(p);
+    if (snap.cardiovascularStatus === 'arrest') return;
+
+    const gestalt = assessAppearance(snap, p.case.baselineDrive);
+    const grade = Math.max(gestalt.wob, gestalt.perf);
+
+    // Improvement resets the reference: the nurse's sense of the patient tracks
+    // the patient, so getting better and worse again is worth a second call.
+    if (grade <= p.reportedGrade) {
+      p.reportedGrade = grade;
+      return;
+    }
+    if (this.time - p.lastPageAt < CALLBACK_COOLDOWN) return;
+
+    p.reportedGrade = grade;
+    const v = p.case.voice;
+    const lead = grade >= 2
+      ? `Calling you back about ${p.case.room} — ${v.subj} ${v.is} worse than when I rang.`
+      : `Just so you know, ${p.case.room} has changed since I last looked.`;
+
+    this.post(p, 'nurse', p.case.nurse, `${lead} ${capitalise(gestalt.text)}.`, 'page', grade >= 2);
+    p.lastPageAt = this.time;
+    if (grade >= 2) this.markUnstable(p);
+
+    // The nurse who went in to look also charts what they found — the numbers,
+    // without repeating back the impression they have just given.
+    this.takeVitals(p, { silent: true });
   }
 
   /**
@@ -892,6 +1018,9 @@ function createRuntime(c: PatientCase): PatientRuntime {
     params.mapSetpoint = computeSnapshot(state, params).map;
   }
 
+  // How this patient looked when the day team handed them over.
+  const handoverGestalt = assessAppearance(computeSnapshot(state, params), c.baselineDrive);
+
   const runtime: PatientRuntime = {
     case: c,
     state,
@@ -912,7 +1041,11 @@ function createRuntime(c: PatientCase): PatientRuntime {
     antipyreticUntil: -Infinity,
     lastReadAt: 0,
     firedEvents: [],
+    pendingPages: [],
     lastPageAt: -Infinity,
+    // Seeded from how the patient looks at handover, so someone who arrives on
+    // the shift already unwell is not paged about for being what they were.
+    reportedGrade: Math.max(handoverGestalt.wob, handoverGestalt.perf),
     lastVitalsAt: 0,
     firstUnstableAt: null,
     firstActionAt: null,
@@ -1024,4 +1157,8 @@ function describeEndState(p: PatientRuntime, snap: Snapshot): string {
     default:
       return 'Critically unwell on a ward bed at handover — never escalated.';
   }
+}
+
+function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }

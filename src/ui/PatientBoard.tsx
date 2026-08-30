@@ -49,7 +49,7 @@ function PatientCard({
   const acuity = dead
     ? 'gone'
     : live
-      ? acuityLabel(view.snapshot)
+      ? acuityLabel(view.snapshot, view.runtime.case.baselineDrive)
       : acuityFromVitals(displayVitals);
 
   return (

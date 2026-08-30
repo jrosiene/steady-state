@@ -7,6 +7,9 @@ import type {
 } from '../engine/types';
 import type { Severity, SeverityBand } from './content/severity';
 import type { Voice } from './content/voice';
+// Type-only, and therefore erased: clinical.ts owns the bedside grading, and a
+// scripted page now has to be able to speak in its terms.
+import type { Gestalt } from './clinical';
 
 // ─── Time ───────────────────────────────────────────────────────────────────
 
@@ -172,14 +175,53 @@ export interface PlacedOrder {
 
 // ─── Cases ──────────────────────────────────────────────────────────────────
 
+/**
+ * When a nurse actually picks up the phone.
+ *
+ * An insult applied at time T does not produce a patient who looks unwell at
+ * time T — it produces one who looks unwell as the insult ramps in over the next
+ * ten or twenty minutes, and at a low severity it may never produce one at all.
+ * Pages used to fire on the same schedule as the insults they described, so the
+ * nurse announced a patient who was "using accessory muscles, only a few words at
+ * a time" at the exact moment that patient was still comfortable and conversant
+ * — and stayed comfortable, on every other channel the player could check.
+ *
+ * A page carrying a trigger is held back until the bedside catches up.
+ */
+export interface PageTrigger {
+  /** Which axis of the bedside look this page is about. */
+  axis: 'wob' | 'perf' | 'either';
+  /** Hold until that axis reaches this grade. Defaults to 1 — visibly not right. */
+  grade?: 1 | 2 | 3;
+  /**
+   * Send anyway this many sim-seconds after `at`.
+   *
+   * A nurse asked to keep an eye on someone rings eventually even if the numbers
+   * never move; what changes is what they say, because the text is written
+   * against the grade they actually find.
+   */
+  by?: number;
+}
+
 /** A scripted beat in a case's illness trajectory. */
 export interface CaseEvent {
   /** Sim-seconds after shift start when this fires. */
   at: number;
   /** Physiologic insult applied at this moment. */
   interventions?: InterventionSpec[];
-  /** Nurse page delivered at this moment. */
-  page?: string;
+  /**
+   * Nurse page. Given as a function when the words depend on how the patient
+   * looks by the time the call is actually made.
+   */
+  page?: string | ((gestalt: Gestalt) => string);
+  /**
+   * Hold the page until the physiology is visible at the bedside.
+   *
+   * When set, `urgent` is derived at send time from the grade the nurse finds
+   * rather than authored, so a mild exacerbation is a routine call and a severe
+   * one is a rapid response — from the same line of script.
+   */
+  pageWhen?: PageTrigger;
   urgent?: boolean;
   /**
    * Change in haemoglobin (g/dL) at this moment — blood loss.
@@ -272,12 +314,22 @@ export interface PatientCase {
   /**
    * Baseline respiratory rate offset (breaths/min).
    *
-   * The model derives respiratory rate from acid-base and oxygenation alone, which
-   * leaves every patient at a textbook 13 until something goes wrong. Chronic lung
-   * disease, deconditioning, pain and frailty all set a higher resting rate, and a
-   * resting tachypnoea is often the first thing a nurse notices.
+   * Chronic lung disease is modelled — shunt and congestion drive ventilation
+   * directly — so this carries only what the model has no representation for:
+   * pain, deconditioning, frailty, anxiety. A resting tachypnoea is often the
+   * first thing a nurse notices, and it should come from the right place.
    */
   rrOffset?: number;
+  /**
+   * This patient's ventilatory drive at the moment they were handed over.
+   *
+   * The reference against which work of breathing is judged. Without it, a
+   * patient whose chronic lung disease already puts them at a shunt fraction of
+   * 0.15 reads as working hard while they sleep, and the one signal that should
+   * mean "something changed" means nothing at all. Computed once at generation,
+   * from the case's own baseline physiology.
+   */
+  baselineDrive: number;
   /**
    * Sim-time at which this case first declares itself.
    *
@@ -404,8 +456,23 @@ export interface PatientRuntime {
   lastReadAt: number;
   /** Indices of case events already fired. */
   firedEvents: number[];
+  /**
+   * Pages whose insult has been applied but whose words are not true yet.
+   *
+   * Each entry is the index of a case event carrying a `pageWhen` trigger,
+   * waiting for the patient to actually look the way the page describes.
+   */
+  pendingPages: { event: number; sendBy: number }[];
   /** Sim-time of the last nurse-initiated page, for escalation pacing. */
   lastPageAt: number;
+  /**
+   * The worst bedside grade the nurse has already communicated.
+   *
+   * The reference for calling back: a nurse rings when the patient is worse than
+   * the last thing they said, not on a timer, and not again about a picture the
+   * doctor already has.
+   */
+  reportedGrade: number;
   /** Sim-time of the last charted vitals, for routine-rounds pacing. */
   lastVitalsAt: number;
   /** Sim-time the patient first met shock criteria — drives late-recognition scoring. */

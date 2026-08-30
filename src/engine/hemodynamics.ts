@@ -166,7 +166,7 @@ export function derive(
     map < 50 || co < 2.0 || pH < 7.2 ? 'shock' :
     'compensated';
 
-  return { emaxEffective, sv: svFinal, co: coFinal, map, rvSv, rvCo, mPAP, pcwp, spO2, paO2, svO2, pH, hco3, be, cardiovascularStatus };
+  return { emaxEffective, sv: svFinal, co: coFinal, map, rvSv, rvCo, mPAP, pcwp, qsQtEffective: effectiveQsQt, spO2, paO2, svO2, pH, hco3, be, cardiovascularStatus };
 }
 
 /** Build a full snapshot (state + derived) for the UI layer. */

@@ -237,8 +237,11 @@ export default function App() {
 
         <div className="column column-thread">
           <div className="column-head">
+            {/* The patient is what the thread is about; the nurse is who is on the
+                other end of it. Naming only the nurse made a page that mentioned
+                the patient by name read as if it had come from another room. */}
             {selected
-              ? `${selected.runtime.case.nurse} · Room ${selected.runtime.case.room}`
+              ? `${selected.runtime.case.name} · Room ${selected.runtime.case.room} · ${selected.runtime.case.nurse}`
               : 'Messages'}
             {selected?.runtime.location === 'icu' && <span className="tag icu">ICU</span>}
             {selected?.live && <span className="tag live">Monitored</span>}

@@ -59,6 +59,15 @@ export interface CaseArchetype {
     stateOverrides?: Record<string, number>;
     paramOverrides?: Record<string, number>;
     tempOffset?: number;
+    /**
+     * The non-pulmonary part of this patient's resting respiratory rate — pain,
+     * frailty, deconditioning, anxiety.
+     *
+     * Deliberately not the pulmonary part: shunt and congestion drive ventilation
+     * in the model now, so an archetype that sets a baseline `qsQt` is already
+     * getting the tachypnoea that goes with it. Carrying both counted the lung
+     * twice and handed patients over at rates the day team would not have.
+     */
     rrOffset?: number;
   };
   script(ctx: ArchetypeContext): CaseEvent[];
@@ -138,17 +147,25 @@ export const ARCHETYPES: CaseArchetype[] = [
       return [
         {
           at: ctx.declareAt,
+          // The fever is real at the moment it is charted, so this one goes out on
+          // schedule; what it must not do is claim a patient who looks unwell.
           page: `Sorry to bother you — ${ctx.name} in ${ctx.room} has spiked a temperature. ` +
-            `${v.Subj} ${v.is} still making sense but ${v.subj} ${v.verb('seem')} a bit off to me.`,
+            `Observations are otherwise not far off, but ${v.subj} ${v.verb('seem')} a bit flat to me.`,
           interventions: [
             insult(ctx, { label: 'Sepsis: inflammatory tone', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.25, tauOn: 900, eliminationHalfLife: 36000 }),
           ],
         },
         {
           at: jitter(ctx, ctx.declareAt + 80 * MIN),
-          urgent: true,
-          page: `${v.Subj} ${v.is} confused now — ${v.subj} ${v.isnt} sure where ${v.subj} ${v.is}. ` +
-            `The pressure is down and the heart rate is up. I'm worried about ${v.obj}.`,
+          pageWhen: { axis: 'perf', grade: 1 },
+          page: (g) => g.perf >= 2
+            ? `${v.Subj} ${v.is} confused now — ${v.subj} ${v.isnt} sure where ${v.subj} ${v.is}. ` +
+              `The pressure is down and the heart rate is up. I'm worried about ${v.obj}.`
+            : g.perf >= 1
+            ? `${v.Subj} ${v.verb('look')} washed out and ${v.subj} ${v.is} slower to answer than earlier. ` +
+              `The pressure has drifted down a little. Nothing dramatic, but it is not the direction I want.`
+            : `${v.Subj} ${v.verb('seem')} a bit brighter than earlier and the observations are reasonable. ` +
+              `Still not eating, though.`,
           interventions: [
             insult(ctx, { label: 'Sepsis: vasoplegia', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.28, tauOn: 1200, eliminationHalfLife: 36000 }),
             insult(ctx, { label: 'Sepsis: third-spacing', category: 'scenario', kind: 'scenario', target: 'edv', delta: -22, tauOn: 1800, eliminationHalfLife: 36000 }),
@@ -156,8 +173,14 @@ export const ARCHETYPES: CaseArchetype[] = [
         },
         {
           at: jitter(ctx, ctx.declareAt + 170 * MIN),
-          urgent: true,
-          page: `${v.Subj} ${v.is} mottled up to the knees and barely rousable. I need someone up here.`,
+          pageWhen: { axis: 'perf', grade: 2 },
+          page: (g) => g.perf >= 3
+            ? `${v.Subj} ${v.is} mottled up to the knees and barely rousable. I need someone up here.`
+            : g.perf >= 2
+            ? `${v.Subj} ${v.is} cold to the elbows and I can barely get a pressure sitting ${v.obj} up. ` +
+              `Can you come and look at ${v.obj}?`
+            : `I'm still not happy with ${v.obj}. ${v.Subj} ${v.is} quiet in ${v.obj}self and the ` +
+              `pressure has not come back up. Nothing alarming on the numbers.`,
           interventions: [
             insult(ctx, { label: 'Sepsis: progression', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.3, tauOn: 1800, eliminationHalfLife: 36000 }),
           ],
@@ -201,7 +224,7 @@ export const ARCHETYPES: CaseArchetype[] = [
         qsQt: bySeverity(ctx, 0.06, 0.14),
         noTone: bySeverity(ctx, 0.07, 0.24),
       },
-      rrOffset: 7,
+      rrOffset: 4,
       tempOffset: 0.3,
     }),
     script: (ctx) => {
@@ -209,9 +232,15 @@ export const ARCHETYPES: CaseArchetype[] = [
       return [
         {
           at: ctx.declareAt,
-          urgent: true,
-          page: `${ctx.name} in ${ctx.room} is working harder to breathe and the saturations have come down. ` +
-            `${v.Subj} ${v.is} warm to touch and the pressure is softer than it was.`,
+          pageWhen: { axis: 'either', grade: 1 },
+          page: (g) => g.wob >= 2 || g.perf >= 2
+            ? `${ctx.name} in ${ctx.room} is working harder to breathe and the saturations have come down. ` +
+              `${v.Subj} ${v.is} warm to touch and the pressure is softer than it was.`
+            : g.wob >= 1 || g.perf >= 1
+            ? `${ctx.name} in ${ctx.room} is breathing a bit faster than earlier and ${v.is} warm to touch. ` +
+              `Saturations are holding for now. Wanted you to know before it gets away from us.`
+            : `${ctx.name} in ${ctx.room} is warm to touch and hasn't eaten this evening. ` +
+              `Observations are unremarkable, but ${v.subj} ${v.verb('seem')} off to me.`,
           interventions: [
             insult(ctx, { label: 'Pneumonia: shunt↑', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.12, tauOn: 1800, eliminationHalfLife: 43200 }),
             insult(ctx, { label: 'Pneumonia: sepsis', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.3, tauOn: 1800, eliminationHalfLife: 43200 }),
@@ -219,8 +248,13 @@ export const ARCHETYPES: CaseArchetype[] = [
         },
         {
           at: jitter(ctx, ctx.declareAt + 110 * MIN),
-          urgent: true,
-          page: `Getting worse. ${v.Subj} ${v.verb('look')} exhausted and I can barely get a pressure.`,
+          pageWhen: { axis: 'either', grade: 2 },
+          page: (g) => g.perf >= 2
+            ? `Getting worse. ${v.Subj} ${v.verb('look')} exhausted and I can barely get a pressure.`
+            : g.wob >= 2
+            ? `Getting worse — ${v.subj} ${v.is} tiring with the breathing and only managing short sentences now.`
+            : `Still febrile and the oxygen requirement has not come down. ${v.Subj} ${v.verb('look')} tired, ` +
+              `but ${v.subj} ${v.is} holding ${v.poss} own for the moment.`,
           interventions: [
             insult(ctx, { label: 'Sepsis: progression', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.28, tauOn: 2400, eliminationHalfLife: 43200 }),
             insult(ctx, { label: 'Pneumonia: shunt↑↑', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.07, tauOn: 2400, eliminationHalfLife: 43200 }),
@@ -272,16 +306,22 @@ export const ARCHETYPES: CaseArchetype[] = [
       // more dilated and the more volume-tolerant the ventricle already is — without
       // that, a severe case starts further up the curve and falls off it immediately.
       paramOverrides: { edvCritBase: bySeverity(ctx, 370, 490) },
-      rrOffset: 7,
+      rrOffset: 6,
     }),
     script: (ctx) => {
       const v = ctx.voice;
       return [
         {
           at: ctx.declareAt,
-          urgent: true,
-          page: `${ctx.name} in ${ctx.room} is short of breath. The saturations are down and ${v.subj} ${v.isnt} ` +
-            `tolerating lying flat. Sounds junky in both bases to me.`,
+          pageWhen: { axis: 'wob', grade: 1 },
+          page: (g) => g.wob >= 2
+            ? `${ctx.name} in ${ctx.room} is short of breath. The saturations are down and ${v.subj} ${v.isnt} ` +
+              `tolerating lying flat. Sounds junky in both bases to me.`
+            : g.wob >= 1
+            ? `${ctx.name} in ${ctx.room} has asked for another pillow and ${v.isnt} settling. ` +
+              `Breathing faster than earlier, and it sounds junky at both bases.`
+            : `${ctx.name} in ${ctx.room} has asked for another pillow and ${v.isnt} settling. ` +
+              `Observations are fine. It sounds a little junky at the bases to me.`,
           interventions: [
             // Severity is deliberately NOT applied to the contractility hit.
             // Filling pressure goes as EDV/emax, so scaling both compounds into a
@@ -296,8 +336,14 @@ export const ARCHETYPES: CaseArchetype[] = [
         },
         {
           at: jitter(ctx, ctx.declareAt + 80 * MIN),
-          urgent: true,
-          page: `Worse — bolt upright, and ${v.subj} ${v.is} coughing up pink froth. I've put ${v.obj} on a non-rebreather.`,
+          pageWhen: { axis: 'wob', grade: 2 },
+          page: (g) => g.wob >= 3
+            ? `Worse — bolt upright, and ${v.subj} ${v.is} coughing up pink froth. I've put ${v.obj} on a non-rebreather.`
+            : g.wob >= 2
+            ? `Worse — ${v.subj} ${v.verb('want')} to sit right forward and ${v.subj} can't finish a sentence. ` +
+              `I've turned the oxygen up.`
+            : `${v.Subj} ${v.is} propped right up on four pillows now and ${v.subj} ${v.verb('say')} ${v.subj} ` +
+              `${v.verb('breathe')} easier that way. The numbers are much the same.`,
           interventions: [
             insult(ctx, { label: 'Flash oedema', category: 'scenario', kind: 'scenario', target: 'edv', delta: 26, tauOn: 900, eliminationHalfLife: 36000 }),
           ],
@@ -344,9 +390,14 @@ export const ARCHETYPES: CaseArchetype[] = [
       return [
         {
           at: ctx.declareAt,
-          urgent: true,
-          page: `Rapid one — ${ctx.room} just got back from the bathroom and ${v.subj} can't catch ${v.poss} breath. ` +
-            `Saturations have dropped right off and the heart rate is up. ${v.Subj} ${v.verb('say')} it hurts to breathe in.`,
+          // A pulmonary embolus loads the RV in minutes, so this one arrives fast —
+          // but it still waits for the patient rather than for the clock.
+          pageWhen: { axis: 'either', grade: 1, by: 10 * MIN },
+          page: (g) => g.wob >= 2 || g.perf >= 2
+            ? `Rapid one — ${ctx.room} just got back from the bathroom and ${v.subj} can't catch ${v.poss} breath. ` +
+              `Saturations have dropped right off and the heart rate is up. ${v.Subj} ${v.verb('say')} it hurts to breathe in.`
+            : `${ctx.room} came back from the bathroom short of breath and ${v.subj} ${v.is} not settling. ` +
+              `Breathing faster than ${v.poss} usual, and ${v.subj} ${v.verb('say')} it hurts to breathe in.`,
           interventions: [
             insult(ctx, { label: 'PE: PVR↑', category: 'scenario', kind: 'scenario', target: 'pvr', delta: 5.5, tauOn: 240, eliminationHalfLife: 86400 }),
             insult(ctx, { label: 'PE: shunt↑', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.22, tauOn: 240, eliminationHalfLife: 86400 }),
@@ -354,8 +405,14 @@ export const ARCHETYPES: CaseArchetype[] = [
         },
         {
           at: jitter(ctx, ctx.declareAt + 45 * MIN, 5 * MIN),
-          urgent: true,
-          page: `The pressure is dropping. ${v.Subj} ${v.is} grey, and ${v.subj} ${v.verb('keep')} telling me ${v.subj} ${v.is} going to die.`,
+          pageWhen: { axis: 'either', grade: 2 },
+          page: (g) => g.perf >= 2
+            ? `The pressure is dropping. ${v.Subj} ${v.is} grey, and ${v.subj} ${v.verb('keep')} telling me ${v.subj} ${v.is} going to die.`
+            : g.wob >= 2
+            ? `${v.Subj} ${v.is} working much harder now and the oxygen is not touching it. ` +
+              `${v.Subj} ${v.verb('keep')} telling me ${v.subj} ${v.is} going to die.`
+            : `${v.Subj} ${v.is} no better and ${v.subj} ${v.verb('keep')} telling me ${v.subj} ${v.is} going to die. ` +
+              `I can't put my finger on it from the observations, but ${v.subj} ${v.is} frightened.`,
           interventions: [
             insult(ctx, { label: 'PE: clot propagation', category: 'scenario', kind: 'scenario', target: 'pvr', delta: 2.2, tauOn: 2400, eliminationHalfLife: 86400 }),
             insult(ctx, { label: 'PE: RV failure', category: 'scenario', kind: 'scenario', target: 'rvEmax', delta: -0.1, tauOn: 2400, eliminationHalfLife: 86400 }),
@@ -413,7 +470,10 @@ export const ARCHETYPES: CaseArchetype[] = [
         {
           at: jitter(ctx, ctx.declareAt + 160 * MIN),
           urgent: true,
-          page: `${v.Subj} ${v.is} bleeding again — the bed is soaked and it's frank blood this time. ${v.Subj} ${v.is} pale and clammy.`,
+          page: (g) => `${v.Subj} ${v.is} bleeding again — the bed is soaked and it's frank blood this time. ` +
+            (g.perf >= 2 ? `${v.Subj} ${v.is} pale and clammy.`
+              : g.perf >= 1 ? `${v.Subj} ${v.verb('look')} washed out and the heart rate is up.`
+              : `${v.Subj} ${v.verb('look')} well enough in ${v.obj}self, but that was a lot of blood.`),
           interventions: [
             // A rebleeding ulcer oozes over hours. Blood takes half an hour to
             // arrive from the bank, and the player needs a patient when it does.
@@ -469,16 +529,21 @@ export const ARCHETYPES: CaseArchetype[] = [
         {
           at: ctx.declareAt,
           urgent: true,
-          page: `${ctx.room} woke up with crushing chest pain — ${v.subj} ${v.verb('say')} it's worse than what brought ${v.obj} in. ` +
-            `${v.Subj} ${v.is} diaphoretic and grey.`,
+          page: (g) => `${ctx.room} woke up with crushing chest pain — ${v.subj} ${v.verb('say')} it's worse than what brought ${v.obj} in. ` +
+            (g.perf >= 1 ? `${v.Subj} ${v.is} diaphoretic and grey.`
+              : `${v.Subj} ${v.is} sweaty with it. Observations are holding so far.`),
           interventions: [
             insult(ctx, { label: 'STEMI: contractility↓', category: 'scenario', kind: 'scenario', target: 'emax', delta: -0.95, tauOn: 600, eliminationHalfLife: 86400 }),
           ],
         },
         {
           at: jitter(ctx, ctx.declareAt + 60 * MIN, 6 * MIN),
-          urgent: true,
-          page: `The pressure is down and ${v.subj} ${v.is} short of breath on top of the pain now.`,
+          pageWhen: { axis: 'either', grade: 1 },
+          page: (g) => g.perf >= 2
+            ? `The pressure is down and ${v.subj} ${v.is} short of breath on top of the pain now.`
+            : g.wob >= 1 || g.perf >= 1
+            ? `The pain is not settling and ${v.subj} ${v.is} short of breath on top of it now.`
+            : `The pain is still there and the morphine has not touched it. Observations unchanged.`,
           interventions: [
             insult(ctx, { label: 'STEMI: infarct extension', category: 'scenario', kind: 'scenario', target: 'emax', delta: -0.45, tauOn: 900, eliminationHalfLife: 86400 }),
           ],
@@ -523,7 +588,7 @@ export const ARCHETYPES: CaseArchetype[] = [
         qsQt: bySeverity(ctx, 0.09, 0.17),
         pvr: 2.4,
       },
-      rrOffset: 8,
+      rrOffset: 3,
       tempOffset: 0.2,
     }),
     script: (ctx) => {
@@ -531,9 +596,15 @@ export const ARCHETYPES: CaseArchetype[] = [
       return [
         {
           at: ctx.declareAt,
-          urgent: true,
-          page: `${ctx.name} is wheezing all over and using ${v.poss} accessory muscles. ` +
-            `${v.Subj} can only get out a few words at a time.`,
+          pageWhen: { axis: 'wob', grade: 1 },
+          page: (g) => g.wob >= 2
+            ? `${ctx.name} is wheezing all over and using ${v.poss} accessory muscles. ` +
+              `${v.Subj} can only get out a few words at a time.`
+            : g.wob >= 1
+            ? `${ctx.name} is more wheezy than earlier and ${v.subj} ${v.verb('want')} ${v.poss} neb brought forward. ` +
+              `${v.Subj} ${v.is} still talking in sentences.`
+            : `${ctx.name} is a bit wheezy and ${v.verb('want')} to know whether ${v.subj} can have ` +
+              `${v.poss} neb early. Observations are at ${v.poss} usual.`,
           interventions: [
             // Bronchospasm does not self-resolve overnight; nebs and steroids reverse it.
             insult(ctx, { label: 'Bronchospasm: V/Q', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.17, tauOn: 600, eliminationHalfLife: 86400 }),
@@ -631,7 +702,7 @@ export const ARCHETYPES: CaseArchetype[] = [
         qsQt: bySeverity(ctx, 0.12, 0.2),
         noTone: 0.2,
       },
-      rrOffset: 9,
+      rrOffset: 2,
       tempOffset: 0.3,
     }),
     script: (ctx) => {
@@ -639,8 +710,15 @@ export const ARCHETYPES: CaseArchetype[] = [
       return [
         {
           at: ctx.declareAt,
-          page: `${ctx.name} in ${ctx.room} is satting in the high eighties and the breathing looks laboured. ` +
-            `${v.Subj} ${v.isnt} distressed exactly, but ${v.subj} ${v.verb('look')} uncomfortable.`,
+          pageWhen: { axis: 'wob', grade: 1 },
+          page: (g) => g.wob >= 2
+            ? `${ctx.name} in ${ctx.room} is satting in the high eighties and the breathing looks laboured. ` +
+              `${v.Subj} ${v.isnt} distressed exactly, but ${v.subj} ${v.verb('look')} uncomfortable.`
+            : g.wob >= 1
+            ? `${ctx.name} in ${ctx.room} is breathing faster than earlier and the saturations have slipped. ` +
+              `${v.Subj} ${v.isnt} distressed, but ${v.subj} ${v.verb('look')} tired.`
+            : `${ctx.name} in ${ctx.room} is very tired and not taking much. ` +
+              `Observations are unchanged, but ${v.subj} ${v.verb('look')} like ${v.subj} ${v.is} fading to me.`,
           interventions: [
             insult(ctx, { label: 'Pneumonia: shunt↑', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.1, tauOn: 3600, eliminationHalfLife: 86400 }),
             insult(ctx, { label: 'Pneumonia: sepsis', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.22, tauOn: 3600, eliminationHalfLife: 86400 }),
@@ -648,8 +726,11 @@ export const ARCHETYPES: CaseArchetype[] = [
         },
         {
           at: jitter(ctx, ctx.declareAt + 150 * MIN),
-          page: `${v.Subj} ${v.is} working harder and the pressure is drifting down. I don't think ${v.subj} ${v.is} going to turn around. ` +
-            `Do you want to talk to the family?`,
+          pageWhen: { axis: 'either', grade: 1 },
+          page: (g) => (g.wob >= 1 || g.perf >= 1
+            ? `${v.Subj} ${v.is} working harder and the pressure is drifting down. `
+            : `${v.Subj} ${v.is} no better than ${v.subj} ${v.was} at handover. `) +
+            `I don't think ${v.subj} ${v.is} going to turn around. Do you want to talk to the family?`,
           interventions: [
             insult(ctx, { label: 'Progressive decline', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.25, tauOn: 3600, eliminationHalfLife: 86400 }),
             insult(ctx, { label: 'Decline: shunt↑', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.08, tauOn: 3600, eliminationHalfLife: 86400 }),
@@ -694,16 +775,19 @@ export const ARCHETYPES: CaseArchetype[] = [
         edv: ctx.rng.int(112, 124),
         qsQt: bySeverity(ctx, 0.04, 0.08),
       },
-      rrOffset: 5,
+      rrOffset: 4,
     }),
     script: (ctx) => {
       const v = ctx.voice;
       return [
         {
           at: ctx.declareAt,
-          urgent: true,
-          page: `${ctx.name} in ${ctx.room} is more breathless since the drain came out, and the saturations ` +
-            `have come down. Air entry sounds much quieter on one side to me.`,
+          pageWhen: { axis: 'wob', grade: 1 },
+          page: (g) => g.wob >= 2
+            ? `${ctx.name} in ${ctx.room} is much more breathless since the drain came out, and the saturations ` +
+              `have come down. Air entry sounds much quieter on one side to me.`
+            : `${ctx.name} in ${ctx.room} is a bit more breathless since the drain came out. ` +
+              `Air entry sounds quieter on one side to me — I wanted you to hear it too.`,
           interventions: [
             insult(ctx, { label: 'Pneumothorax: shunt↑', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.13, tauOn: 1500, eliminationHalfLife: 86400 }),
             insult(ctx, { label: 'Pneumothorax: intrathoracic pressure', category: 'scenario', kind: 'scenario', target: 'cvp', delta: 8, tauOn: 1800, eliminationHalfLife: 86400 }),
@@ -712,8 +796,13 @@ export const ARCHETYPES: CaseArchetype[] = [
         },
         {
           at: jitter(ctx, ctx.declareAt + 90 * MIN),
-          urgent: true,
-          page: `${v.Subj} ${v.is} worse — really struggling now, and the pressure has come down with it.`,
+          pageWhen: { axis: 'either', grade: 2 },
+          page: (g) => g.perf >= 2
+            ? `${v.Subj} ${v.is} worse — really struggling now, and the pressure has come down with it.`
+            : g.wob >= 2
+            ? `${v.Subj} ${v.is} worse — really struggling to breathe now.`
+            : `That side still sounds very quiet to me and ${v.subj} ${v.is} no more comfortable than ` +
+              `${v.subj} ${v.was} earlier, even though the numbers look reasonable.`,
           interventions: [
             insult(ctx, { label: 'Pneumothorax: enlarging', category: 'scenario', kind: 'scenario', target: 'cvp', delta: 5, tauOn: 1200, eliminationHalfLife: 86400 }),
             insult(ctx, { label: 'Pneumothorax: venous return↓↓', category: 'scenario', kind: 'scenario', target: 'edv', delta: -16, tauOn: 1200, eliminationHalfLife: 86400 }),
@@ -759,8 +848,10 @@ export const ARCHETYPES: CaseArchetype[] = [
         {
           at: ctx.declareAt,
           urgent: true,
-          page: `${ctx.name} coughed and choked during the evening meal and now ${v.subj} ${v.verb('sound')} wet and ` +
-            `${v.is} desaturating. I've sat ${v.obj} up and suctioned.`,
+          page: (g) => `${ctx.name} coughed and choked during the evening meal. I've sat ${v.obj} up and suctioned. ` +
+            (g.wob >= 2 ? `${v.Subj} ${v.verb('sound')} wet and ${v.subj} ${v.is} desaturating.`
+              : g.wob >= 1 ? `${v.Subj} ${v.verb('sound')} rattly and ${v.subj} ${v.is} breathing faster than earlier.`
+              : `${v.Subj} ${v.verb('sound')} a bit rattly but the observations are unchanged so far.`),
           interventions: [
             insult(ctx, { label: 'Aspiration: shunt↑', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.15, tauOn: 900, eliminationHalfLife: 43200 }),
             insult(ctx, { label: 'Aspiration: inflammation', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.14, tauOn: 3600, eliminationHalfLife: 43200 }),
@@ -768,7 +859,11 @@ export const ARCHETYPES: CaseArchetype[] = [
         },
         {
           at: jitter(ctx, ctx.declareAt + 110 * MIN),
-          page: `Still needing more oxygen than before, and ${v.subj} ${v.verb('sound')} rattly. Temperature is creeping up.`,
+          // The temperature is charted, so this fires regardless; the oxygen
+          // requirement is only mentioned when there actually is one.
+          page: (g) => g.wob >= 1
+            ? `Still needing more oxygen than before, and ${v.subj} ${v.verb('sound')} rattly. Temperature is creeping up.`
+            : `${v.Subj} ${v.verb('sound')} rattly still and the temperature is creeping up. Breathing is settled.`,
           interventions: [
             insult(ctx, { label: 'Pneumonitis: progression', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.14, tauOn: 3600, eliminationHalfLife: 43200 }),
           ],

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { ShiftEngine, roscChance, causeIsBeingTreated } from '../shift';
 import { ORDER_BY_ID } from '../orders';
-import { assessAppearance, describeAppearance, acuityLabel } from '../clinical';
+import { assessAppearance, describeAppearance, acuityLabel, type Gestalt } from '../clinical';
 import { DEFAULT_PARAMS, DEFAULT_STATE } from '../../engine/constants';
 import { snapshot as computeSnapshot } from '../../engine/hemodynamics';
 import { buildReport } from '../scoring';
@@ -199,13 +199,25 @@ describe('pronouns and verb agreement', () => {
   });
 
   it('never leaves an unresolved template in generated prose', () => {
+    // Pages are written against the bedside grade they are delivered at, so every
+    // branch has to be rendered — a broken template hiding in the tier that only
+    // fires on a mild case is exactly the one that would reach a player.
+    const grades: Gestalt[] = [0, 1, 2, 3].flatMap((n) => [
+      { wob: n as 0 | 1 | 2 | 3, perf: 0 as const, text: '' },
+      { wob: 0 as const, perf: n as 0 | 1 | 2 | 3, text: '' },
+      { wob: n as 0 | 1 | 2 | 3, perf: n as 0 | 1 | 2 | 3, text: '' },
+    ]);
+
     for (let i = 0; i < 15; i++) {
       for (const c of generateWard({ seed: `PROSE${i}` }).cases) {
+        const pages = c.events.flatMap((e) =>
+          typeof e.page === 'function' ? grades.map(e.page) : [e.page ?? ''],
+        );
         const prose = [
           c.handoff.summary,
           ...c.handoff.todo,
           ...c.handoff.contingencies,
-          ...c.events.map((e) => e.page ?? ''),
+          ...pages,
         ].join(' ');
         expect(prose, c.archetypeId).not.toMatch(/\$\{|\bundefined\b|\[object/);
       }
@@ -550,8 +562,11 @@ describe('orders', () => {
 
 describe('nurse interaction', () => {
   it('answers questions from true physiology, not stale vitals', () => {
-    const s = shiftOf('urosepsis', 'severe');
-    advanceToDeclaration(s, 130, 60);
+    // A patient nobody has rung about is on four-hourly observations, so the
+    // chart is hours old while the bedside is current — which is the whole
+    // reason asking is worth doing.
+    const s = soloShift('benign-cellulitis', { severity: 0.5, declareAt: 20 * 60 });
+    run(s.engine, 3 * 3600, 60);
     expect(s.patient.status).toBe('stable');
 
     s.engine.askQuestion(s.patient, 'look');
@@ -654,7 +669,7 @@ describe('comfort and routine orders', () => {
 
   it('does not count a sleeping tablet as responding to a deteriorating patient', () => {
     const s = shiftOf('adhf-mislabelled', 'moderate');
-    advanceToDeclaration(s, 10, 60);
+    advanceToDeclaration(s, 40, 60);
     expect(s.patient.firstUnstableAt).not.toBeNull();
 
     s.engine.placeOrder(s.patient, 'melatonin');
@@ -1030,5 +1045,137 @@ describe('library depth', () => {
       combos.add(generateWard({ seed: `DEPTH${i}` }).cases.map((c) => c.archetypeId).sort().join(','));
     }
     expect(combos.size).toBeGreaterThan(80);
+  });
+});
+
+// ─── What the nurse says matches what the nurse can see ─────────────────────
+
+/**
+ * Language that asserts a patient is visibly unwell.
+ *
+ * A page containing any of this is making a claim about the bedside, and the
+ * bedside has to support it. The original failure was a nurse announcing a
+ * patient "using accessory muscles, only a few words at a time" at the same
+ * moment the appearance query returned "comfortable and conversant" and the
+ * charted observations were unremarkable — three channels describing three
+ * different patients, because the page was authored prose fired on a timer while
+ * the insult it described was still ramping in.
+ */
+const DISTRESS_LANGUAGE = [
+  /accessory muscle/i,
+  /few words at a time/i,
+  /can'?t finish a sentence/i,
+  /short phrases/i,
+  /barely (rousable|get a pressure)/i,
+  /mottled/i,
+  /really struggling/i,
+  /pink froth/i,
+  /bolt upright/i,
+  /exhausted/i,
+  /working (much )?harder/i,
+  /grey\b/i,
+  /diaphoretic/i,
+  /cold to the elbows/i,
+];
+
+function claimsDistress(text: string): boolean {
+  return DISTRESS_LANGUAGE.some((re) => re.test(text));
+}
+
+describe('a page never describes a patient the player cannot find', () => {
+  it('claims distress only when the bedside actually shows it', () => {
+    const offenders: string[] = [];
+
+    for (const archetype of ARCHETYPES) {
+      for (const severity of [0, 0.25, 0.5, 0.75, 1]) {
+        const s = soloShift(archetype.id, { severity, declareAt: 20 * 60 });
+        const seen = new Set<string>();
+
+        for (let minute = 0; minute < 11 * 60; minute++) {
+          run(s.engine, 60, 30);
+          const gestalt = assessAppearance(
+            s.engine.snapshot(s.patient),
+            s.patient.case.baselineDrive,
+          );
+
+          for (const message of s.patient.messages) {
+            if (message.author !== 'nurse' || seen.has(message.id)) continue;
+            seen.add(message.id);
+            if (!claimsDistress(message.text)) continue;
+            if (Math.max(gestalt.wob, gestalt.perf) >= 1) continue;
+            offenders.push(
+              `${archetype.id}@${severity}: "${message.text.slice(0, 90)}" ` +
+              `(wob ${gestalt.wob}, perf ${gestalt.perf})`,
+            );
+          }
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('escalates urgency from the patient rather than from the script', () => {
+    // The same line of script, played mild and played severe. A mild
+    // exacerbation is a routine call; a severe one is a rapid response.
+    const urgentPages = (severity: number) => {
+      const s = soloShift('copd-exacerbation', { severity, declareAt: 20 * 60 });
+      run(s.engine, 5 * 3600, 30);
+      return s.patient.messages.filter((m) => m.author === 'nurse' && m.urgent).length;
+    };
+
+    expect(urgentPages(0)).toBe(0);
+    expect(urgentPages(1)).toBeGreaterThan(0);
+  });
+});
+
+describe('the nurse keeps watching after they have called', () => {
+  it('rings back when the patient is worse than the last report', () => {
+    const s = soloShift('adhf-mislabelled', { severity: 0.7, declareAt: 20 * 60 });
+    run(s.engine, 2 * 3600, 30);
+
+    const callbacks = s.patient.messages.filter((m) => /Calling you back|since I last looked/.test(m.text));
+    expect(callbacks.length).toBeGreaterThan(0);
+
+    // And the escalation is monotone: each callback describes a worse patient
+    // than the one before, because the trigger is a rise against what has
+    // already been said.
+    const grades = callbacks.map((m) => (/worse than when I rang/.test(m.text) ? 2 : 1));
+    expect(Math.max(...grades)).toBe(2);
+  });
+
+  it('says nothing about a patient who was handed over unwell and stays that way', () => {
+    // A chronic-lung patient sits above the population's normal respiratory rate
+    // all night. Grading work of breathing against their own baseline is what
+    // stops that being reported as a deterioration.
+    const s = soloShift('benign-cellulitis', { severity: 0.5, declareAt: 20 * 60 });
+    run(s.engine, 6 * 3600, 30);
+    const callbacks = s.patient.messages.filter((m) => /Calling you back|since I last looked/.test(m.text));
+    expect(callbacks).toEqual([]);
+  });
+});
+
+describe('respiratory rate moves before the saturation does', () => {
+  it('shows the work a bronchospastic patient is doing', () => {
+    const s = soloShift('copd-exacerbation', { severity: 0.6, declareAt: 20 * 60 });
+    advanceToDeclaration(s, 25, 30);
+
+    const snap = s.engine.snapshot(s.patient);
+    const vitals = s.patient.lastVitals!;
+
+    // The saturation is defended by the effort; the effort is what shows.
+    expect(snap.spO2).toBeGreaterThan(0.88);
+    expect(vitals.rr).toBeGreaterThan(24);
+    expect(assessAppearance(snap, s.patient.case.baselineDrive).wob).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not answer "how is their breathing" with a saturation alone', () => {
+    const s = soloShift('copd-exacerbation', { severity: 0.6, declareAt: 20 * 60 });
+    advanceToDeclaration(s, 25, 30);
+
+    s.engine.askQuestion(s.patient, 'breathing');
+    const answer = s.patient.messages[s.patient.messages.length - 1].text;
+    expect(answer).not.toMatch(/^Easy/);
+    expect(answer).toMatch(/\d\d/);
   });
 });

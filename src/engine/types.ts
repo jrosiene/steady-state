@@ -95,6 +95,16 @@ export interface DerivedValues {
   mPAP: number;
   /** Pulmonary capillary wedge pressure (mmHg). Approximates LAP/LVEDP. */
   pcwp: number;
+  /**
+   * The shunt fraction actually in play: the anatomic/parenchymal shunt plus
+   * whatever low-flow and hydrostatic oedema are adding on top.
+   *
+   * Published because it is the load the patient is *working against*, and work
+   * of breathing rises to defend gas exchange before the saturation falls. A
+   * reader that only sees `spO2` sees the outcome of the effort and misses the
+   * effort itself.
+   */
+  qsQtEffective: number;
 
   // --- Oxygenation ---
   /** Arterial O2 saturation (0–1). From two-compartment shunt model. */

@@ -5,6 +5,9 @@ import { applyComorbidities, sampleComorbidities } from './modifiers';
 import { makeCast } from './demographics';
 import { ARCHETYPES, ARCHETYPE_BY_ID, type ArchetypeContext, type CaseArchetype, type HandoffDraft } from './archetypes';
 import { bandOf, clampSeverity, sampleSeverity, type Severity } from './severity';
+import { DEFAULT_PARAMS, DEFAULT_STATE } from '../../engine/constants';
+import { snapshot as computeSnapshot } from '../../engine/hemodynamics';
+import { respiratoryDrive } from '../clinical';
 
 const MIN = 60;
 
@@ -118,6 +121,10 @@ export function generateWard(options: WardOptions = {}): GeneratedWard {
       stateOverrides: target.state,
       tempOffset: base.tempOffset,
       rrOffset: base.rrOffset,
+      baselineDrive: respiratoryDrive(computeSnapshot(
+        { ...DEFAULT_STATE, ...target.state },
+        { ...DEFAULT_PARAMS, ...target.params },
+      )),
       declaresAt: slots[i],
       events: archetype.script(ctx).sort((a, b) => a.at - b.at),
       expectedOrders: archetype.expectedOrders,

@@ -1,6 +1,6 @@
 import type { Snapshot } from '../engine/types';
 import type { PatientRuntime, Vitals } from './types';
-import { describeAppearance } from './clinical';
+import { assessAppearance, describeAppearance, respiratoryRate } from './clinical';
 
 /**
  * Questions the player can put to the nurse.
@@ -36,7 +36,7 @@ export function answerQuestion(
 
   switch (questionId) {
     case 'look':
-      return capitalise(`${describeAppearance(snap)}.`);
+      return capitalise(`${describeAppearance(snap, patient.case.baselineDrive)}.`);
 
     case 'mental':
       if (snap.cardiovascularStatus === 'arrest') return 'Unresponsive. No pulse.';
@@ -52,25 +52,34 @@ export function answerQuestion(
       return 'Alert and oriented. Same as earlier.';
 
     case 'breathing': {
-      // Congestion is reported on its own terms rather than only when the
-      // saturation has already fallen. A wet patient is breathless well before
-      // they are hypoxaemic, and that gap is the window worth acting in.
+      // Answered from work of breathing, not from the saturation.
+      //
+      // This branch used to key entirely off SpO2 and wedge pressure, so a patient
+      // in frank bronchospasm — breathing 30, holding 96% because of the effort —
+      // came back as "easy, no distress". The saturation is the *result* of the
+      // work; reporting it as though it were the work is how a nurse's answer ends
+      // up contradicting what the nurse can plainly see.
+      const rr = respiratoryRate(snap, patient.case.rrOffset);
+      const grade = assessAppearance(snap, patient.case.baselineDrive).wob;
       const sat = `sat ${pct(snap.spO2)}% on ${patient.o2Device}`;
       const wet = snap.pcwp > 22
         ? ` Crackles up both bases, and ${v.subj} ${v.isnt} tolerating lying flat.`
         : '';
-      if (snap.spO2 < 0.85) {
-        return `Terrible — ${sat}, using every accessory muscle ${v.subj} ${v.has}.${wet}`;
+
+      if (grade === 3) {
+        return `Terrible — ${sat}, rate of ${rr}, using every accessory muscle ${v.subj} ${v.has}.${wet}`;
       }
-      if (snap.spO2 < 0.90) {
-        return `Laboured. ${capitalise(sat)}, respiratory rate in the thirties, only managing short phrases.${wet}`;
+      if (grade === 2) {
+        if (snap.pcwp > 28) {
+          return `${v.Subj} ${v.is} drowning. ${capitalise(sat)}, rate of ${rr}, pink frothy sputum, and bolt upright.`;
+        }
+        return `Laboured. ${capitalise(sat)}, but ${v.subj} ${v.is} breathing ${rr} and only managing short phrases.${wet}`;
       }
-      if (snap.pcwp > 28) {
-        return `${v.Subj} ${v.is} drowning. ${capitalise(sat)}, pink frothy sputum, and bolt upright.`;
+      if (grade === 1) {
+        if (snap.pcwp > 22) return `Wet. ${capitalise(sat)}, rate of ${rr}.${wet}`;
+        return `Faster than earlier — ${rr}, ${sat}. Not distressed, but not comfortable either.`;
       }
-      if (snap.pcwp > 22) return `Wet. ${capitalise(sat)}.${wet}`;
-      if (snap.spO2 < 0.94) return `A bit fast, ${sat}. Not distressed, but not comfortable either.`;
-      return `Easy, ${sat}. No distress.`;
+      return `Easy, ${rr} and ${sat}. No distress.`;
     }
 
     case 'urine':
@@ -133,7 +142,7 @@ export interface VitalsConcern {
  * patient this is the only route by which a silent deterioration reaches the
  * player — which is precisely why the interval between checks matters so much.
  */
-export function vitalsConcern(v: Vitals, snap: Snapshot): VitalsConcern | null {
+export function vitalsConcern(v: Vitals, snap: Snapshot, baselineDrive = 0): VitalsConcern | null {
   const problems: string[] = [];
   let urgent = false;
 
@@ -173,7 +182,7 @@ export function vitalsConcern(v: Vitals, snap: Snapshot): VitalsConcern | null {
 
   if (problems.length === 0) return null;
 
-  const gestalt = describeAppearance(snap);
+  const gestalt = describeAppearance(snap, baselineDrive);
   const lead = urgent
     ? 'I need you to know about this one'
     : 'Just flagging this';

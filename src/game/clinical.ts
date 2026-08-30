@@ -26,17 +26,38 @@ export function bloodPressure(snap: Snapshot): { sbp: number; dbp: number } {
 }
 
 /**
- * Respiratory rate.
+ * Ventilatory drive above rest, in breaths per minute.
  *
- * Two independent drives, matching how the chemoreceptors actually behave:
+ * Four drives, matching how the receptors actually behave:
  *   - Metabolic acidosis → Kussmaul compensation, scaled off the bicarbonate
  *     deficit (Winter's-formula territory).
  *   - Hypoxemia → carotid body drive once SpO2 falls below ~92%.
+ *   - Shunt load → the patient breathes harder to *defend* gas exchange. This is
+ *     the term whose absence let a bronchospastic patient be charted at a resting
+ *     rate: the model only saw the saturation, which is the outcome of the effort,
+ *     and never the effort itself. Respiratory rate is the first vital sign to
+ *     move in airway and parenchymal disease precisely because it moves before
+ *     the saturation is allowed to fall.
+ *   - Pulmonary congestion → J-receptor drive. A wet lung is stiff, and the
+ *     patient breathes shallow and fast well before the number comes down.
  */
-export function respiratoryRate(snap: Snapshot): number {
-  const metabolicDrive = Math.max(0, 24 - snap.hco3) * 1.1;
-  const hypoxicDrive = Math.max(0, 0.92 - snap.spO2) * 90;
-  return Math.round(Math.min(45, 13 + metabolicDrive + hypoxicDrive));
+export function respiratoryDrive(snap: Snapshot): number {
+  const metabolic = Math.max(0, 24 - snap.hco3) * 1.1;
+  const hypoxic = Math.max(0, 0.92 - snap.spO2) * 90;
+  const shunt = Math.max(0, snap.qsQtEffective - 0.04) * 55;
+  const congestion = Math.max(0, snap.pcwp - 18) * 0.45;
+  return metabolic + hypoxic + shunt + congestion;
+}
+
+/**
+ * Respiratory rate.
+ *
+ * `rrOffset` is the chronic part of a given patient's rate — the COPD patient who
+ * lives at 20 — and is carried by the case rather than derived, because nothing
+ * in the model represents their years of remodelling.
+ */
+export function respiratoryRate(snap: Snapshot, rrOffset = 0): number {
+  return Math.round(Math.min(45, 13 + rrOffset + respiratoryDrive(snap)));
 }
 
 /**
@@ -65,7 +86,7 @@ export function chartVitals(
     sbp,
     dbp,
     map: Math.round(snap.map),
-    rr: Math.min(45, respiratoryRate(snap) + rrOffset),
+    rr: respiratoryRate(snap, rrOffset),
     spo2: Math.round(snap.spO2 * 100),
     tempC: Math.round(temperature(snap, tempOffset) * 10) / 10,
     o2: o2Device,
@@ -104,8 +125,13 @@ export interface Gestalt {
  *
  * Rules: the worse axis speaks first, and "comfortable" is reachable only when
  * both axes are clear.
+ *
+ * `baselineDrive` is the patient's own resting ventilatory drive. Work of
+ * breathing is graded against it rather than against an absolute rate, because
+ * the COPD patient who lives at 22 is not in distress at 22 and the young patient
+ * who lives at 12 is in trouble at 24.
  */
-export function assessAppearance(snap: Snapshot): Gestalt {
+export function assessAppearance(snap: Snapshot, baselineDrive = 0): Gestalt {
   if (snap.cardiovascularStatus === 'arrest') {
     return { wob: 3, perf: 3, text: 'unresponsive, no palpable pulse' };
   }
@@ -115,10 +141,16 @@ export function assessAppearance(snap: Snapshot): Gestalt {
   const congested = snap.pcwp > 22;
   const drowning = snap.pcwp > 28;
 
+  // Breaths per minute above this patient's own resting rate. Effort is visible
+  // from the doorway before any of it reaches the saturation probe, so grading
+  // work of breathing on oxygenation alone reports a struggling patient as
+  // comfortable — which is precisely the failure this axis exists to prevent.
+  const excess = respiratoryDrive(snap) - baselineDrive;
+
   const wob: GestaltGrade =
-    snap.spO2 < 0.85 ? 3 :
-    snap.spO2 < 0.90 || drowning ? 2 :
-    snap.spO2 < 0.93 || congested ? 1 :
+    snap.spO2 < 0.85 || excess >= 15 ? 3 :
+    snap.spO2 < 0.90 || drowning || excess >= 9 ? 2 :
+    snap.spO2 < 0.93 || congested || excess >= 4 ? 1 :
     0;
 
   const perf: GestaltGrade =
@@ -132,7 +164,9 @@ export function assessAppearance(snap: Snapshot): Gestalt {
   }
 
   const breathing =
-    wob === 3 ? 'visibly cyanotic and exhausted, using every accessory muscle' :
+    wob === 3 ? (snap.spO2 < 0.85
+      ? 'visibly cyanotic and exhausted, using every accessory muscle'
+      : 'exhausted, using every accessory muscle, barely getting a word out') :
     wob === 2 ? (congested
       ? 'fighting for breath, bolt upright, coughing up pink froth'
       : 'working hard to breathe, managing only short phrases') :
@@ -153,8 +187,8 @@ export function assessAppearance(snap: Snapshot): Gestalt {
 }
 
 /** Prose-only convenience wrapper. */
-export function describeAppearance(snap: Snapshot): string {
-  return assessAppearance(snap).text;
+export function describeAppearance(snap: Snapshot, baselineDrive = 0): string {
+  return assessAppearance(snap, baselineDrive).text;
 }
 
 /**
@@ -164,11 +198,14 @@ export function describeAppearance(snap: Snapshot): string {
  * letting it colour the dot would hand the player a result they never ordered —
  * and quietly undo the case where a septic patient looks fine on the numbers.
  */
-export function acuityLabel(snap: Snapshot): 'ok' | 'watch' | 'unstable' | 'critical' {
+export function acuityLabel(snap: Snapshot, baselineDrive = 0): 'ok' | 'watch' | 'unstable' | 'critical' {
   if (snap.cardiovascularStatus === 'arrest') return 'critical';
   if (snap.cardiovascularStatus === 'decompensating') return 'critical';
   if (snap.cardiovascularStatus === 'shock') return 'unstable';
   if (snap.map < 70 || snap.spO2 < 0.92 || snap.hr > 110) return 'watch';
+  // The respiratory rate is on the monitor too, and it is the number that moves
+  // first — a board that ignored it left a working patient showing green.
+  if (respiratoryDrive(snap) - baselineDrive >= 6) return 'watch';
   return 'ok';
 }
 
