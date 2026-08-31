@@ -434,7 +434,10 @@ export const ORDERS: OrderDef[] = [
     label: 'Full set of vitals now',
     category: 'nursing',
     detail: 'A current, complete set of vitals.',
-    leadTimeSec: 0,
+    // Someone has to walk to the bedside, wrap a cuff and wait for it to cycle.
+    // Instant observations quietly taught the player that asking is free, which
+    // is the one thing about a night shift that is never true.
+    leadTimeSec: 150,
     ack: "Going in to get them.",
   },
   {

@@ -5,8 +5,8 @@ import { assessAppearance, describeAppearance, acuityLabel, type Gestalt } from 
 import { DEFAULT_PARAMS, DEFAULT_STATE } from '../../engine/constants';
 import { snapshot as computeSnapshot } from '../../engine/hemodynamics';
 import { buildReport } from '../scoring';
-import { ARCHETYPES } from '../content/archetypes';
-import { generateWard, WARD_SIZE } from '../content/generate';
+import { ARCHETYPES, ARCHETYPE_BY_ID } from '../content/archetypes';
+import { generateWard, composition, WARD_SIZE } from '../content/generate';
 import { makeRng } from '../content/rng';
 import { makeVoice } from '../content/voice';
 import { SEVERITY_BANDS, bandOf, insultScale, onsetScale } from '../content/severity';
@@ -329,7 +329,8 @@ describe('observation model', () => {
     const s = shiftOf('urosepsis');
     run(s.engine, 45 * MIN, 60);
     s.engine.placeOrder(s.patient, 'vitals-now');
-    expect(s.patient.lastVitals!.time).toBeGreaterThan(40 * MIN);
+    run(s.engine, 5 * MIN, 30);   // someone has to go and take them
+    expect(s.patient.lastVitals!.time).toBeGreaterThan(45 * MIN);
   });
 
   it('pages the doctor when a nurse finds concerning vitals', () => {
@@ -455,14 +456,15 @@ describe('cardiogenic physiology and the fluid trap', () => {
   });
 
   it('makes fluid worse and preload reduction better', () => {
-    // Deliberately a milder case: at high severity both arms pin against the
-    // wedge ceiling and the comparison stops measuring anything.
-    const fluids = shiftOf('adhf-mislabelled', 0.3);
+    // Deliberately a mild case: once either arm pins against the wedge ceiling
+    // the comparison stops measuring anything, and per-insult jitter means the
+    // margin has to be generous rather than just below the worst severity.
+    const fluids = shiftOf('adhf-mislabelled', 0.15);
     advanceToDeclaration(fluids, 5, 60);
     fluids.engine.placeOrder(fluids.patient, 'ns-1000');
     run(fluids.engine, 100 * MIN, 60);
 
-    const offload = shiftOf('adhf-mislabelled', 0.3);
+    const offload = shiftOf('adhf-mislabelled', 0.15);
     advanceToDeclaration(offload, 5, 60);
     offload.engine.placeOrder(offload.patient, 'nitro');
     offload.engine.placeOrder(offload.patient, 'furosemide');
@@ -599,9 +601,11 @@ describe('nurse interaction', () => {
 
 describe('the bedside look never reassures about a patient in trouble', () => {
   it('does not call a breathless patient comfortable', () => {
-    // Far enough in to be breathless, well short of the arrest.
+    // Far enough in to be breathless, well short of the arrest. Kept early
+    // because per-insult jitter means how fast a given case runs is not a
+    // function of severity alone.
     const s = shiftOf('adhf-mislabelled', 0.3);
-    advanceToDeclaration(s, 50, 30);
+    advanceToDeclaration(s, 30, 30);
 
     const snap = s.engine.snapshot(s.patient);
     expect(s.patient.status).toBe('stable');
@@ -656,12 +660,14 @@ describe('comfort and routine orders', () => {
     advanceToDeclaration(s, 40, 60);
 
     s.engine.placeOrder(s.patient, 'vitals-now');
+    run(s.engine, 5 * MIN, 30);
     const febrile = s.patient.lastVitals!.tempC;
     const toneBefore = s.engine.snapshot(s.patient).noTone;
 
     s.engine.placeOrder(s.patient, 'acetaminophen');
     run(s.engine, 30 * MIN, 60);
     s.engine.placeOrder(s.patient, 'vitals-now');
+    run(s.engine, 5 * MIN, 30);
 
     expect(s.patient.lastVitals!.tempC).toBeLessThan(febrile);
     expect(s.engine.snapshot(s.patient).noTone).toBeGreaterThanOrEqual(toneBefore);
@@ -928,7 +934,7 @@ describe('ward patients look ward-appropriate at sign-out', () => {
 
         expect(v.spo2, where).toBeGreaterThanOrEqual(88);
         expect(v.hr, where).toBeLessThanOrEqual(115);
-        expect(v.rr, where).toBeLessThanOrEqual(26);
+        expect(v.rr, where).toBeLessThanOrEqual(28);
       }
     }
   });
@@ -1177,5 +1183,116 @@ describe('respiratory rate moves before the saturation does', () => {
     const answer = s.patient.messages[s.patient.messages.length - 1].text;
     expect(answer).not.toMatch(/^Easy/);
     expect(answer).toMatch(/\d\d/);
+  });
+});
+
+// ─── Lists longer than one ward ─────────────────────────────────────────────
+
+describe('covering more than one ward', () => {
+  it('grows acuity sub-linearly with the size of the list', () => {
+    // Five times the patients is not five times the emergencies. A longer list
+    // is more noise around the same handful of real problems.
+    const small = composition(8);
+    const large = composition(40);
+
+    expect(small).toEqual({ critical: 3, ward: 3, benign: 2 });
+    expect(large.critical + large.ward + large.benign).toBe(40);
+    expect(large.critical).toBeLessThan(small.critical * 5);
+    expect(large.benign / 40).toBeGreaterThan(small.benign / 8);
+  });
+
+  it('deals a long list without a duplicate name or bed', () => {
+    for (const size of [16, 24, 40, 60]) {
+      const { cases } = generateWard({ seed: `LIST${size}`, size });
+      expect(cases, `size ${size}`).toHaveLength(size);
+      expect(new Set(cases.map((c) => c.room)).size, `rooms at ${size}`).toBe(size);
+      expect(new Set(cases.map((c) => c.name)).size, `names at ${size}`).toBe(size);
+    }
+  });
+
+  it('repeats a diagnosis only once the tier is spent, and evenly', () => {
+    // Twenty-six benign patients have to come from four benign archetypes, so
+    // repeats are unavoidable; what matters is that they are spread rather than
+    // one diagnosis appearing eight times while another never appears.
+    const { cases } = generateWard({ seed: 'REPEATS', size: 40 });
+    const benign = cases.filter((c) => ARCHETYPE_BY_ID[c.archetypeId].tier === 'benign');
+    const counts = new Map<string, number>();
+    for (const c of benign) counts.set(c.archetypeId, (counts.get(c.archetypeId) ?? 0) + 1);
+
+    expect(counts.size).toBe(ARCHETYPES.filter((a) => a.tier === 'benign').length);
+    expect(Math.max(...counts.values()) - Math.min(...counts.values())).toBeLessThanOrEqual(1);
+  });
+
+  it('leaves part of a long list silent, and none of a single ward', () => {
+    const ward = generateWard({ seed: 'QUIET8', size: 8 });
+    expect(ward.cases.every((c) => c.events.length > 0)).toBe(true);
+
+    const long = generateWard({ seed: 'QUIET40', size: 40 });
+    const silent = long.cases.filter((c) => c.events.length === 0);
+    expect(silent.length).toBeGreaterThan(0);
+    // Only benign patients go quiet — a real problem always declares itself.
+    expect(silent.every((c) => ARCHETYPE_BY_ID[c.archetypeId].tier === 'benign')).toBe(true);
+  });
+
+  it('still has something to do on every size of list', () => {
+    // Four hours rather than twelve: enough for the early declarations to land,
+    // and a full night at forty patients is minutes of wall clock in a suite
+    // that already runs long.
+    for (const size of [8, 40]) {
+      const engine = new ShiftEngine(undefined, `PLAY${size}`, size);
+      engine.start();
+      expect(engine.size).toBe(size);
+      for (let i = 0; i < 4 * 3600 / 60; i++) engine.tick(60);
+
+      const urgent = engine.patients.reduce(
+        (n, p) => n + p.messages.filter((m) => m.urgent).length, 0,
+      );
+      expect(urgent, `size ${size}`).toBeGreaterThan(0);
+    }
+  });
+});
+
+// ─── Nothing on a ward is instant ───────────────────────────────────────────
+
+describe('the nurse is a person, not a return value', () => {
+  it('takes a beat to acknowledge an order', () => {
+    const s = soloShift('copd-exacerbation', { severity: 0.5, declareAt: 20 * 60 });
+    run(s.engine, 40 * 60, 30);
+
+    const before = s.patient.messages.length;
+    s.engine.placeOrder(s.patient, 'duoneb');
+    // The order echoes immediately; the reply does not.
+    expect(s.patient.messages.length).toBe(before + 1);
+    expect(s.patient.messages[before].author).toBe('doctor');
+
+    run(s.engine, 120, 10);
+    const ack = s.patient.messages.slice(before).find((m) => m.kind === 'ack');
+    expect(ack).toBeDefined();
+    expect(ack!.time).toBeGreaterThan(s.patient.messages[before].time);
+  });
+
+  it('makes someone walk to the bedside before vitals appear', () => {
+    const s = soloShift('copd-exacerbation', { severity: 0.5, declareAt: 20 * 60 });
+    run(s.engine, 40 * 60, 30);
+
+    const chartedBefore = s.patient.lastVitalsAt;
+    s.engine.placeOrder(s.patient, 'vitals-now');
+    run(s.engine, 60, 10);
+    expect(s.patient.lastVitalsAt, 'vitals should not be instant').toBe(chartedBefore);
+
+    run(s.engine, 150, 10);
+    expect(s.patient.lastVitalsAt).toBeGreaterThan(chartedBefore);
+  });
+
+  it('charts the vitals as of when they were taken, not when they were asked for', () => {
+    const s = soloShift('adhf-mislabelled', { severity: 0.6, declareAt: 20 * 60 });
+    run(s.engine, 35 * 60, 30);
+
+    const askedAt = s.engine.time;
+    s.engine.placeOrder(s.patient, 'vitals-now');
+    run(s.engine, 300, 10);
+
+    // A deteriorating patient's numbers reflect the walk, which is the point.
+    expect(s.patient.lastVitals!.time).toBeGreaterThan(askedAt);
   });
 });

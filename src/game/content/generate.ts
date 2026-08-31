@@ -14,6 +14,9 @@ const MIN = 60;
 /** Default ward size. Eight is what one covering doctor is realistically holding. */
 export const WARD_SIZE = 8;
 
+/** Largest list the game will deal. Past this the board stops being readable. */
+export const MAX_WARD_SIZE = 60;
+
 /**
  * The composition rule for a night.
  *
@@ -21,8 +24,20 @@ export const WARD_SIZE = 8;
  * shift, and a ward of eight crashing ones is not a shift either — it is a queue.
  * The tension the game is built on needs a majority of quiet patients so that
  * finding the sick one is an act of triage rather than of arithmetic.
+ *
+ * Acuity grows sub-linearly with the size of the list, which is the part that
+ * scaling naively would get wrong. Covering forty patients does not mean five
+ * times as many people are dying — it means the same handful of real problems
+ * are buried in five times as much noise, and the night is harder because
+ * finding them is harder, not because the ward is a mass casualty. The exponents
+ * are chosen so that a list of eight reproduces the hand-tuned 3/3/2 exactly.
  */
-const COMPOSITION = { critical: 3, ward: 3, benign: 2 } as const;
+export function composition(size: number): { critical: number; ward: number; benign: number } {
+  const scale = size / WARD_SIZE;
+  const critical = Math.max(1, Math.round(3 * scale ** 0.45));
+  const ward = Math.max(1, Math.round(3 * scale ** 0.6));
+  return { critical, ward, benign: Math.max(0, size - critical - ward) };
+}
 
 export interface WardOptions {
   seed?: string;
@@ -50,7 +65,7 @@ export interface GeneratedWard {
 export function generateWard(options: WardOptions = {}): GeneratedWard {
   const seed = options.seed ?? randomSeed();
   const rng = makeRng(seed);
-  const size = options.size ?? WARD_SIZE;
+  const size = clampWardSize(options.size ?? WARD_SIZE);
 
   const chosen = options.only
     ? options.only.map((id) => requireArchetype(id))
@@ -77,6 +92,17 @@ export function generateWard(options: WardOptions = {}): GeneratedWard {
       age: demo.age,
       declareAt: slots[i],
     };
+
+    // Patients you never hear about.
+    //
+    // On a list of eight everyone calls, because eight patients who all stay
+    // silent is not a shift. On a list of forty that is wrong in a way that
+    // matters: most of a cross-cover list is people whose night passes without
+    // anyone picking up the phone, and a board where every single patient pages
+    // teaches the player that the board is a queue to be worked through rather
+    // than a list to be triaged. Only benign cases fall silent — a real problem
+    // always declares itself.
+    const quiet = archetype.tier === 'benign' && rng.chance(quietChance(size));
 
     const base = archetype.baseline(ctx);
 
@@ -126,7 +152,7 @@ export function generateWard(options: WardOptions = {}): GeneratedWard {
         { ...DEFAULT_PARAMS, ...target.params },
       )),
       declaresAt: slots[i],
-      events: archetype.script(ctx).sort((a, b) => a.at - b.at),
+      events: quiet ? [] : archetype.script(ctx).sort((a, b) => a.at - b.at),
       expectedOrders: archetype.expectedOrders,
       contraindicatedOrders: archetype.contraindicatedOrders,
     } satisfies PatientCase;
@@ -137,32 +163,58 @@ export function generateWard(options: WardOptions = {}): GeneratedWard {
   return { seed, cases };
 }
 
+/**
+ * The chance a benign patient simply never calls, by list size.
+ *
+ * Zero at a single ward, rising to roughly half on a long list. Tuned so a list
+ * of forty produces a plausible overnight page volume rather than the sum of
+ * forty scripts.
+ */
+function quietChance(size: number): number {
+  if (size <= WARD_SIZE) return 0;
+  return Math.min(0.55, (size - WARD_SIZE) / 60);
+}
+
+/** Ward sizes the generator will honour. */
+export function clampWardSize(size: number): number {
+  return Math.max(1, Math.min(MAX_WARD_SIZE, Math.round(size)));
+}
+
 function requireArchetype(id: string): CaseArchetype {
   const archetype = ARCHETYPE_BY_ID[id];
   if (!archetype) throw new Error(`Unknown archetype: ${id}`);
   return archetype;
 }
 
-/** Draw archetypes to the composition, without repeating a diagnosis. */
+/** Draw archetypes to the composition for this size. */
 function chooseArchetypes(rng: Rng, size: number): CaseArchetype[] {
-  const byTier = {
-    critical: ARCHETYPES.filter((a) => a.tier === 'critical'),
-    ward: ARCHETYPES.filter((a) => a.tier === 'ward'),
-    benign: ARCHETYPES.filter((a) => a.tier === 'benign'),
-  };
-
-  const picked: CaseArchetype[] = [
-    ...rng.sample(byTier.critical, COMPOSITION.critical),
-    ...rng.sample(byTier.ward, COMPOSITION.ward),
-    ...rng.sample(byTier.benign, COMPOSITION.benign),
+  const want = composition(size);
+  const picked = [
+    ...drawTier(rng, 'critical', want.critical),
+    ...drawTier(rng, 'ward', want.ward),
+    ...drawTier(rng, 'benign', want.benign),
   ];
-
-  // Top up or trim if the caller asked for a different ward size.
-  const remaining = ARCHETYPES.filter((a) => !picked.includes(a));
-  while (picked.length < size && remaining.length > 0) {
-    picked.push(remaining.splice(rng.int(0, remaining.length - 1), 1)[0]);
-  }
   return rng.shuffle(picked).slice(0, size);
+}
+
+/**
+ * Draw `count` archetypes from one tier, repeating only once the tier is spent.
+ *
+ * Sampling without replacement is right for a list of eight and impossible for a
+ * list of forty — there are four benign archetypes and a big list needs twenty-six
+ * of them. Cycling through reshuffled copies of the whole tier keeps the draw even
+ * rather than letting the same diagnosis come up four times while another never
+ * appears. Two patients sharing an archetype are not the same patient in any case:
+ * severity is continuous, comorbidities and demographics are sampled separately,
+ * and the handoff is written to a different standard.
+ */
+function drawTier(rng: Rng, tier: CaseArchetype['tier'], count: number): CaseArchetype[] {
+  const pool = ARCHETYPES.filter((a) => a.tier === tier);
+  const drawn: CaseArchetype[] = [];
+  while (drawn.length < count) {
+    drawn.push(...rng.shuffle(pool).slice(0, count - drawn.length));
+  }
+  return drawn;
 }
 
 /**

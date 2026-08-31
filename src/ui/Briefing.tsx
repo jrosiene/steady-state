@@ -1,5 +1,20 @@
 import type { PatientCase } from '../game/types';
 import { HandoffCard } from './HandoffCard';
+import { composition } from '../game/content/generate';
+
+/**
+ * List sizes offered on the briefing screen.
+ *
+ * Eight is a single ward and the size everything is tuned against. The larger
+ * numbers are cross-cover: the same handful of real problems buried in a great
+ * deal more noise, which is the actual difficulty of a busy night.
+ */
+const SIZES = [8, 16, 24, 40] as const;
+
+function sizeNote(size: number): string {
+  const want = composition(size);
+  return `${want.critical} who could go off, ${want.ward} ward-level, ${want.benign} quiet`;
+}
 
 /**
  * The handoff.
@@ -11,14 +26,16 @@ import { HandoffCard } from './HandoffCard';
 export function Briefing({
   cases,
   seed,
+  size,
   onStart,
   onReroll,
   onBench,
 }: {
   cases: PatientCase[];
   seed: string;
+  size: number;
   onStart: () => void;
-  onReroll: (seed?: string) => void;
+  onReroll: (seed?: string, size?: number) => void;
   onBench: () => void;
 }) {
   return (
@@ -26,8 +43,10 @@ export function Briefing({
       <div className="sheet">
         <h1>Steady<span>/</span>State — <span>Night Shift</span></h1>
         <p className="lede">
-          It is 19:00. You are the covering doctor for eight patients on a general
-          medical ward until 07:00. You will not lay eyes on any of them — you have
+          It is 19:00. You are the covering doctor for {cases.length}{' '}
+          {cases.length === 1 ? 'patient' : 'patients'} until 07:00
+          {cases.length > 8 ? ', spread across several floors' : ' on a general medical ward'}.
+          You will not lay eyes on any of them — you have
           a phone, a set of nurses who will page you, and an order entry system.
           Everything you know arrives through those channels, and every number you
           see was true at the moment it was taken.
@@ -67,10 +86,29 @@ export function Briefing({
           </div>
         </div>
 
+        <h2>How many are you holding?</h2>
+        <p className="lede" style={{ marginBottom: 14 }}>
+          Acuity does not scale with the size of the list. A longer list is not more
+          people dying — it is the same handful of real problems buried in more noise,
+          and the night is harder because finding them is harder.
+        </p>
+        <div className="size-bar">
+          {SIZES.map((n) => (
+            <button
+              key={n}
+              className={`size-btn${n === size ? ' active' : ''}`}
+              onClick={() => onReroll(undefined, n)}
+            >
+              <span className="size-n">{n}</span>
+              <span className="size-note">{sizeNote(n)}</span>
+            </button>
+          ))}
+        </div>
+
         <h2>Sign-out from the day team</h2>
         <p className="lede" style={{ marginBottom: 14 }}>
-          Eight written handoffs of varying quality. Some anticipate what might go
-          wrong tonight; some were written by someone already halfway out of the
+          {cases.length} written handoffs of varying quality. Some anticipate what might
+          go wrong tonight; some were written by someone already halfway out of the
           building. You can re-read any of them from the patient's chart later.
         </p>
 
@@ -78,8 +116,8 @@ export function Briefing({
           <span className="seed-label">Ward</span>
           <code className="seed-value">{seed}</code>
           <span className="seed-note">
-            This ward was dealt from that seed — the same seed always deals the same
-            eight patients. Note it down if you want this night again.
+            This ward was dealt from that seed — the same seed and size always deal the
+            same patients. Note it down if you want this night again.
           </span>
           <button className="ctrl" onClick={() => onReroll()}>Deal another ward</button>
         </div>

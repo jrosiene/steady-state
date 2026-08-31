@@ -2,10 +2,11 @@
 
 A hospital night-shift game built on a real cardiovascular physiology engine.
 
-You cover eight patients on a general medical ward from 19:00 to 07:00. You never
-see any of them. You have a phone, a set of nurses who page you, and an order
-entry system — and underneath it all, a coupled ODE model of the heart, lungs and
-vasculature that decides what actually happens to each patient.
+You cover a list of patients from 19:00 to 07:00 — eight on a single ward, or up
+to forty spread across several floors. You never see any of them. You have a
+phone, a set of nurses who page you, and an order entry system — and underneath
+it all, a coupled ODE model of the heart, lungs and vasculature that decides what
+actually happens to each patient.
 
 Nothing is scripted to an outcome. Illness scripts apply *mechanistic* insults —
 preload loss, contractility loss, shunt, inflammatory tone — and the physiology
@@ -28,9 +29,15 @@ forty-eight minutes of real time, defaulting to 30× — and pauses whenever you
 
 ### What makes it hard
 
-**Vitals go stale.** Floor observations are every four hours. Between them you are
-reading history, and the patient board shows you how old each set is. Continuous
-monitoring collapses that gap — for the patients you think to order it on.
+**Vitals go stale.** Floor observations are every four hours — forty minutes once
+a nurse has rung about someone. Between them you are reading history, and the
+patient board shows you how old each set is. Continuous monitoring collapses that
+gap, for the patients you think to order it on.
+
+**Nothing on a ward is instant.** Asking for a set of observations sends someone
+to the bedside with a cuff, and the numbers arrive when they get back. The nurse
+acknowledges an order a beat after you place it, not in the same frame. Both
+delays are small; both exist so that asking never reads as free.
 
 **The nurse sees more than the chart does.** Asking how someone looks, whether
 they are confused, or whether they are making urine costs nothing and is always
@@ -305,8 +312,16 @@ helpers — `soloShift`, `advanceToDeclaration`, `findByArchetype` — that make
 generated ward testable.
 
 **Every shift is reproducible.** The seed is shown on the briefing and in the top
-bar during play. The same seed always deals the same eight patients, at the same
-severities, declaring at the same times.
+bar during play. The same seed and list size always deal the same patients, at
+the same severities, declaring at the same times.
+
+**Acuity does not scale with the list.** `composition(size)` grows the critical
+and ward tiers sub-linearly, so covering forty is not five times as many people
+dying — it is the same handful of real problems buried in five times the noise.
+On a long list a proportion of the benign patients never page at all, because a
+board where everyone calls teaches the player to work a queue rather than to
+triage a list. Only benign cases fall silent; a real problem always declares
+itself.
 
 ---
 

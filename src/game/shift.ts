@@ -141,15 +141,19 @@ export class ShiftEngine {
   /** The seed this ward was generated from, so a shift can be replayed. */
   readonly seed: string;
 
-  constructor(cases?: PatientCase[], seed?: string) {
+  /** How many patients the player is holding. Fixed for the life of the shift. */
+  readonly size: number;
+
+  constructor(cases?: PatientCase[], seed?: string, size?: number) {
     if (cases) {
       this.seed = seed ?? 'custom';
       this.patients = cases.map((c) => createRuntime(c));
     } else {
-      const ward = generateWard({ seed });
+      const ward = generateWard({ seed, size });
       this.seed = ward.seed;
       this.patients = ward.cases.map((c) => createRuntime(c));
     }
+    this.size = this.patients.length;
     this.rng = makeRng(`${this.seed}:code`);
     this.refreshSnapshots();
   }
@@ -189,6 +193,7 @@ export class ShiftEngine {
 
     for (const p of this.patients) {
       if (isInactive(p)) continue;
+      this.deliverPendingMessages(p);
       this.applyPendingEffects(p);
       this.fireCaseEvents(p);
       this.resolveLabs(p);
@@ -539,7 +544,7 @@ export class ShiftEngine {
     // Acknowledgements are not news — the player is looking at this thread right
     // now, having just acted in it. Counting them as unread would bury real pages.
     const ack = typeof order.ack === 'function' ? order.ack(p.case.voice) : order.ack;
-    this.post(p, 'nurse', p.case.nurse, ack, 'ack', false, true);
+    this.postLater(p, this.replyDelay(), 'nurse', p.case.nurse, ack, 'ack', false, true);
 
     // Oxygen devices replace one another rather than stacking.
     if (order.o2Device) {
@@ -566,11 +571,8 @@ export class ShiftEngine {
       });
     }
 
-    if (orderId === 'vitals-now') {
-      this.takeVitals(p);
-    }
-
-    if (order.leadTimeSec > 0 || order.startsMonitoring || order.raisesHgb || order.o2Device) {
+    if (order.leadTimeSec > 0 || order.startsMonitoring || order.raisesHgb || order.o2Device
+        || orderId === 'vitals-now') {
       p.pendingEffects.push({ at: effectiveAt, orderId });
     } else {
       this.applyOrderEffect(p, orderId);
@@ -591,6 +593,9 @@ export class ShiftEngine {
   private applyOrderEffect(p: PatientRuntime, orderId: string) {
     const order = ORDER_BY_ID[orderId];
     if (!order) return;
+
+    // The nurse has now been in and taken them.
+    if (orderId === 'vitals-now') this.takeVitals(p);
 
     if (order.o2Device) p.o2Device = order.o2Device;
     if (order.startsMonitoring) p.monitored = true;
@@ -985,6 +990,53 @@ export class ShiftEngine {
     });
     if (author !== 'doctor' && !silent) p.unread += 1;
   }
+
+  /**
+   * Post a message after a short delay, as though someone had to do something
+   * before they could reply.
+   */
+  private postLater(
+    p: PatientRuntime,
+    delaySec: number,
+    author: ChatMessage['author'],
+    authorName: string,
+    text: string,
+    kind: MessageKind,
+    urgent = false,
+    silent = false,
+  ) {
+    p.pendingMessages.push({
+      at: this.time + delaySec,
+      author,
+      authorName,
+      text,
+      kind,
+      urgent,
+      silent,
+    });
+  }
+
+  private deliverPendingMessages(p: PatientRuntime) {
+    if (p.pendingMessages.length === 0) return;
+    const due = p.pendingMessages.filter((m) => this.time >= m.at);
+    if (due.length === 0) return;
+    p.pendingMessages = p.pendingMessages.filter((m) => this.time < m.at);
+    for (const m of due) {
+      this.post(p, m.author, m.authorName, m.text, m.kind, m.urgent, m.silent);
+    }
+  }
+
+  /**
+   * How long the nurse takes to text back.
+   *
+   * Short and variable. The point is not to make the player wait — it is that a
+   * reply arriving in the same instant as the order reads as a machine, and one
+   * arriving a beat later reads as a person who looked up from what they were
+   * doing. Sim-seconds, so it scales with the shift speed the player chose.
+   */
+  private replyDelay(): number {
+    return this.rng.int(20, 55);
+  }
 }
 
 // ─── Construction ───────────────────────────────────────────────────────────
@@ -1037,6 +1089,7 @@ function createRuntime(c: PatientCase): PatientRuntime {
     messages: [],
     orders: [],
     pendingEffects: [],
+    pendingMessages: [],
     unread: 0,
     antipyreticUntil: -Infinity,
     lastReadAt: 0,

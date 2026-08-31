@@ -203,6 +203,18 @@ export interface PageTrigger {
   by?: number;
 }
 
+/** A message queued to arrive at a later sim-time. */
+export interface PendingMessage {
+  at: number;
+  author: MessageAuthor;
+  authorName: string;
+  text: string;
+  kind: MessageKind;
+  urgent: boolean;
+  /** Read on arrival — acknowledgements are not news. */
+  silent: boolean;
+}
+
 /** A scripted beat in a case's illness trajectory. */
 export interface CaseEvent {
   /** Sim-seconds after shift start when this fires. */
@@ -437,6 +449,15 @@ export interface PatientRuntime {
   messages: ChatMessage[];
   orders: PlacedOrder[];
   pendingEffects: PendingEffect[];
+  /**
+   * Nurse replies not yet sent.
+   *
+   * A nurse is a person at the other end of a phone, not a return value. Posting
+   * their acknowledgement in the same frame as the order made the ward feel like
+   * a form submission, and a set of observations that appeared the instant it was
+   * asked for quietly implied nobody had to walk anywhere to take it.
+   */
+  pendingMessages: PendingMessage[];
   unread: number;
   /**
    * Sim-time until which an antipyretic is suppressing the charted temperature.
