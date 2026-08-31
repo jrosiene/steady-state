@@ -36,9 +36,24 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   hrBaseline: 70,
   svrBaseline: 17,
   gainHr: 1.5,
+  // 55 bpm at a completely empty ventricle; a 30% volume deficit gives +17 bpm.
+  // Swept against the two things this limb has to do at once: put a visible
+  // tachycardia on the chart during the compensated phase (109 → 131 bpm in a
+  // moderate haemorrhage) without rescuing the patient out of the shock. Above
+  // about 70 the reflex fully compensates a class III bleed and a patient who
+  // should decompensate runs a normal pressure all night.
+  gainHrVolume: 55,
   gainSvr: 0.45,
   tauHr: 3.0,
   tauSvr: 8.0,
+
+  // --- Rate-dependent diastolic filling ---
+  // HR 110 → no penalty; 140 → ×0.90; 170 → ×0.79; 200 → ×0.69.
+  // Enough that tachycardia stops rescuing output, not so much that a sinus
+  // tachycardia of 120 is itself pathological.
+  filltimeHrThreshold: 110,
+  filltimeGain: 0.38,
+  filltimeFloor: 0.55,
 
   // --- Oxygenation / Fick ---
   vo2: 250,     // mL O2/min — resting O2 consumption
@@ -96,7 +111,14 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   lactateMAPGain: 0.3,        // at MAP=40: +3 mmol/L; at MAP=30: +6 mmol/L
   lactateNoToneGain: 10,      // type B: at noTone=0.7 → +7 mmol/L → pH 7.24 (compensated warm sepsis)
                                // at noTone=1.0 → +10 mmol/L → SvO2 drops below threshold → spiral → arrest
-  tauLactateRise: 180,        // 3 min to develop (anaerobic metabolism is rapid)
+  // Whole-body lactate kinetics, not muscle. 3 minutes is how fast an exercising
+  // muscle bed turns anaerobic; it is not how fast a circulating lactate rises,
+  // and using it made the acidosis→contractility loop turn over fast enough that
+  // decompensation took six minutes end to end — a patient sitting at a MAP of 91
+  // and arresting before anyone could reach the bedside. Ten minutes keeps the
+  // spiral lethal and irreversible past a point, while giving it the twenty to
+  // forty minutes of visible decline that a player can actually act inside.
+  tauLactateRise: 600,
   tauLactateClear: 900,       // 15 min to clear (hepatic lactate clearance is slower)
   acidosisPhThreshold: 7.35,  // myocardial depression starts at mild acidosis
   acidosisEmaxGain: 7.0,      // pH=7.24 → penalty 0.77 → emaxEff=1.23 (38% ↓); unstable with SvO2<40%

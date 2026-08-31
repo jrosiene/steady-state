@@ -68,14 +68,21 @@ function iv(
 // ─── 1. Hemorrhagic Shock → Fluid Resuscitation ───────────────────────────
 
 describe('Hemorrhage + fluid resuscitation', () => {
-  it('class II hemorrhage: HR↑, SVR↑, MAP partially preserved', () => {
+  it('class II hemorrhage: tachycardia and a narrow pulse pressure at a normal MAP', () => {
+    // 85 mL against a reference of 120 is a ~29% deficit — class II by ATLS,
+    // which is defined by a *preserved* blood pressure with tachycardia and a
+    // narrowed pulse pressure. The arterial baroreflex alone could not produce
+    // that picture: with the pressure defended it had no error to work on and
+    // returned a heart rate of 75. The cardiopulmonary limb senses the filling
+    // rather than the pressure, which is why the rate moves first.
     const bled = { ...DEFAULT_STATE, edv: 85 };
     const s = simulate(bled, 60);
     const d = derive(s, p); // edv baked into base state — no overlay needed
-    expect(s.hr).toBeGreaterThan(p.hrBaseline + 5);     // compensatory tachycardia
-    expect(s.svr).toBeGreaterThan(p.svrBaseline);        // vasoconstriction
-    expect(d.map).toBeGreaterThan(55);                    // MAP defended but below setpoint
-    expect(d.map).toBeLessThan(p.mapSetpoint);
+    const normal = derive(simulate({ ...DEFAULT_STATE }, 60), p);
+
+    expect(s.hr).toBeGreaterThan(p.hrBaseline + 12);      // compensatory tachycardia
+    expect(d.map).toBeGreaterThan(75);                     // pressure still defended
+    expect(d.sv).toBeLessThan(normal.sv * 0.85);           // narrowed pulse pressure
   });
 
   it('fluid bolus after hemorrhage raises MAP and CO toward baseline', () => {
@@ -277,8 +284,15 @@ describe('Tension pneumothorax + needle decompression', () => {
     ];
     const s = simulate(DEFAULT_STATE, 60, ptx);
     const d = effectiveDerived(s, ptx);
+    const normal = effectiveDerived(simulate(DEFAULT_STATE, 60), []);
+
     expect(d.co).toBeLessThan(3.0);
-    expect(d.map).toBeLessThan(p.mapSetpoint - 10);
+    expect(d.map).toBeLessThan(p.mapSetpoint);
+    expect(d.map).toBeLessThan(normal.map - 5);
+    // Tachycardia is the cardinal sign, and it comes from the volume limb of the
+    // reflex — the pressure is still being defended, so the arterial limb has
+    // comparatively little to say.
+    expect(s.hr).toBeGreaterThan(105);
   });
 
   it('needle decompression reverses obstructive physiology', () => {
@@ -630,7 +644,9 @@ describe('Afterload excess: vasopressor overdose', () => {
     const pressors = [
       infusion('Phenylephrine overdose', 'svr', 45), // ~9× therapeutic: lethal OD
     ];
-    const s = simulate(DEFAULT_STATE, 600, pressors);
+    // Half an hour, not ten minutes: whole-body lactate turns over on a ten-minute
+    // time constant, so a horizon of 600 s only ever saw two thirds of the rise.
+    const s = simulate(DEFAULT_STATE, 1800, pressors);
     const d = effectiveDerived(s, pressors);
     // Severe reflex bradycardia — primary mechanism of phenylephrine overdose toxicity
     expect(s.hr).toBeLessThan(55);

@@ -1,4 +1,5 @@
 import type { CaseEvent, CodeStatus, HandoffSeverity, InterventionSpec } from '../types';
+import type { Snapshot } from '../../engine/types';
 import type { Rng } from './rng';
 import type { Voice } from './voice';
 import { bloodLossScale, insultScale, lerp, onsetScale, varyAxis, type Severity } from './severity';
@@ -71,6 +72,21 @@ export interface CaseArchetype {
     rrOffset?: number;
   };
   script(ctx: ArchetypeContext): CaseEvent[];
+  /**
+   * What this case shows on a diagnostic study, once the physiology is there.
+   *
+   * Gated on the snapshot rather than on the diagnosis, so a film taken before
+   * the lung drops is genuinely clear and one taken after shows the collapse.
+   *
+   * `atHandover` is the patient's own physiology at 19:00 — the comparison film.
+   * Findings that describe a *change* have to be written against it rather than
+   * against an absolute, because a patient admitted with a drained pneumothorax
+   * or a treated pneumonia does not start from a normal lung.
+   */
+  findings?(
+    ctx: ArchetypeContext,
+    atHandover: Snapshot,
+  ): (panel: string, snap: Snapshot) => string | null;
   handoff(ctx: ArchetypeContext): HandoffDraft;
   expectedOrders: string[];
   contraindicatedOrders?: string[];
@@ -271,6 +287,15 @@ export const ARCHETYPES: CaseArchetype[] = [
         'If the pressure softens, this is sepsis until proven otherwise — fluids and a lactate, do not wait for the morning.',
       ],
     }),
+    findings: (_ctx, atHandover) => (panel, snap) => {
+      if (panel !== 'CXR') return null;
+      // They were admitted with a pneumonia, so the film is never clean; what the
+      // study answers is whether it has spread since the last one.
+      const spread = snap.qsQtEffective - atHandover.qsQtEffective;
+      if (spread > 0.06) return 'Dense multilobar consolidation with air bronchograms and a moderate parapneumonic effusion — progressed from the admission film.';
+      if (spread > 0.02) return 'Right lower lobe consolidation with air bronchograms, more confluent than on admission.';
+      return 'Right lower lobe consolidation with air bronchograms, unchanged from the admission film.';
+    },
     expectedOrders: ['vitals-now', 'lab-lactate', 'abx', 'ns-1000', 'o2-nc6', 'transfer-icu'],
     contraindicatedOrders: ['furosemide', 'morphine-comfort'],
   },
@@ -361,6 +386,8 @@ export const ARCHETYPES: CaseArchetype[] = [
       ],
       misleading: 'If the saturations drop, turn the oxygen up and give a PRN nebuliser.',
     }),
+    findings: () => (panel) =>
+      panel === 'CXR' ? 'Cardiomegaly with an enlarged cardiac silhouette.' : null,
     expectedOrders: ['nitro', 'furosemide', 'bipap', 'img-cxr', 'img-echo', 'sit-up'],
     contraindicatedOrders: ['ns-500', 'ns-1000', 'prbc'],
   },
@@ -431,6 +458,14 @@ export const ARCHETYPES: CaseArchetype[] = [
         'Prophylaxis has been off for 24 hours. If anything acute happens to the chest overnight, think embolus first.',
       ],
     }),
+    findings: () => (panel, snap) => {
+      if (panel !== 'EKG') return null;
+      // Before the RV is frankly strained the only electrical sign is the rate
+      // and some anterior T-wave change — which is exactly why a normal-looking
+      // EKG does not exclude this and the CT does.
+      if (snap.mPAP > 22 && snap.mPAP <= 30) return 'T-wave inversion in V1–V3.';
+      return null;
+    },
     expectedOrders: ['o2-nrb', 'img-echo', 'heparin', 'transfer-icu', 'thrombolysis', 'img-ctpe'],
     contraindicatedOrders: ['ns-1000', 'furosemide'],
   },
@@ -559,6 +594,20 @@ export const ARCHETYPES: CaseArchetype[] = [
       ],
       misleading: 'If the pain comes back, repeat the EKG.',
     }),
+    // The infarct is on the EKG from the moment the muscle starts dying, which is
+    // the whole basis of the time-critical decision this case is built around.
+    // Read off contractility rather than off the label, so a tracing taken before
+    // the event is correctly unremarkable and one taken after is not.
+    findings: () => (panel, snap) => {
+      if (panel !== 'EKG') return null;
+      if (snap.emaxEffective < 1.55) {
+        return 'ST elevation of 3–4 mm in II, III and aVF with reciprocal depression in I and aVL — inferior STEMI.';
+      }
+      if (snap.emaxEffective < 1.85) {
+        return 'Hyperacute T waves inferiorly with a millimetre of ST elevation in III — early, and evolving.';
+      }
+      return null;
+    },
     expectedOrders: ['img-ekg', 'lab-trop', 'aspirin', 'consult-cards', 'transfer-icu', 'img-echo'],
     contraindicatedOrders: ['ns-1000', 'ns-500'],
   },
@@ -622,6 +671,11 @@ export const ARCHETYPES: CaseArchetype[] = [
         'If tiring, think about non-invasive ventilation before a tube.',
       ],
     }),
+    findings: () => (panel) =>
+      panel === 'CXR'
+        ? 'Hyperinflated lungs with flattened hemidiaphragms and a narrow cardiac silhouette. ' +
+          'No focal consolidation — the chest film does not diagnose bronchospasm, and a normal one does not exclude it.'
+        : null,
     expectedOrders: ['duoneb', 'steroids', 'o2-nc6', 'sit-up', 'bipap'],
     contraindicatedOrders: ['ns-1000', 'morphine-comfort'],
   },
@@ -748,6 +802,12 @@ export const ARCHETYPES: CaseArchetype[] = [
         `${ctx.voice.Subj} ${ctx.voice.is} DNR/DNI. If ${ctx.voice.subj} ${ctx.voice.verb('deteriorate')}, the conversation to have is with the family, not the intensivist.`,
       ],
     }),
+    findings: (_ctx, atHandover) => (panel, snap) => {
+      if (panel !== 'CXR') return null;
+      return snap.qsQtEffective - atHandover.qsQtEffective > 0.03
+        ? 'Extensive bilateral consolidation, worse than the comparison film from admission. No new effusion.'
+        : 'Bilateral basal consolidation, unchanged from the admission film.';
+    },
     expectedOrders: ['comfort-care', 'call-attending', 'morphine-comfort', 'delirium-precautions'],
     contraindicatedOrders: ['intubate', 'norepi', 'transfer-icu'],
   },
@@ -818,6 +878,21 @@ export const ARCHETYPES: CaseArchetype[] = [
         'If the breathlessness comes back after a drain, get a film before anything else — a post-procedural pneumothorax can declare hours later.',
       ],
     }),
+    findings: (_ctx, atHandover) => (panel, snap) => {
+      if (panel !== 'CXR') return null;
+      // This patient was admitted with a drained pneumothorax, so the gate is the
+      // rise above their own film rather than an absolute — a study taken before
+      // the lung drops shows the residual, not a new collapse.
+      const excess = snap.qsQtEffective - atHandover.qsQtEffective;
+      // Tension physiology is the shunt together with the loss of venous return.
+      if (excess > 0.07 && snap.edv < atHandover.edv - 12) {
+        return 'Large pneumothorax with mediastinal shift away from the affected side and a depressed hemidiaphragm — under tension.';
+      }
+      if (excess > 0.03) {
+        return 'Moderate pneumothorax — visible visceral pleural line with no lung markings peripherally. No mediastinal shift.';
+      }
+      return 'Small apical pneumothorax at the site of the removed drain, unchanged from the comparison film. Lung otherwise expanded.';
+    },
     expectedOrders: ['img-cxr', 'o2-nrb', 'chest-drain', 'vitals-now'],
     contraindicatedOrders: ['ns-1000', 'furosemide'],
   },
@@ -878,6 +953,12 @@ export const ARCHETYPES: CaseArchetype[] = [
         `If ${ctx.voice.subj} ${ctx.voice.verb('aspirate')}, sit ${ctx.voice.obj} up, suction, and give oxygen. Antibiotics only if a fever or infiltrate develops — the first few hours are chemical, not infective.`,
       ],
     }),
+    findings: (_ctx, atHandover) => (panel, snap) => {
+      if (panel !== 'CXR') return null;
+      return snap.qsQtEffective - atHandover.qsQtEffective > 0.02
+        ? 'Patchy airspace opacification in the dependent segments — right lower lobe and posterior right upper lobe. New since admission, consistent with aspiration.'
+        : null;
+    },
     expectedOrders: ['sit-up', 'o2-nc6', 'img-cxr', 'abx'],
     contraindicatedOrders: ['morphine-comfort', 'trazodone'],
   },

@@ -497,7 +497,10 @@ export const ORDERS: OrderDef[] = [
     category: 'disposition',
     detail: 'Gastroenterology for endoscopic evaluation and haemostasis.',
     leadTimeSec: 600,
-    once: true,
+    // Repeatable. A consultant's advice is a read on the patient in front of
+    // them, not a token you spend — and the patient you called about at 21:00 is
+    // not the patient you have at 23:00. Marking it `once` meant the one moment
+    // a call-back is most worth making was the one moment it was refused.
     ack: "Paging the GI fellow.",
   },
   {
@@ -506,7 +509,6 @@ export const ORDERS: OrderDef[] = [
     category: 'disposition',
     detail: 'Cardiology for ischaemia and pump failure.',
     leadTimeSec: 600,
-    once: true,
     ack: "Paging cardiology.",
   },
   {

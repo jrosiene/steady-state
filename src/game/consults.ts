@@ -105,26 +105,51 @@ export function attendingAdvice(patient: PatientRuntime, snap: Snapshot): string
   );
 }
 
-/** Specialty consult responses, likewise reasoned from physiology. */
-export function specialtyAdvice(orderId: string, patient: PatientRuntime, snap: Snapshot): string {
+/**
+ * Specialty consult responses, likewise reasoned from physiology.
+ *
+ * Repeatable on purpose. A consultant's answer is a read on the patient in front
+ * of them, so the same referral made two hours later is a different conversation
+ * — and the moment it is most worth making the call again is exactly the moment
+ * the patient has changed.
+ */
+export function specialtyAdvice(
+  orderId: string,
+  patient: PatientRuntime,
+  snap: Snapshot,
+  calledBefore = false,
+): string {
   const v = patient.case.voice;
+  const again = calledBefore ? 'Yes, I remember — ' : '';
 
   if (orderId === 'consult-gi') {
+    const shocked = snap.map < 70;
     const activeBleed = snap.edv < 95;
+    if (shocked) {
+      return `GI fellow: ${again}that pressure changes things. We are not scoping ${v.obj} on the ward and we are not ` +
+        `scoping ${v.obj} unresuscitated either — get blood into ${v.obj} and get ${v.obj} to the unit, and we will ` +
+        `come and do it there. Call interventional radiology in parallel if ${v.subj} ${v.verb('keep')} dropping.`;
+    }
     return activeBleed
-      ? `GI fellow: we will scope ${v.obj} tonight. Keep transfusing to a haemoglobin of 7, keep the PPI drip running, ` +
+      ? `GI fellow: ${again}we will scope ${v.obj} tonight. Keep transfusing to a haemoglobin of 7, keep the PPI drip running, ` +
         `and make sure ${v.subj} ${v.is} in a monitored bed before we start — I do not want to be sedating ${v.obj} on the ward.`
-      : `GI fellow: sounds stable at the moment. Keep the PPI drip going and we will scope first thing. ` +
+      : `GI fellow: ${again}sounds stable at the moment. Keep the PPI drip going and we will scope first thing. ` +
         `Call me back tonight if ${v.subj} ${v.verb('drop')} the pressure or ${v.verb('have')} another large bleed.`;
   }
 
   if (orderId === 'consult-cards') {
     const poorPump = snap.emaxEffective < 1.2;
-    return poorPump
-      ? `Cardiology: with that pressure and those filling pressures I am treating this as cardiogenic shock. ` +
-        `We are activating the lab. Aspirin, heparin, and do not give ${v.obj} fluid — get ${v.obj} to the unit now.`
-      : `Cardiology: nothing here that needs the lab tonight. Cycle the troponins, keep ${v.obj} on telemetry, ` +
-        `and we will see ${v.obj} in the morning.`;
+    const congested = snap.pcwp > 22;
+    if (poorPump) {
+      return `Cardiology: ${again}with that pressure and those filling pressures I am treating this as cardiogenic shock. ` +
+        `We are activating the lab. Aspirin, heparin, and do not give ${v.obj} fluid — get ${v.obj} to the unit now.`;
+    }
+    if (congested) {
+      return `Cardiology: ${again}the pump is holding but ${v.subj} ${v.is} wet. This is a preload problem tonight, not a ` +
+        `catheter one — nitrates and a diuretic, and sit ${v.obj} up. Call me back if the pressure comes off with it.`;
+    }
+    return `Cardiology: ${again}nothing here that needs the lab tonight. Cycle the troponins, keep ${v.obj} on telemetry, ` +
+      `and we will see ${v.obj} in the morning.`;
   }
 
   return 'Consult acknowledged.';

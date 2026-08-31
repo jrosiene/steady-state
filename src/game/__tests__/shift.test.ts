@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { ShiftEngine, roscChance, causeIsBeingTreated } from '../shift';
 import { ORDER_BY_ID } from '../orders';
-import { assessAppearance, describeAppearance, acuityLabel, type Gestalt } from '../clinical';
+import { assessAppearance, describeAppearance, acuityLabel, resolveLabPanel, type Gestalt } from '../clinical';
 import { DEFAULT_PARAMS, DEFAULT_STATE } from '../../engine/constants';
 import { snapshot as computeSnapshot } from '../../engine/hemodynamics';
 import { buildReport } from '../scoring';
@@ -1294,5 +1294,172 @@ describe('the nurse is a person, not a return value', () => {
 
     // A deteriorating patient's numbers reflect the walk, which is the point.
     expect(s.patient.lastVitals!.time).toBeGreaterThan(askedAt);
+  });
+});
+
+// ─── Warning before the cliff ───────────────────────────────────────────────
+
+describe('a patient who is losing volume says so before the pressure does', () => {
+  it('raises the heart rate while the blood pressure is still normal', () => {
+    // The cardiopulmonary reflex. Without it the arterial baroreflex defended the
+    // pressure successfully, had no error to act on, and nothing else in the model
+    // knew the tank was emptying — so a patient could bleed for six hours with an
+    // unremarkable heart rate and then arrest with no warning at all.
+    const s = soloShift('gi-bleed', { severity: 0.7, declareAt: 20 * 60 });
+    const restingHr = s.engine.snapshot(s.patient).hr;
+
+    advanceToDeclaration(s, 200, 30);
+    const snap = s.engine.snapshot(s.patient);
+
+    expect(s.patient.status).toBe('stable');
+    expect(snap.map, 'still compensating').toBeGreaterThan(70);
+    expect(snap.hr - restingHr, 'tachycardia precedes hypotension').toBeGreaterThan(12);
+  });
+
+  it('settles the heart rate again when the volume is replaced', () => {
+    const bled = soloShift('gi-bleed', { severity: 0.7, declareAt: 20 * 60 });
+    advanceToDeclaration(bled, 200, 30);
+    const before = bled.engine.snapshot(bled.patient).hr;
+
+    bled.engine.placeOrder(bled.patient, 'prbc');
+    run(bled.engine, 90 * MIN, 30);
+    expect(bled.engine.snapshot(bled.patient).hr).toBeLessThan(before);
+  });
+
+  it('gives the player a window between decompensation and arrest', () => {
+    // The complaint this exists for: the acidosis→contractility loop turned over
+    // fast enough that a patient sat at a MAP of 91 and arrested six minutes
+    // later. Lethal is fine; unwatchable is not.
+    const s = soloShift('gi-bleed', { severity: 0.8, declareAt: 20 * 60 });
+
+    let declined = 0;
+    let died = 0;
+    for (let minute = 0; minute < 12 * 60; minute++) {
+      run(s.engine, MIN, 15);
+      const snap = s.engine.snapshot(s.patient);
+      if (!declined && snap.map < 70) declined = minute;
+      if (s.patient.status === 'died') { died = minute; break; }
+    }
+
+    expect(died, 'an untreated severe haemorrhage still dies').toBeGreaterThan(0);
+    expect(died - declined, 'minutes from decompensating to arrest').toBeGreaterThan(12);
+  });
+});
+
+describe('a fast heart is not a full one', () => {
+  it('costs filling once diastole is short', () => {
+    const slow = computeSnapshot({ ...DEFAULT_STATE, hr: 70 }, DEFAULT_PARAMS);
+    const fast = computeSnapshot({ ...DEFAULT_STATE, hr: 170 }, DEFAULT_PARAMS);
+
+    // Rate still buys output overall — but not proportionally, because the
+    // ventricle it is emptying has had less time to fill.
+    expect(fast.sv).toBeLessThan(slow.sv);
+    expect(fast.co / slow.co).toBeLessThan(170 / 70);
+  });
+
+  it('leaves an ordinary sinus tachycardia essentially unpenalised', () => {
+    const rest = computeSnapshot({ ...DEFAULT_STATE, hr: 70 }, DEFAULT_PARAMS);
+    const tachy = computeSnapshot({ ...DEFAULT_STATE, hr: 105 }, DEFAULT_PARAMS);
+    expect(tachy.sv / rest.sv).toBeGreaterThan(0.99);
+  });
+});
+
+describe('arrest rhythm follows the cause, not the numbers at the end', () => {
+  it('does not fibrillate a patient who bled to death', () => {
+    // PCWP is (EDV − V0) × stiffness / emax, so at the contractility clamp floor
+    // the wedge diverges however empty the patient is. Every terminal patient
+    // therefore read as congested, and haemorrhages arrested in VF.
+    const rhythms = new Set<string>();
+    for (let i = 0; i < 25; i++) {
+      const engine = new ShiftEngine(
+        [makeCase('gi-bleed', { severity: 0.85, seed: `RHYTHM${i}` })], `RHYTHM${i}`,
+      );
+      engine.start();
+      const p = engine.patients[0];
+      for (let t = 0; t < 12 * 60; t++) {
+        engine.tick(MIN);
+        if (p.code) { rhythms.add(p.code.rhythm); break; }
+        if (p.status === 'died') break;
+      }
+    }
+    expect(rhythms.size).toBeGreaterThan(0);
+    expect([...rhythms].every((r) => r === 'PEA' || r === 'asystole')).toBe(true);
+  });
+});
+
+// ─── Studies that show what is wrong with the patient ───────────────────────
+
+describe('a diagnostic study can find the diagnosis', () => {
+  it('puts an infarct on the EKG once the muscle is dying', () => {
+    const s = soloShift('acs-cardiogenic', { severity: 0.6, declareAt: 20 * 60 });
+
+    // Before the event the tracing is genuinely unremarkable.
+    const early = resolveLabPanel('EKG', s.engine.snapshot(s.patient), s.patient.params,
+      0, 0, 'a', s.patient.case.findings);
+    expect(early.impression).toMatch(/No acute isch/i);
+
+    advanceToDeclaration(s, 25, 30);
+    const late = resolveLabPanel('EKG', s.engine.snapshot(s.patient), s.patient.params,
+      0, 0, 'b', s.patient.case.findings);
+    expect(late.impression).toMatch(/ST elevation/i);
+    // And it does not also claim two other diagnoses in the same line.
+    expect(late.impression).not.toMatch(/S1Q3T3/);
+  });
+
+  it('shows a pneumothorax growing on successive films', () => {
+    const s = soloShift('pneumothorax', { severity: 0.75, declareAt: 20 * 60 });
+    const film = () => resolveLabPanel('CXR', s.engine.snapshot(s.patient), s.patient.params,
+      0, 0, 'x', s.patient.case.findings).impression!;
+
+    expect(film()).toMatch(/small apical|unchanged/i);
+    advanceToDeclaration(s, 30, 30);
+    expect(film()).toMatch(/pneumothorax/i);
+    advanceToDeclaration(s, 90, 30);
+    expect(film()).toMatch(/tension|mediastinal shift|Large pneumothorax/i);
+  });
+
+  it('never tells a patient with a finding that their lungs are clear', () => {
+    for (const id of ['pneumonia-sepsis', 'aspiration-event', 'pneumothorax', 'adhf-mislabelled']) {
+      const s = soloShift(id, { severity: 0.7, declareAt: 20 * 60 });
+      advanceToDeclaration(s, 60, 30);
+      const impression = resolveLabPanel('CXR', s.engine.snapshot(s.patient), s.patient.params,
+        0, 0, 'x', s.patient.case.findings).impression!;
+      expect(impression, id).not.toMatch(/Clear lung fields/);
+      expect(impression, id).not.toMatch(/consolidation.*No focal consolidation/i);
+    }
+  });
+});
+
+describe('you can ring the consultant back', () => {
+  it('takes the call a second time', () => {
+    const s = soloShift('gi-bleed', { severity: 0.8, declareAt: 20 * 60 });
+    expect(s.engine.placeOrder(s.patient, 'consult-gi')).toBeNull();
+    run(s.engine, 20 * MIN, 30);
+    expect(s.engine.placeOrder(s.patient, 'consult-gi'), 'a second call is not refused').toBeNull();
+  });
+
+  it('answers from the patient in front of them, not from the first call', () => {
+    const s = soloShift('gi-bleed', { severity: 0.85, declareAt: 20 * 60 });
+    const advice = () => s.patient.messages.filter((m) => m.authorName === 'Consult').pop()!.text;
+
+    s.engine.placeOrder(s.patient, 'consult-gi');
+    run(s.engine, 15 * MIN, 30);
+    const first = advice();
+
+    // Call back once the patient has actually changed — which is the moment the
+    // call is worth making, and the moment `once: true` used to refuse it.
+    for (let i = 0; i < 12 * 60; i++) {
+      run(s.engine, MIN, 30);
+      if (s.patient.status !== 'stable') break;
+      if (s.engine.snapshot(s.patient).map < 70) break;
+    }
+    expect(s.patient.status, 'still callable about').toBe('stable');
+
+    expect(s.engine.placeOrder(s.patient, 'consult-gi')).toBeNull();
+    run(s.engine, 15 * MIN, 30);
+    const second = advice();
+
+    expect(second).not.toBe(first);
+    expect(second).toMatch(/I remember/);
   });
 });

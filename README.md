@@ -34,6 +34,21 @@ a nurse has rung about someone. Between them you are reading history, and the
 patient board shows you how old each set is. Continuous monitoring collapses that
 gap, for the patients you think to order it on.
 
+**Tachycardia comes before hypotension.** The model carries both limbs of the
+reflex — the arterial baroreceptors that sense pressure and the cardiopulmonary
+receptors that sense filling. A patient who is losing volume speeds up while
+their blood pressure is still normal, which is the earliest sign there is and the
+reason a compensated patient can look fine on a cuff reading right up until they
+do not. Diastole shortens as the rate climbs, so tachycardia stops rescuing
+cardiac output past a point — that is the mechanism by which compensated shock
+becomes uncompensated.
+
+**Studies show what is wrong with the patient.** An infarct puts ST elevation on
+the EKG, a pneumothorax appears on the chest film and grows on the next one, a
+pneumonia is reported against the admission comparison. All of it is gated on the
+physiology rather than on the hidden diagnosis, so a study ordered before the
+event is genuinely, informatively normal.
+
 **Nothing on a ward is instant.** Asking for a set of observations sends someone
 to the bedside with a cuff, and the numbers arrive when they get back. The nurse
 acknowledges an order a beat after you place it, not in the same frame. Both

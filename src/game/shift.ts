@@ -490,6 +490,7 @@ export class ShiftEngine {
         pending.drawnAt,
         this.time,
         nextId('lab'),
+        p.case.findings,
       );
       p.labs.push(result);
       this.post(p, 'system', 'Results', formatLab(result), 'result', isCriticalResult(result));
@@ -623,9 +624,17 @@ export class ShiftEngine {
         break;
 
       case 'consult-gi':
-      case 'consult-cards':
-        this.post(p, 'system', 'Consult', specialtyAdvice(orderId, p, this.snapshot(p)), 'reply');
+      case 'consult-cards': {
+        // A call-back is a different conversation from a first referral, and the
+        // answer is read off the patient as they are now.
+        const calledBefore = p.orders.filter((o) => o.orderId === orderId).length > 1;
+        this.post(
+          p, 'system', 'Consult',
+          specialtyAdvice(orderId, p, this.snapshot(p), calledBefore),
+          'reply',
+        );
         break;
+      }
 
       case 'comfort-care':
         this.post(p, 'system', 'Goals of care', `Family reached and agreeable. ${p.case.name} is now comfort-focused: symptom management only, no escalation.`, 'event');
@@ -773,7 +782,7 @@ export class ShiftEngine {
       startedAt: this.time,
       cycle: 0,
       nextCycleAt: this.time + CODE_CYCLE_SEC,
-      rhythm: this.arrestRhythm(this.snapshot(p)),
+      rhythm: this.arrestRhythm(p, this.snapshot(p)),
       shocks: 0,
       epiDoses: 0,
       // A patient who arrests again after a ROSC still has the tube in.
@@ -803,9 +812,18 @@ export class ShiftEngine {
    * nobody has fixed. Someone profoundly acidotic for an hour has nothing left and
    * arrests in asystole, which is the rhythm with almost no survivors.
    */
-  private arrestRhythm(snap: Snapshot): CodeRhythm {
+  private arrestRhythm(p: PatientRuntime, snap: Snapshot): CodeRhythm {
     if (snap.pH < 7.0) return this.rng.chance(0.72) ? 'asystole' : 'PEA';
-    const primaryCardiac = snap.emaxEffective < 1.0 && snap.pcwp > 20;
+
+    // A full ventricle is part of the definition, and the reason it has to be
+    // stated: PCWP is (EDV − V0) × stiffness / emax, so as contractility
+    // approaches its clamp floor the wedge diverges no matter how empty the
+    // patient is. Every terminal patient therefore looked congested, and a
+    // haemorrhage that had bled its way down to an end-diastolic volume of 68
+    // arrested in ventricular fibrillation — which is not a rhythm a bleeding
+    // patient arrests in, and told the player the wrong thing about why.
+    const filled = snap.edv > p.params.edvRef * 0.85;
+    const primaryCardiac = filled && snap.emaxEffective < 1.0 && snap.pcwp > 20;
     if (primaryCardiac && this.rng.chance(0.45)) {
       return this.rng.chance(0.7) ? 'VF' : 'pulseless VT';
     }

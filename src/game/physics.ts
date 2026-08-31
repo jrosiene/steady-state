@@ -70,8 +70,14 @@ export function stepPhysics(
     // error term, so the response is partially opposed with finite gain —
     // delta / (1 + gainSvr x CO) survives — which is how a real proportional
     // reflex behaves, and why reflex bradycardia on phenylephrine still emerges.
+    //
+    // Filling is read from the EFFECTIVE state, unlike tone. There is no
+    // self-cancelling loop to worry about here: heart rate does not feed back
+    // into end-diastolic volume in this model, so the volume limb senses what
+    // the receptors sense — including a fluid bolus, which is exactly why
+    // resuscitating a hypovolaemic patient brings their heart rate down.
     const { dHr, dSvr } = computeBaroreflex(
-      state.hr, state.svr, derived.map, effective.hrMod, pWithHrCeiling,
+      state.hr, state.svr, derived.map, effective.hrMod, pWithHrCeiling, effective.edv,
     );
 
     // Mediator ODEs: targets from effective SpO2/mPAP, but compared against BASE

@@ -13,6 +13,16 @@ import type { HemodynamicParams } from './types';
  *
  * Phenylephrine (pure α1) has no hrMod — its reflex bradycardia emerges
  * automatically: SVR↑ → MAP↑ → negative error → hrTarget↓.
+ *
+ * Two afferent limbs, not one. The arterial baroreceptors sense pressure; the
+ * cardiopulmonary receptors in the atria and ventricles sense filling. Modelling
+ * only the arterial limb produced a patient who could bleed for six hours with a
+ * completely unremarkable heart rate — because the arterial reflex was defending
+ * the pressure successfully, it had no error to act on, and nothing else in the
+ * model knew the tank was emptying. That is backwards from the bedside, where a
+ * rising heart rate in a patient whose blood pressure is still normal is the
+ * earliest sign of haemorrhage there is, and the whole reason the pressure looks
+ * fine right up until it does not.
  */
 
 export interface BaroreflexDerivatives {
@@ -26,12 +36,24 @@ export function computeBaroreflex(
   map: number,
   hrMod: number,
   params: HemodynamicParams,
+  /**
+   * Effective LV end-diastolic volume — the filling the cardiopulmonary
+   * receptors are actually sensing, including whatever fluid has been given.
+   * Defaults to the patient's own reference, which contributes nothing.
+   */
+  edv = params.edvRef,
 ): BaroreflexDerivatives {
   const error = params.mapSetpoint - map;
 
-  // HR target = baroreflex component + pharmacologic chronotropic offset
+  // Cardiopulmonary (volume) reflex: unloading the atrial and ventricular stretch
+  // receptors withdraws their tonic vagal inhibition, and the heart rate rises
+  // before any pressure has been lost. Expressed as a fraction of this patient's
+  // own resting volume, so it fires on the deficit rather than on an absolute.
+  const fillingDeficit = Math.max(0, (params.edvRef - edv) / Math.max(1, params.edvRef));
+
+  // HR target = arterial baroreflex + volume reflex + pharmacologic chronotropy
   const hrTarget = clamp(
-    params.hrBaseline + hrMod + params.gainHr * error,
+    params.hrBaseline + hrMod + params.gainHr * error + params.gainHrVolume * fillingDeficit,
     params.hrMin,
     params.hrMax,
   );

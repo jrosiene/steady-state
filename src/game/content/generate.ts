@@ -121,6 +121,14 @@ export function generateWard(options: WardOptions = {}): GeneratedWard {
     };
     applyComorbidities(comorbidities, target, rng);
 
+    // The patient's own physiology at 19:00 — the comparison film, and the
+    // reference for anything that has to reason about change rather than about
+    // an absolute.
+    const atHandover = computeSnapshot(
+      { ...DEFAULT_STATE, ...target.state },
+      { ...DEFAULT_PARAMS, ...target.params },
+    );
+
     return {
       id: `${archetype.id}-${demo.room}`,
       archetypeId: archetype.id,
@@ -147,10 +155,8 @@ export function generateWard(options: WardOptions = {}): GeneratedWard {
       stateOverrides: target.state,
       tempOffset: base.tempOffset,
       rrOffset: base.rrOffset,
-      baselineDrive: respiratoryDrive(computeSnapshot(
-        { ...DEFAULT_STATE, ...target.state },
-        { ...DEFAULT_PARAMS, ...target.params },
-      )),
+      baselineDrive: respiratoryDrive(atHandover),
+      findings: archetype.findings?.(ctx, atHandover),
       declaresAt: slots[i],
       events: quiet ? [] : archetype.script(ctx).sort((a, b) => a.at - b.at),
       expectedOrders: archetype.expectedOrders,

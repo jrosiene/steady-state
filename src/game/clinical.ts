@@ -225,8 +225,14 @@ export function resolveLabPanel(
   drawnAt: number,
   resultedAt: number,
   id: string,
+  /**
+   * The case's own findings, which take precedence over the generic reading
+   * when the physiology behind them is present. See `PatientCase.findings`.
+   */
+  caseFindings?: (panel: string, snap: Snapshot) => string | null,
 ): LabResult {
   const base = { id, panel, drawnAt, resultedAt };
+  const specific = caseFindings?.(panel, snap) ?? null;
 
   switch (panel) {
     case 'Lactate':
@@ -322,10 +328,16 @@ export function resolveLabPanel(
       const ischemia = snap.emaxEffective < 1.2
         ? ' ST depressions in the lateral leads.'
         : '';
+      // A case that can name its own tracing replaces the generic read rather than
+      // adding to it: an inferior STEMI reported alongside "S1Q3T3, RV strain"
+      // and "ST depressions laterally" is three different diagnoses in one line.
+      const electrical = specific
+        ? ` ${specific}`
+        : `${strain}${ischemia}` || ' No acute ischaemic changes.';
       return {
         ...base,
         values: [],
-        impression: `${rhythm} at ${rate}.${strain}${ischemia}${!strain && !ischemia ? ' No acute ischemic changes.' : ''}`,
+        impression: `${rhythm} at ${rate}.${electrical}`,
       };
     }
 
@@ -338,10 +350,18 @@ export function resolveLabPanel(
       const hyperinflation = snap.qsQt > 0.18 && snap.pcwp < 18
         ? 'Hyperinflated lungs with flattened diaphragms. No focal consolidation.'
         : null;
+      // Congestion is an orthogonal axis and coexists with anything — a pneumonia
+      // patient in fluid overload has both, and reporting only one is how a player
+      // ends up treating half the problem. The parenchymal read is not orthogonal,
+      // so a case that names its own is not also told its lungs are clear.
+      const parenchyma = specific ?? hyperinflation;
+      const readings = [parenchyma, edema].filter(Boolean);
       return {
         ...base,
         values: [],
-        impression: edema ?? hyperinflation ?? 'Clear lung fields. No consolidation, effusion, or pneumothorax.',
+        impression: readings.length > 0
+          ? readings.join(' ')
+          : 'Clear lung fields. No consolidation, effusion, or pneumothorax.',
       };
     }
 
@@ -375,7 +395,7 @@ export function resolveLabPanel(
     }
 
     default:
-      return { ...base, values: [], impression: 'Result unavailable.' };
+      return { ...base, values: [], impression: specific ?? 'Result unavailable.' };
   }
 }
 

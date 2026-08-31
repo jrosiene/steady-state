@@ -352,6 +352,23 @@ export interface PatientCase {
   declaresAt: number;
   /** Illness script. */
   events: CaseEvent[];
+  /**
+   * Findings this particular case can show on a diagnostic study, once the
+   * physiology that produces them is actually present.
+   *
+   * The generic readings in `resolveLabPanel` know only what the engine models —
+   * wedge pressure, shunt, pulmonary vascular resistance — which left whole
+   * classes of disease radiographically and electrically silent. An infarct could
+   * not put ST elevation on an EKG, a pneumothorax could not appear on a chest
+   * film, and a lobar pneumonia read as clear lung fields. A player who ordered
+   * the right test got nothing back and reasonably concluded the test was
+   * decorative.
+   *
+   * Gated on state, never on the hidden label: the finding appears when the
+   * insult that causes it has taken hold, and a study ordered before that is
+   * genuinely, informatively normal.
+   */
+  findings?: (panel: string, snap: Snapshot) => string | null;
   /** Order ids that represent correct management, for the debrief. */
   expectedOrders: string[];
   /** Order ids that are actively harmful in this case, for the debrief. */

@@ -167,10 +167,26 @@ export interface HemodynamicParams {
   svrBaseline: number;
   /** Baroreflex gain for HR (bpm per mmHg error). */
   gainHr: number;
+  /**
+   * Cardiopulmonary reflex gain (bpm at complete unloading of the ventricle).
+   *
+   * Applied to the fractional filling deficit, so a patient down 30% on their own
+   * resting end-diastolic volume gains 0.3 × this many beats per minute. This is
+   * the limb that makes tachycardia precede hypotension in haemorrhage.
+   */
+  gainHrVolume: number;
   /** Baroreflex gain for SVR (Wood units per mmHg error). */
   gainSvr: number;
   /** HR time constant (seconds). */
   tauHr: number;
+
+  // --- Rate-dependent diastolic filling ---
+  /** Heart rate above which diastole is short enough to cost filling (bpm). */
+  filltimeHrThreshold: number;
+  /** Fraction of end-diastolic volume lost per unit of fractional rate excess. */
+  filltimeGain: number;
+  /** Floor on the filling fraction, so an extreme rate cannot empty the ventricle. */
+  filltimeFloor: number;
   /** SVR time constant (seconds). */
   tauSvr: number;
 

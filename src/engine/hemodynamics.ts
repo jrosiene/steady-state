@@ -64,7 +64,25 @@ export function derive(
 
   // RV-LV septal interdependence (Layer A: mechanical, no SpO2 dependency)
   const rvlvPenalty = computeRVLVInterdependence(state.rvedv, params);
-  const edvEffective = Math.max(params.edvMin, state.edv - rvlvPenalty);
+
+  // Rate-dependent diastolic filling.
+  //
+  // Diastole is what shortens when the heart speeds up, so past roughly 110 the
+  // ventricle has progressively less time to fill and the volume it starts from
+  // falls. This is the mechanism by which tachycardia stops being a rescue — the
+  // reason compensated shock becomes uncompensated shock rather than continuing
+  // indefinitely, and the reason rate control helps a poorly-filling ventricle.
+  //
+  // Its absence let the volume reflex fully compensate a class III haemorrhage:
+  // heart rate rose, stroke volume held, cardiac output came out normal, and a
+  // patient thirty-five per cent down on volume ran a blood pressure of 99 all
+  // night. A fast heart and a full one are not the same heart.
+  const fillingPenalty = 1 - params.filltimeGain
+    * Math.max(0, state.hr - params.filltimeHrThreshold) / params.filltimeHrThreshold;
+  const edvEffective = Math.max(
+    params.edvMin,
+    (state.edv - rvlvPenalty) * Math.max(params.filltimeFloor, fillingPenalty),
+  );
 
   // ── Pass 1: SV, CO, preliminary oxygenation ──────────────────────────────
   //
@@ -210,7 +228,7 @@ export function derivative(
     : params;
 
   // Baroreflex (with pH-adjusted hrMax)
-  const { dHr, dSvr } = computeBaroreflex(state.hr, state.svr, map, state.hrMod, paramsWithHrCeiling);
+  const { dHr, dSvr } = computeBaroreflex(state.hr, state.svr, map, state.hrMod, paramsWithHrCeiling, state.edv);
 
   // Vasoactive mediator ODEs (Layer B)
   const { noToneTarget, et1ToneTarget } = computeVasoactiveToneTargets(spO2, mPAP, params);
