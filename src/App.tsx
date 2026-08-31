@@ -115,7 +115,7 @@ export default function App() {
   const restart = () => {
     // A fresh seed, so the next night is a different ward rather than a retry —
     // but the same size of list, since that is a preference, not part of the deal.
-    setEngine(new ShiftEngine(undefined, undefined, engine.size));
+    setEngine(new ShiftEngine(undefined, undefined, engine.size, engine.setting));
     setSelectedId(null);
     setPaused(false);
     setRefusal(null);
@@ -149,7 +149,11 @@ export default function App() {
           cases={engine.patients.map((p) => p.case)}
           seed={engine.seed}
           size={engine.size}
-          onReroll={(seed, size) => setEngine(new ShiftEngine(undefined, seed, size ?? engine.size))}
+          setting={engine.setting}
+          onReroll={(seed, size, setting) =>
+            setEngine(new ShiftEngine(
+              undefined, seed, size ?? engine.size, setting ?? engine.setting,
+            ))}
           onStart={() => {
             engine.start();
             setSelectedId(engine.patients[0]?.case.id ?? null);

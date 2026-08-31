@@ -43,6 +43,21 @@ export function PatientDetail({
           <HandoffCard handoff={p.case.handoff} compact />
         </details>
 
+        {p.case.medications.length > 0 && (
+          <details className="handoff-details">
+            <summary>Medications ({p.case.medications.length})</summary>
+            <div className="med-list">
+              {p.case.medications.map((m) => (
+                <div key={m.name} className="med">
+                  <span className="med-name">{m.name}</span>
+                  <span className="med-detail">{m.detail}</span>
+                  <span className="med-since">{m.since}</span>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+
         <div className="section-title">Vitals</div>
         <VitalsCard vitals={displayVitals} ageSec={vitalsAgeSec} live={live} dead={dead} />
 
@@ -53,6 +68,19 @@ export function PatientDetail({
               <LabCard key={l.id} lab={l} />
             ))}
           </>
+        )}
+
+        {p.case.priorLabs.length > 0 && (
+          <details className="handoff-details">
+            {/* Folded away rather than absent. What the day team already drew is
+                often the answer — the afternoon gas on a COPD patient, the sputum
+                sensitivities behind the antibiotic that is running — and it is
+                also the last thing a covering doctor thinks to look for. */}
+            <summary>Earlier today ({p.case.priorLabs.length} results)</summary>
+            {[...p.case.priorLabs]
+              .sort((a, b) => b.drawnAt - a.drawnAt)
+              .map((l) => <LabCard key={l.id} lab={l} />)}
+          </details>
         )}
 
         {p.pendingLabs.length > 0 && (

@@ -1,6 +1,5 @@
-import type { PatientCase } from '../game/types';
+import type { PatientCase, Setting } from '../game/types';
 import { HandoffCard } from './HandoffCard';
-import { composition } from '../game/content/generate';
 
 /**
  * List sizes offered on the briefing screen.
@@ -8,13 +7,26 @@ import { composition } from '../game/content/generate';
  * Eight is a single ward and the size everything is tuned against. The larger
  * numbers are cross-cover: the same handful of real problems buried in a great
  * deal more noise, which is the actual difficulty of a busy night.
+ *
+ * The acuity breakdown is deliberately not shown. Knowing that three of the eight
+ * can kill you turns the first hour into arithmetic — the player counts off the
+ * ones they have accounted for instead of reading the patients in front of them,
+ * and the whole point of a night on call is not knowing which one it is.
  */
 const SIZES = [8, 16, 24, 40] as const;
 
-function sizeNote(size: number): string {
-  const want = composition(size);
-  return `${want.critical} who could go off, ${want.ward} ward-level, ${want.benign} quiet`;
-}
+const SETTINGS: { id: Setting; label: string; note: string }[] = [
+  {
+    id: 'community',
+    label: 'Community',
+    note: 'General medicine. Pneumonia, heart failure, GI bleeds — the bread and butter, and the traps inside it.',
+  },
+  {
+    id: 'academic',
+    label: 'Academic centre',
+    note: 'Quaternary referral. Pulmonary hypertension, high-MELD cirrhosis, transplant recipients, cystic fibrosis, sickle cell.',
+  },
+];
 
 /**
  * The handoff.
@@ -27,6 +39,7 @@ export function Briefing({
   cases,
   seed,
   size,
+  setting,
   onStart,
   onReroll,
   onBench,
@@ -34,8 +47,9 @@ export function Briefing({
   cases: PatientCase[];
   seed: string;
   size: number;
+  setting: Setting;
   onStart: () => void;
-  onReroll: (seed?: string, size?: number) => void;
+  onReroll: (seed?: string, size?: number, setting?: Setting) => void;
   onBench: () => void;
 }) {
   return (
@@ -86,6 +100,20 @@ export function Briefing({
           </div>
         </div>
 
+        <h2>Where are you working?</h2>
+        <div className="size-bar">
+          {SETTINGS.map((s) => (
+            <button
+              key={s.id}
+              className={`size-btn wide${s.id === setting ? ' active' : ''}`}
+              onClick={() => onReroll(undefined, undefined, s.id)}
+            >
+              <span className="setting-name">{s.label}</span>
+              <span className="size-note">{s.note}</span>
+            </button>
+          ))}
+        </div>
+
         <h2>How many are you holding?</h2>
         <p className="lede" style={{ marginBottom: 14 }}>
           Acuity does not scale with the size of the list. A longer list is not more
@@ -100,7 +128,6 @@ export function Briefing({
               onClick={() => onReroll(undefined, n)}
             >
               <span className="size-n">{n}</span>
-              <span className="size-note">{sizeNote(n)}</span>
             </button>
           ))}
         </div>

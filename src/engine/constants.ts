@@ -153,6 +153,15 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   afterloadMapThreshold: 140,
   afterloadSvGain: 250,
 
+  // --- Afterload-sensitive RV output ---
+  // Penalty fraction = max(0, mPAP − 25) / (rvEmax × 125).
+  // Normal (rvEmax 0.5, mPAP 15):            no penalty
+  // Acute PE (rvEmax 0.5, mPAP 40):          24% — a normal RV is not built for this
+  // Chronic PAH (rvEmax 1.4, mPAP 55):       17% — years of hypertrophy tolerate it
+  // PAH decompensating (rvEmax 0.7, mPAP 55): 34% — and stops tolerating it
+  rvAfterloadMpapThreshold: 25,
+  rvAfterloadSvGain: 125,
+
   // --- Physiologic clamps ---
   hrMin: 30,
   hrMax: 220,

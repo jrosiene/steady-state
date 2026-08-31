@@ -156,6 +156,19 @@ export const ORDERS: OrderDef[] = [
     ],
   },
   {
+    id: 'albumin',
+    label: 'Albumin 25%',
+    category: 'fluids',
+    detail: 'Oncotic volume expansion. In spontaneous bacterial peritonitis it is what prevents hepatorenal syndrome.',
+    leadTimeSec: 900,
+    ack: "Albumin ordered from pharmacy — I'll run it once it's up.",
+    interventions: [
+      // Stays intravascular in a way crystalloid does not, which is the point.
+      { label: 'Albumin: volume', category: 'treatment', kind: 'bolus', target: 'edv', delta: 20, tauOn: 900, eliminationHalfLife: 28800 },
+      { label: 'Albumin: oncotic', category: 'treatment', kind: 'bolus', target: 'svr', delta: 1.2, tauOn: 1200, eliminationHalfLife: 28800 },
+    ],
+  },
+  {
     id: 'prbc',
     label: 'Transfuse 2 units PRBC',
     category: 'fluids',
@@ -181,6 +194,20 @@ export const ORDERS: OrderDef[] = [
     interventions: [
       { label: 'Norepinephrine (SVR)', category: 'treatment', kind: 'infusion', target: 'svr', delta: 8, tauOn: 120, eliminationHalfLife: 150 },
       { label: 'Norepinephrine (chrono)', category: 'treatment', kind: 'infusion', target: 'hrMod', delta: 5, tauOn: 120, eliminationHalfLife: 150 },
+    ],
+  },
+  {
+    id: 'phenylephrine',
+    label: 'Phenylephrine infusion',
+    category: 'pressors',
+    detail: 'Pure α1 vasoconstrictor. Raises systemic pressure — and pulmonary vascular resistance with it.',
+    leadTimeSec: 600,
+    requiresIcu: true,
+    ack: "Phenylephrine is running.",
+    interventions: [
+      { label: 'Phenylephrine: SVR', category: 'treatment', kind: 'infusion', target: 'svr', delta: 9, tauOn: 240, eliminationHalfLife: 600 },
+      // The reason it is the wrong pressor for a failing right ventricle.
+      { label: 'Phenylephrine: PVR', category: 'treatment', kind: 'infusion', target: 'pvr', delta: 1.1, tauOn: 300, eliminationHalfLife: 600 },
     ],
   },
   {
@@ -309,6 +336,17 @@ export const ORDERS: OrderDef[] = [
   },
 
   {
+    id: 'physio-airway',
+    label: 'Airway clearance and chest physiotherapy',
+    category: 'respiratory',
+    detail: 'Nebulised hypertonic saline, then percussion and assisted clearance. The treatment for a plugged airway.',
+    leadTimeSec: 1500,
+    ack: (v) => `I'll get the physio up to ${v.obj} — and I'll do the saline neb before they come.`,
+    interventions: [
+      { label: 'Airway clearance: V/Q', category: 'treatment', kind: 'bolus', target: 'qsQt', delta: -0.09, tauOn: 1800, eliminationHalfLife: 14400 },
+    ],
+  },
+  {
     id: 'chest-drain',
     label: 'Insert chest drain',
     category: 'respiratory',
@@ -422,6 +460,15 @@ export const ORDERS: OrderDef[] = [
   { id: 'lab-cbc', label: 'CBC', category: 'labs', detail: 'Haemoglobin, white count, platelets.', leadTimeSec: 0, lab: { panel: 'CBC', turnaroundSec: 2400 }, ack: "CBC sent." },
   { id: 'lab-bmp', label: 'Basic metabolic panel', category: 'labs', detail: 'Renal function and electrolytes.', leadTimeSec: 0, lab: { panel: 'BMP', turnaroundSec: 2700 }, ack: "BMP sent." },
   { id: 'lab-trop', label: 'Troponin', category: 'labs', detail: 'Myocardial injury marker.', leadTimeSec: 0, lab: { panel: 'Troponin', turnaroundSec: 2700 }, ack: "Troponin sent." },
+  {
+    id: 'paracentesis',
+    label: 'Diagnostic paracentesis',
+    category: 'labs',
+    detail: 'Ascitic fluid cell count, culture and albumin. The only test that diagnoses spontaneous bacterial peritonitis.',
+    leadTimeSec: 1200,
+    lab: { panel: 'Ascitic fluid', turnaroundSec: 1800 },
+    ack: (v) => `I'll set up for the tap and get ${v.obj} positioned.`,
+  },
   { id: 'lab-cultures', label: 'Blood cultures ×2', category: 'labs', detail: 'Draw before antibiotics when feasible.', leadTimeSec: 0, lab: { panel: 'Blood cultures', turnaroundSec: 1800 }, ack: "Getting two sets from separate sites." },
   { id: 'img-ekg', label: '12-lead EKG', category: 'imaging', detail: 'Rhythm, ischaemia, strain pattern.', leadTimeSec: 0, lab: { panel: 'EKG', turnaroundSec: 600 }, ack: "Doing the EKG now." },
   { id: 'img-cxr', label: 'Portable chest X-ray', category: 'imaging', detail: 'Oedema, consolidation, pneumothorax.', leadTimeSec: 0, lab: { panel: 'CXR', turnaroundSec: 2100 }, ack: "Ordered the portable film." },

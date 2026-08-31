@@ -1463,3 +1463,174 @@ describe('you can ring the consultant back', () => {
     expect(second).toMatch(/I remember/);
   });
 });
+
+// ─── Community and academic services ────────────────────────────────────────
+
+describe('the service you are working on', () => {
+  it('keeps specialist cases off a community list entirely', () => {
+    const specialist = new Set(
+      ARCHETYPES.filter((a) => a.setting === 'academic').map((a) => a.id),
+    );
+    expect(specialist.size).toBeGreaterThan(0);
+
+    for (let i = 0; i < 25; i++) {
+      const { cases } = generateWard({ seed: `COMM${i}`, setting: 'community' });
+      expect(cases.some((c) => specialist.has(c.archetypeId)), `seed ${i}`).toBe(false);
+    }
+  });
+
+  it('puts specialist cases on an academic list without crowding out the rest', () => {
+    const specialist = new Set(
+      ARCHETYPES.filter((a) => a.setting === 'academic').map((a) => a.id),
+    );
+    let seen = 0;
+    let total = 0;
+    for (let i = 0; i < 25; i++) {
+      for (const c of generateWard({ seed: `ACAD${i}`, setting: 'academic' }).cases) {
+        total += 1;
+        if (specialist.has(c.archetypeId)) seen += 1;
+      }
+    }
+    // Roughly half, by design — a quaternary service still admits pneumonia.
+    expect(seen / total).toBeGreaterThan(0.25);
+    expect(seen / total).toBeLessThan(0.75);
+  });
+
+  it('hands over every specialist case in a state a ward would accept', () => {
+    for (const archetype of ARCHETYPES.filter((a) => a.setting === 'academic')) {
+      for (const severity of [0.2, 0.5, 0.8]) {
+        const s = soloShift(archetype.id, { severity });
+        const v = s.patient.lastVitals!;
+        const where = `${archetype.id}@${severity}`;
+
+        expect(v.map, where).toBeGreaterThanOrEqual(62);
+        expect(v.spo2, where).toBeGreaterThanOrEqual(88);
+        expect(s.patient.status, where).toBe('stable');
+      }
+    }
+  });
+
+  it('can kill every specialist critical case, and none of the ward ones', () => {
+    for (const archetype of ARCHETYPES.filter((a) => a.setting === 'academic')) {
+      const s = soloShift(archetype.id, { severity: 0.85, declareAt: 20 * 60 });
+      for (let i = 0; i < 12 * 60; i++) {
+        run(s.engine, MIN, 30);
+        if (s.patient.status !== 'stable') break;
+      }
+      const lost = s.patient.status !== 'stable';
+      expect(lost, `${archetype.id} (${archetype.tier})`).toBe(archetype.tier === 'critical');
+    }
+  });
+});
+
+// ─── What the day team leaves behind ────────────────────────────────────────
+
+describe('inherited orders and results', () => {
+  it('hands over the medications on every patient', () => {
+    for (const setting of ['community', 'academic'] as const) {
+      for (const c of generateWard({ seed: `MEDS-${setting}`, setting }).cases) {
+        expect(c.medications.length, `${c.archetypeId}`).toBeGreaterThan(0);
+        for (const m of c.medications) {
+          expect(m.name).toBeTruthy();
+          expect(m.detail).toBeTruthy();
+          expect(m.since).toBeTruthy();
+        }
+      }
+    }
+  });
+
+  it('dates prior results before the shift began', () => {
+    for (const c of generateWard({ seed: 'PRIOR', setting: 'academic' }).cases) {
+      for (const l of c.priorLabs) {
+        expect(l.drawnAt, `${c.archetypeId}/${l.panel}`).toBeLessThan(0);
+        expect(l.values.length + (l.impression ? 1 : 0)).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('leaves the afternoon gas on a COPD patient for whoever looks', () => {
+    // The specific thing a covering doctor wants at 02:00 and cannot generate:
+    // what this patient's carbon dioxide was doing while someone was watching.
+    const c = makeCase('copd-exacerbation', { severity: 0.6 });
+    const gases = c.priorLabs.filter((l) => l.panel === 'VBG');
+    expect(gases.length).toBeGreaterThanOrEqual(2);
+
+    const pco2 = gases[0].values.find((v) => v.label.startsWith('pCO'))!;
+    expect(pco2.value).toBeGreaterThan(45);
+    // Two of them, so the trend is readable rather than a single number.
+    expect(gases[0].drawnAt).not.toBe(gases[1].drawnAt);
+  });
+
+  it('records the sensitivities behind the antibiotic that is running', () => {
+    const c = makeCase('cf-exacerbation', { severity: 0.5 });
+    const culture = c.priorLabs.find((l) => l.panel === 'Sputum culture');
+    expect(culture?.impression).toMatch(/Pseudomonas/);
+    expect(c.medications.some((m) => /Tobramycin/i.test(m.name))).toBe(true);
+  });
+});
+
+// ─── The right ventricle ────────────────────────────────────────────────────
+
+describe('the right ventricle ejects against a pressure', () => {
+  it('drives pulmonary pressure from the flow that crosses the lung', () => {
+    // mPAP was computed from the RV's isolated pumping capacity, so a dilated RV
+    // on the flat of its Starling curve reported eleven litres a minute while the
+    // series constraint held the real circulation at five — and mPAP came out
+    // above the systemic pressure, which is not a state a body can be in.
+    const dilated = computeSnapshot(
+      { ...DEFAULT_STATE, rvedv: 240, pvr: 8, edv: 92 }, DEFAULT_PARAMS,
+    );
+    expect(dilated.mPAP).toBeLessThan(dilated.map);
+    expect(dilated.mPAP).toBeCloseTo(dilated.co * 8 + dilated.pcwp, 0);
+  });
+
+  it('loses output when the pressure it ejects against rises', () => {
+    const rest = computeSnapshot({ ...DEFAULT_STATE }, DEFAULT_PARAMS);
+    const loaded = computeSnapshot({ ...DEFAULT_STATE, pvr: 9 }, DEFAULT_PARAMS);
+    expect(loaded.mPAP).toBeGreaterThan(rest.mPAP);
+    expect(loaded.co).toBeLessThan(rest.co);
+  });
+
+  it('lets a hypertrophied right ventricle tolerate what stops a normal one', () => {
+    // The reason a chronic PAH patient walks around at a mean pulmonary pressure
+    // that puts an acute pulmonary embolus into shock.
+    const acute = computeSnapshot({ ...DEFAULT_STATE, pvr: 9, rvEmax: 0.5 }, DEFAULT_PARAMS);
+    const adapted = computeSnapshot({ ...DEFAULT_STATE, pvr: 9, rvEmax: 0.9 }, DEFAULT_PARAMS);
+    expect(adapted.co).toBeGreaterThan(acute.co);
+  });
+});
+
+describe('a background condition shades a case, it does not decide it', () => {
+  it('never hands over a haemoglobin incompatible with life', () => {
+    for (let i = 0; i < 40; i++) {
+      for (const setting of ['community', 'academic'] as const) {
+        for (const c of generateWard({ seed: `HGB${i}`, setting }).cases) {
+          const hgb = c.paramOverrides?.hgb;
+          if (hgb !== undefined) expect(hgb, c.archetypeId).toBeGreaterThanOrEqual(6);
+        }
+      }
+    }
+  });
+
+  it('keeps the severity continuum monotone rather than letting one modifier flip it', () => {
+    // Anaemia acts entirely through the SvO2 → lactate → contractility spiral,
+    // which is the highest-gain loop in the model. Stacked onto a case that
+    // already fails along that axis it stopped being a modifier: the same
+    // cardiogenic patient died at 127 minutes without it and 15 with it.
+    const survivalMinutes: number[] = [];
+    for (const severity of [0.35, 0.45, 0.55, 0.65]) {
+      const s = soloShift('adhf-mislabelled', { severity, declareAt: 20 * 60 });
+      let lost = 12 * 60;
+      for (let i = 0; i < 12 * 60; i++) {
+        run(s.engine, MIN, 30);
+        if (s.patient.status !== 'stable') { lost = i; break; }
+      }
+      survivalMinutes.push(lost);
+    }
+    // No single step collapses by more than half — a modifier narrows the margin,
+    // it does not replace the disease.
+    for (let i = 1; i < survivalMinutes.length; i++) {
+      expect(survivalMinutes[i], `step ${i}`).toBeGreaterThan(survivalMinutes[i - 1] * 0.4);
+    }
+  });
+});

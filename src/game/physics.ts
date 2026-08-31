@@ -89,9 +89,9 @@ export function stepPhysics(
     const dEt1Tone = (et1ToneTarget - state.et1Tone) / p.tauEt1Tone;
 
     // RVEDV adapts to effective PVR (afterload) and effective EDV (venous return).
-    // Back-calculate pvrEffective from mPAP = rvCo × pvrEff + pcwp.
-    const pvrEffective = derived.rvCo > 0
-      ? (derived.mPAP - derived.pcwp) / derived.rvCo
+    // Back-calculated from mPAP = CO × pvrEff + pcwp, matching how mPAP is formed.
+    const pvrEffective = derived.co > 0
+      ? (derived.mPAP - derived.pcwp) / derived.co
       : p.pvrRef;
     const rvedvTarget = computeRvedvTarget(pvrEffective, effective.edv, p.rvedvRef, p);
     const dRvedv = (rvedvTarget - state.rvedv) / p.tauRvAdaptation;

@@ -310,6 +310,25 @@ export function resolveLabPanel(
       };
     }
 
+    case 'Ascitic fluid': {
+      // The neutrophil count is what makes the diagnosis, and it tracks the
+      // inflammatory tone that is driving the whole picture.
+      const pmn = Math.round(60 + snap.noTone * 1900);
+      const infected = pmn >= 250;
+      return {
+        ...base,
+        values: [
+          v('Ascitic PMN count', pmn, 'cells/mm³', 0, { high: 250, critical: infected }),
+          v('Ascitic albumin', 0.9, 'g/dL', 1),
+          v('Serum–ascites albumin gradient', 1.4, 'g/dL', 1, { low: 1.1 }),
+        ],
+        impression: infected
+          ? 'Polymorphs above 250/mm³ — spontaneous bacterial peritonitis. Culture sent. ' +
+            'Treat with antibiotics and albumin.'
+          : 'Polymorphs below 250/mm³. No evidence of spontaneous bacterial peritonitis. Culture sent.',
+      };
+    }
+
     case 'Blood cultures':
       return {
         ...base,

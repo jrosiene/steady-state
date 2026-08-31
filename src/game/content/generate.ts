@@ -1,4 +1,4 @@
-import type { Handoff, HandoffQuality, PatientCase } from '../types';
+import type { Handoff, HandoffQuality, PatientCase, Setting } from '../types';
 import { SHIFT_DURATION_SEC } from '../types';
 import { makeRng, randomSeed, type Rng } from './rng';
 import { applyComorbidities, sampleComorbidities } from './modifiers';
@@ -46,6 +46,8 @@ export interface WardOptions {
   only?: string[];
   /** Force a severity across the ward, for tests. Continuous, 0 to 1. */
   severity?: Severity;
+  /** Which service the shift is on. Defaults to community. */
+  setting?: Setting;
   /** Force when every case declares. Tests use this to get a known clock. */
   declareAt?: number;
 }
@@ -66,10 +68,11 @@ export function generateWard(options: WardOptions = {}): GeneratedWard {
   const seed = options.seed ?? randomSeed();
   const rng = makeRng(seed);
   const size = clampWardSize(options.size ?? WARD_SIZE);
+  const setting = options.setting ?? 'community';
 
   const chosen = options.only
     ? options.only.map((id) => requireArchetype(id))
-    : chooseArchetypes(rng, size);
+    : chooseArchetypes(rng, size, setting);
 
   // Declaration slots spread across the shift so concerns arrive in sequence
   // rather than all at once, with each case given room to play out before 07:00.
@@ -149,6 +152,16 @@ export function generateWard(options: WardOptions = {}): GeneratedWard {
       // written down and overlooked.
       history: [...archetype.history(ctx), ...comorbidities.map((c) => c.label)],
       handoff: buildHandoff(rng, archetype, ctx),
+      setting: archetype.setting ?? setting,
+      medications: archetype.medications?.(ctx) ?? [],
+      priorLabs: (archetype.priorLabs?.(ctx) ?? []).map((l, n) => ({
+        id: `${demo.room}-prior-${n}`,
+        panel: l.panel,
+        drawnAt: -l.minutesBefore * MIN,
+        resultedAt: -l.minutesBefore * MIN + 40 * MIN,
+        values: l.values,
+        impression: l.impression,
+      })),
       hiddenDx: archetype.hiddenDx,
       teachingPoint: archetype.teachingPoint,
       paramOverrides: target.params,
@@ -192,16 +205,27 @@ function requireArchetype(id: string): CaseArchetype {
   return archetype;
 }
 
-/** Draw archetypes to the composition for this size. */
-function chooseArchetypes(rng: Rng, size: number): CaseArchetype[] {
+/** Draw archetypes to the composition for this size and service. */
+function chooseArchetypes(rng: Rng, size: number, setting: Setting): CaseArchetype[] {
   const want = composition(size);
   const picked = [
-    ...drawTier(rng, 'critical', want.critical),
-    ...drawTier(rng, 'ward', want.ward),
-    ...drawTier(rng, 'benign', want.benign),
+    ...drawTier(rng, 'critical', want.critical, setting),
+    ...drawTier(rng, 'ward', want.ward, setting),
+    ...drawTier(rng, 'benign', want.benign, setting),
   ];
   return rng.shuffle(picked).slice(0, size);
 }
+
+/**
+ * How much of an academic list is made of the cases only an academic centre
+ * admits, rather than the bread and butter every hospital sees.
+ *
+ * Not all of it. A quaternary service still admits pneumonia and heart failure;
+ * what makes it a different job is that the transplant recipient and the
+ * pulmonary hypertension patient are on the same list, and are the ones you
+ * cannot reason about from first principles at three in the morning.
+ */
+const ACADEMIC_SHARE = 0.55;
 
 /**
  * Draw `count` archetypes from one tier, repeating only once the tier is spent.
@@ -214,9 +238,33 @@ function chooseArchetypes(rng: Rng, size: number): CaseArchetype[] {
  * severity is continuous, comorbidities and demographics are sampled separately,
  * and the handoff is written to a different standard.
  */
-function drawTier(rng: Rng, tier: CaseArchetype['tier'], count: number): CaseArchetype[] {
-  const pool = ARCHETYPES.filter((a) => a.tier === tier);
+function drawTier(
+  rng: Rng,
+  tier: CaseArchetype['tier'],
+  count: number,
+  setting: Setting,
+): CaseArchetype[] {
+  const inTier = ARCHETYPES.filter((a) => a.tier === tier);
+  const general = inTier.filter((a) => a.setting === undefined);
+  const specialist = inTier.filter((a) => a.setting === 'academic');
+
+  // A community service simply never sees the specialist cases.
+  if (setting === 'community' || specialist.length === 0) {
+    return fill(rng, general.length > 0 ? general : inTier, count);
+  }
+
+  const wanted = Math.round(count * ACADEMIC_SHARE);
+  const fromSpecialist = Math.min(count, wanted);
+  return rng.shuffle([
+    ...fill(rng, specialist, fromSpecialist),
+    ...fill(rng, general, count - fromSpecialist),
+  ]);
+}
+
+/** Draw `count` from `pool`, cycling through reshuffled copies once it is spent. */
+function fill(rng: Rng, pool: CaseArchetype[], count: number): CaseArchetype[] {
   const drawn: CaseArchetype[] = [];
+  if (pool.length === 0) return drawn;
   while (drawn.length < count) {
     drawn.push(...rng.shuffle(pool).slice(0, count - drawn.length));
   }

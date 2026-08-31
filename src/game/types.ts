@@ -176,6 +176,44 @@ export interface PlacedOrder {
 // ─── Cases ──────────────────────────────────────────────────────────────────
 
 /**
+ * The kind of service the shift is on.
+ *
+ * Not a difficulty setting. A community hospital and a quaternary academic centre
+ * see genuinely different patients: the community list is the bread and butter of
+ * internal medicine, while the academic list carries the people nobody else can
+ * look after — pulmonary hypertension, decompensated cirrhosis, transplant
+ * recipients, cystic fibrosis, sickle cell disease. Those cases are not harder
+ * versions of the community ones; they are different diseases with different
+ * physiology and different traps.
+ */
+export type Setting = 'community' | 'academic';
+
+/** A medication the day team already has running. */
+export interface InheritedMed {
+  name: string;
+  /** Dose and route, as it reads on the chart. */
+  detail: string;
+  /** How long it has been going — "day 3 of 7", "since admission". */
+  since: string;
+}
+
+/**
+ * A result the day team already has.
+ *
+ * Authored rather than simulated, because it is a historical fact the player is
+ * inheriting rather than a measurement they are taking: the shift does not model
+ * the two days before it started, and the reason a covering doctor reads the
+ * afternoon gas is precisely that they were not there for it.
+ */
+export interface PriorLab {
+  panel: string;
+  /** Minutes before the shift began. */
+  minutesBefore: number;
+  values: LabValue[];
+  impression?: string;
+}
+
+/**
  * When a nurse actually picks up the phone.
  *
  * An insult applied at time T does not produce a patient who looks unwell at
@@ -350,6 +388,19 @@ export interface PatientCase {
    * starts, rather than against a wall-clock time that changes with every seed.
    */
   declaresAt: number;
+  /** Which service this patient turned up on. */
+  setting: Setting;
+  /**
+   * What the day team has running.
+   *
+   * You cannot decide whether to broaden antibiotics without knowing what is
+   * already up, or whether a rate is a new problem without knowing they are on a
+   * beta-blocker. Inherited orders are the part of a handover that survives
+   * whatever the written summary left out.
+   */
+  medications: InheritedMed[];
+  /** Results the day team already has, from before the shift started. */
+  priorLabs: LabResult[];
   /** Illness script. */
   events: CaseEvent[];
   /**

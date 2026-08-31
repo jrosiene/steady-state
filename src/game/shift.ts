@@ -15,6 +15,7 @@ import {
   type ChatMessage,
   type MessageKind,
   type PatientCase,
+  type Setting,
   type PatientRuntime,
   type CodeRhythm,
   type CodeState,
@@ -143,17 +144,20 @@ export class ShiftEngine {
 
   /** How many patients the player is holding. Fixed for the life of the shift. */
   readonly size: number;
+  /** Which service this shift is on. */
+  readonly setting: Setting;
 
-  constructor(cases?: PatientCase[], seed?: string, size?: number) {
+  constructor(cases?: PatientCase[], seed?: string, size?: number, setting?: Setting) {
     if (cases) {
       this.seed = seed ?? 'custom';
       this.patients = cases.map((c) => createRuntime(c));
     } else {
-      const ward = generateWard({ seed, size });
+      const ward = generateWard({ seed, size, setting });
       this.seed = ward.seed;
       this.patients = ward.cases.map((c) => createRuntime(c));
     }
     this.size = this.patients.length;
+    this.setting = setting ?? this.patients[0]?.case.setting ?? 'community';
     this.rng = makeRng(`${this.seed}:code`);
     this.refreshSnapshots();
   }

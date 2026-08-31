@@ -171,20 +171,55 @@ export function derive(
   const svFinal = sv * Math.max(0, 1 - afterloadPenaltyFrac);
   const coFinal = (state.hr * svFinal) / 1000;
 
-  // Final hemodynamics with corrected SVR/PVR and afterload-adjusted CO
-  const map = coFinal * svrEffective + state.cvp;
-  const mPAP = computeMPAP(rvCo, pvrEffective, pcwp);
+  // ── Pass 4: afterload-sensitive RV output ────────────────────────────────
+  //
+  // The mirror of the ESPVR constraint above, for the other ventricle. The right
+  // ventricle is a thin-walled volume pump built for a low-resistance circuit; it
+  // tolerates a volume load well and a pressure load badly, which is the whole
+  // reason pulmonary hypertension is a disease.
+  //
+  // Without this the RV had no afterload sensitivity at all: raising pulmonary
+  // vascular resistance changed the pressure the model reported and nothing else,
+  // so a pulmonary hypertensive crisis produced no fall in cardiac output and
+  // pulmonary hypertension could not be written as a case. Note the division by
+  // rvEmax — a hypertrophied RV that has adapted over years tolerates a mean
+  // pressure that would stop a normal one, which is why a chronic patient walks
+  // around at 55 mmHg and an acute pulmonary embolus at 40 mmHg is in shock.
+  const mPAPPrelim = computeMPAP(coFinal, pvrEffective, pcwp);
+  const rvAfterloadExcess = Math.max(0, mPAPPrelim - params.rvAfterloadMpapThreshold);
+  const rvPenaltyFrac = rvAfterloadExcess
+    / (Math.max(0.05, state.rvEmax) * params.rvAfterloadSvGain);
+  const rvSvLoaded = rvSv * Math.max(0, 1 - rvPenaltyFrac);
+
+  // Series constraint again, now that the RV has been asked to do it for real.
+  const svLoaded = Math.min(svFinal, rvSvLoaded);
+  const coLoaded = (state.hr * svLoaded) / 1000;
+
+  // Final hemodynamics with corrected SVR/PVR and afterload-adjusted output
+  const map = coLoaded * svrEffective + state.cvp;
+
+  // Pulmonary artery pressure is driven by the flow that actually crosses the
+  // lung, which is the circulating cardiac output — not by the right ventricle's
+  // isolated pumping capacity.
+  //
+  // Using `rvCo` here meant a dilated RV sitting on the flat part of its Starling
+  // curve reported an output of eleven litres a minute while the series
+  // constraint held the real circulation at five, and mPAP came out at 120 mmHg
+  // — a pulmonary pressure above the systemic one, which is not a state a body
+  // can be in. It also made pulmonary hypertension impossible to write as a case:
+  // any baseline severe enough to be worth simulating diverged immediately.
+  const mPAP = computeMPAP(coLoaded, pvrEffective, pcwp);
 
   // ── Cardiovascular failure status ────────────────────────────────────────
   // Composite of perfusion pressure, output, and metabolic reserve.
   // Each tier represents a clinically distinct decision point.
   const cardiovascularStatus: CardiovascularStatus =
     map < 20 || pH < 6.9 ? 'arrest' :
-    map < 35 || co < 1.0 || pH < 7.1 ? 'decompensating' :
-    map < 50 || co < 2.0 || pH < 7.2 ? 'shock' :
+    map < 35 || coLoaded < 1.0 || pH < 7.1 ? 'decompensating' :
+    map < 50 || coLoaded < 2.0 || pH < 7.2 ? 'shock' :
     'compensated';
 
-  return { emaxEffective, sv: svFinal, co: coFinal, map, rvSv, rvCo, mPAP, pcwp, qsQtEffective: effectiveQsQt, spO2, paO2, svO2, pH, hco3, be, cardiovascularStatus };
+  return { emaxEffective, sv: svLoaded, co: coLoaded, map, rvSv, rvCo, mPAP, pcwp, qsQtEffective: effectiveQsQt, spO2, paO2, svO2, pH, hco3, be, cardiovascularStatus };
 }
 
 /** Build a full snapshot (state + derived) for the UI layer. */

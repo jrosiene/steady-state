@@ -3,7 +3,8 @@
 A hospital night-shift game built on a real cardiovascular physiology engine.
 
 You cover a list of patients from 19:00 to 07:00 — eight on a single ward, or up
-to forty spread across several floors. You never see any of them. You have a
+to forty spread across several floors, on a community service or at a quaternary
+academic centre. You never see any of them. You have a
 phone, a set of nurses who page you, and an order entry system — and underneath
 it all, a coupled ODE model of the heart, lungs and vasculature that decides what
 actually happens to each patient.
@@ -34,6 +35,24 @@ a nurse has rung about someone. Between them you are reading history, and the
 patient board shows you how old each set is. Continuous monitoring collapses that
 gap, for the patients you think to order it on.
 
+**Community or academic.** A community hospital and a quaternary centre see
+genuinely different patients, and the academic ones are not harder versions of
+the community ones — they are different diseases with different physiology and
+different traps. The academic list carries pulmonary arterial hypertension,
+high-MELD cirrhosis with spontaneous bacterial peritonitis, febrile neutropenia
+after stem cell transplant, sickle cell acute chest syndrome, cystic fibrosis and
+necrotising pancreatitis. In each of them the reflex that is correct for the
+community case is wrong: fluid for the failing right ventricle, phenylephrine for
+the pulmonary hypertensive, antibiotics for the sterile necrosis, a normal
+saturation target for the patient who lives at 91%.
+
+**You inherit what the day team was doing.** Every patient carries their active
+medications and the results already drawn — the afternoon venous gas on the COPD
+patient, the sputum sensitivities behind the antibiotic that is running, this
+morning's neutrophil count, the tacrolimus level. None of it is simulated; it is
+recorded history, because the reason a covering doctor reads the afternoon gas is
+precisely that they were not there for it.
+
 **Tachycardia comes before hypotension.** The model carries both limbs of the
 reflex — the arterial baroreceptors that sense pressure and the cardiopulmonary
 receptors that sense filling. A patient who is losing volume speeds up while
@@ -42,6 +61,14 @@ reason a compensated patient can look fine on a cuff reading right up until they
 do not. Diastole shortens as the rate climbs, so tachycardia stops rescuing
 cardiac output past a point — that is the mechanism by which compensated shock
 becomes uncompensated.
+
+**The right ventricle ejects against a pressure.** RV output is afterload
+sensitive, the mirror of the left ventricle's ESPVR constraint, and pulmonary
+artery pressure is driven by the flow that actually crosses the lung rather than
+by the right ventricle's isolated pumping capacity. A hypertrophied RV tolerates
+a mean pressure that stops a normal one, which is why a chronic patient walks
+around at 55 mmHg and an acute embolus at 40 mmHg is in shock — and why
+pulmonary vasodilators raise cardiac output rather than lowering blood pressure.
 
 **Studies show what is wrong with the patient.** An infarct puts ST elevation on
 the EKG, a pneumothorax appears on the chest film and grows on the next one, a
@@ -119,8 +146,19 @@ rather than recall what a given name did last time.
 | `benign-sundowning` | Pneumonia, improving | Sundowning — looks like early sepsis, is not |
 | `benign-anxiety` | Chest pain, workup negative | Anxiety. The workup is done and it was negative |
 
-Each ward draws three critical cases, three ward-level and two benign, and
-staggers when they declare so problems arrive in sequence rather than all at once.
+**Academic service only** — the patients a community hospital transfers out:
+
+| Archetype | Presents as | Actually |
+|---|---|---|
+| `pah-rv-failure` | Group 1 PAH, volume overload | RV failure. Fluid makes it worse; phenylephrine makes it worse |
+| `cirrhosis-sbp` | Decompensated cirrhosis, AKI | Spontaneous bacterial peritonitis → hepatorenal. Needs albumin, not just antibiotics |
+| `neutropenic-sepsis` | Day +8 transplant, neutropenic fever | Gram-negative bacteraemia. No pus, no infiltrate, no time |
+| `sickle-acute-chest` | Sickle cell crisis | Acute chest syndrome — caused partly by treating the pain too cautiously |
+| `cf-exacerbation` | CF pulmonary exacerbation | CF exacerbation. The trap is their baseline, not their trajectory |
+| `necrotising-pancreatitis` | Severe acute pancreatitis | Capillary leak and ARDS. Fluid, not antibiotics |
+
+A ward staggers when its cases declare so problems arrive in sequence rather than
+all at once.
 Because `adhf-mislabelled` and `copd-exacerbation` are both admitted as "COPD
 exacerbation", a ward can hold two of them — and telling which is which is the
 whole job.
@@ -329,6 +367,10 @@ generated ward testable.
 **Every shift is reproducible.** The seed is shown on the briefing and in the top
 bar during play. The same seed and list size always deal the same patients, at
 the same severities, declaring at the same times.
+
+**The acuity mix is not shown.** The list size is a choice; what is on the list
+is not. Telling the player that three of their eight can kill them turns the first
+hour into arithmetic instead of triage.
 
 **Acuity does not scale with the list.** `composition(size)` grows the critical
 and ward tiers sub-linearly, so covering forty is not five times as many people

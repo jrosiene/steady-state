@@ -385,6 +385,10 @@ export interface HemodynamicParams {
    * vasopressors at moderate dose have no direct SV penalty.
    */
   afterloadMapThreshold: number;
+  /** Mean pulmonary artery pressure above which RV stroke volume starts to fall (mmHg). */
+  rvAfterloadMpapThreshold: number;
+  /** Divisor scaling the RV afterload penalty; larger means more tolerant. */
+  rvAfterloadSvGain: number;
   /**
    * Afterload gain (mmHg × dimensionless Emax⁻¹ → SV fraction).
    * SV penalty fraction = (MAP − threshold) / (emaxEffective × afterloadSvGain)

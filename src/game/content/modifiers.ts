@@ -80,7 +80,7 @@ export const COMORBIDITIES: Comorbidity[] = [
     label: 'Chronic lung disease',
     weight: 2,
     minAge: 50,
-    skipFor: ['copd-exacerbation', 'adhf-mislabelled'],
+    skipFor: ['copd-exacerbation', 'adhf-mislabelled', 'cf-exacerbation', 'pah-rv-failure'],
     apply(t, rng) {
       t.state.qsQt = (t.state.qsQt ?? 0.02) + rng.real(0.04, 0.08);
       t.state.pvr = (t.state.pvr ?? 1.5) + rng.real(0.4, 0.9);
@@ -90,6 +90,10 @@ export const COMORBIDITIES: Comorbidity[] = [
     id: 'pulmonary-hypertension',
     label: 'Pulmonary hypertension',
     weight: 1.2,
+    // Now that RV output is afterload-sensitive, adding pulmonary resistance to a
+    // case whose whole mechanism is pulmonary resistance is not a background
+    // condition — it is a second disease.
+    skipFor: ['pulmonary-embolism', 'pah-rv-failure'],
     minAge: 55,
     apply(t, rng) {
       // Leaves the right ventricle with far less to give when it is loaded.
@@ -101,9 +105,26 @@ export const COMORBIDITIES: Comorbidity[] = [
     id: 'anaemia',
     label: 'Chronic anaemia',
     weight: 2,
-    skipFor: ['gi-bleed'],
+    /**
+     * Skipped where oxygen delivery is already the axis the case fails along.
+     *
+     * A background condition should narrow the margin, not decide the outcome.
+     * Anaemia acts entirely through the SvO2 → lactate → contractility spiral,
+     * which is the highest-gain loop in the model, so on a case that is already
+     * failing through that loop it stopped being a modifier: the same
+     * cardiogenic patient died at 127 minutes without it and 15 minutes with it.
+     * Cases that are themselves anaemic set their own haemoglobin.
+     */
+    skipFor: [
+      'gi-bleed', 'adhf-mislabelled', 'acs-cardiogenic',
+      'sickle-acute-chest', 'neutropenic-sepsis', 'cirrhosis-sbp',
+    ],
     apply(t, rng) {
-      t.params.hgb = (t.params.hgb ?? 15) - rng.real(2.5, 4.5);
+      // Toward a characteristic value, never subtracted from whatever the case
+      // already set. Subtracting stacked on archetypes that are anaemic in their
+      // own right — a stem cell transplant at day +8, a sickle cell crisis — and
+      // produced haemoglobins of 2, which is not a comorbidity, it is a corpse.
+      t.params.hgb = Math.min(t.params.hgb ?? 15, rng.real(9.2, 10.8));
     },
   },
   {
@@ -167,4 +188,12 @@ export function applyComorbidities(
   rng: Rng,
 ): void {
   for (const c of comorbidities) c.apply(target, rng);
+
+  // Background conditions describe the person the disease happened to. They can
+  // narrow the margin the patient starts with; they must not, on their own,
+  // hand over someone already incompatible with life — that is the archetype's
+  // job to do deliberately, at a severity the player can see coming.
+  if (target.params.hgb !== undefined) {
+    target.params.hgb = Math.max(6.0, target.params.hgb);
+  }
 }

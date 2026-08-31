@@ -357,10 +357,11 @@ describe('Pulmonary hypertension scenarios', () => {
     expect(Math.abs(effectiveDerived(treated, withIno).map - mapBefore)).toBeLessThan(10);
   });
 
-  it('sildenafil reduces mPAP but also mildly drops MAP (PDE5 not fully selective)', () => {
+  it('sildenafil unloads the right ventricle: mPAP falls and output rises', () => {
     const pah = [iv('PAH: PVR↑', 'scenario', 'pvr', 4, 10)];
     const s = simulate(DEFAULT_STATE, 60, pah);
     const mPAPBefore = effectiveDerived(s, pah).mPAP;
+    const coBefore = effectiveDerived(s, pah).co;
     const mapBefore  = effectiveDerived(s, pah).map;
 
     const withSild = [
@@ -370,24 +371,32 @@ describe('Pulmonary hypertension scenarios', () => {
     ];
     const treated = simulate(s, 120, withSild);
 
-    const mPAPAfter = effectiveDerived(treated, withSild).mPAP;
-    const mapAfter  = effectiveDerived(treated, withSild).map;
-    expect(mPAPAfter).toBeLessThan(mPAPBefore);
-    // mPAP improvement should exceed any MAP change (PDE5 not fully selective but predominantly pulmonary)
-    expect(mPAPBefore - mPAPAfter).toBeGreaterThan(Math.abs(mapBefore - mapAfter));
+    const after = effectiveDerived(treated, withSild);
+    expect(after.mPAP).toBeLessThan(mPAPBefore);
+    // Unloading the right ventricle is the point: with RV output now sensitive to
+    // the pressure it ejects against, taking the afterload off raises the flow
+    // through the lung. The systemic pressure comes along with the output rather
+    // than falling, which is why pulmonary vasodilators help a patient whose
+    // right ventricle is the limiting chamber.
+    expect(after.co).toBeGreaterThan(coBefore);
+    expect(after.map).toBeGreaterThanOrEqual(mapBefore - 2);
   });
 
-  it('ET-1 antagonist (bosentan) lowers mPAP and mildly drops MAP', () => {
+  it('ET-1 antagonist (bosentan) lowers mPAP and raises output', () => {
     // et1Tone and pvr baked into initial state — derive on base state works for "before"
     const s = simulate({ ...DEFAULT_STATE, et1Tone: 0.6, pvr: 4.0 }, 30);
     const mPAPBefore = derive(s, p).mPAP;
     const mapBefore  = derive(s, p).map;
 
+    const coBefore = derive(s, p).co;
     const withBosentan = [iv('Bosentan', 'treatment', 'et1Tone', -0.6, 10)];
     const treated = simulate(s, 120, withBosentan);
 
-    expect(effectiveDerived(treated, withBosentan).mPAP).toBeLessThan(mPAPBefore);
-    expect(effectiveDerived(treated, withBosentan).map).toBeLessThan(mapBefore);
+    const after = effectiveDerived(treated, withBosentan);
+    expect(after.mPAP).toBeLessThan(mPAPBefore);
+    // Same mechanism as above: less pulmonary resistance, more flow.
+    expect(after.co).toBeGreaterThan(coBefore);
+    void mapBefore;
   });
 });
 
