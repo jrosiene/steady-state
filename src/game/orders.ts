@@ -437,12 +437,40 @@ export const ORDERS: OrderDef[] = [
     ],
   },
   {
+    id: 'octreotide',
+    label: 'Octreotide infusion',
+    category: 'meds',
+    detail: 'Splanchnic vasoconstriction. Lowers portal pressure and slows variceal bleeding while endoscopy is arranged.',
+    leadTimeSec: 900,
+    ack: "Octreotide bolus given, infusion running.",
+    interventions: [
+      // Reduces portal inflow, which slows the bleed rather than replacing volume.
+      { label: 'Octreotide: portal pressure', category: 'treatment', kind: 'infusion', target: 'edv', delta: 9, tauOn: 1800, eliminationHalfLife: 21600 },
+    ],
+  },
+  {
+    id: 'lactulose',
+    label: 'Lactulose',
+    category: 'meds',
+    detail: 'Titrated to three soft stools daily. First-line for hepatic encephalopathy, and it works by being taken.',
+    leadTimeSec: 1200,
+    ack: (v) => `Lactulose given — I'll chart what ${v.subj} ${v.verb('pass')}.`,
+  },
+  {
     id: 'ppi',
     label: 'Pantoprazole infusion',
     category: 'meds',
     detail: 'Acid suppression to stabilise clot over an upper GI bleeding source.',
     leadTimeSec: 600,
     ack: "Protonix drip started.",
+  },
+  {
+    id: 'rifaximin',
+    label: 'Rifaximin',
+    category: 'meds',
+    detail: 'Non-absorbed antibiotic for hepatic encephalopathy. Added to lactulose, never instead of it.',
+    leadTimeSec: 1200,
+    ack: "Rifaximin charted.",
   },
   {
     id: 'aspirin',

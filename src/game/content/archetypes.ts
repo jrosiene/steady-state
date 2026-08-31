@@ -60,6 +60,14 @@ export interface CaseArchetype {
    * physiology and their own traps.
    */
   setting?: Setting;
+  /**
+   * How often this case turns up, relative to others in its tier. Default 1.
+   *
+   * For diseases that are real but uncommon as an overnight event. A patient with
+   * pulmonary arterial hypertension whose right ventricle fails for the first time
+   * on your shift is a night you remember, not a night you have regularly.
+   */
+  weight?: number;
   /** Sim-seconds from declaring to the last scripted beat. */
   span: number;
   admissionDx: string;
@@ -1448,6 +1456,8 @@ export const ARCHETYPES: CaseArchetype[] = [
     label: 'Pulmonary arterial hypertension, decompensating',
     tier: 'critical',
     setting: 'academic',
+    // Uncommon as a first overnight event, and unmistakable when it happens.
+    weight: 0.3,
     ageRange: [28, 62],
     span: 3 * HOUR,
     admissionDx: 'Group 1 pulmonary arterial hypertension — volume overload',
@@ -1562,17 +1572,25 @@ export const ARCHETYPES: CaseArchetype[] = [
   {
     id: 'cirrhosis-sbp',
     label: 'Decompensated cirrhosis with spontaneous bacterial peritonitis',
-    tier: 'critical',
+    // Ward tier, not critical. SBP is usually a subacute presentation — the
+    // patient has been quietly unwell for a day or two and is picked up by
+    // someone paying attention, not by a crash call. It is dangerous over days
+    // through the renal failure it causes, which is a different shape of danger
+    // from bleeding out on your shift, and pretending otherwise made it a
+    // haemodynamic emergency that it is not.
+    tier: 'ward',
     setting: 'academic',
     ageRange: [38, 68],
-    span: 4 * HOUR,
+    span: 5 * HOUR,
     admissionDx: 'Decompensated cirrhosis — ascites and acute kidney injury',
     hiddenDx: 'Spontaneous bacterial peritonitis precipitating hepatorenal physiology in a high-MELD cirrhotic',
     teachingPoint:
       'Cirrhosis is a distributive state before anything infects it: the splanchnic bed is already dilated, so a ' +
-      'normal blood pressure in a high-MELD patient is a low one. SBP is diagnosed by tapping the ascites, not by ' +
-      'the examination, and the two things that change mortality are early antibiotics and albumin — albumin, ' +
-      'specifically, because it is what prevents the renal failure that kills them.',
+      'normal blood pressure in a high-MELD patient is a low one. This is a subacute illness — it will not kill ' +
+      'anyone before morning — and what it costs is kidneys. The two things that change mortality are early ' +
+      'antibiotics and albumin, albumin specifically because it is what prevents the hepatorenal syndrome. ' +
+      'A tap confirms the diagnosis and belongs in the plan, but a covering doctor who starts the antibiotics ' +
+      'and albumin overnight and leaves the paracentesis for the day team has done the job.',
     history: (ctx) => [
       ctx.rng.pick(['Alcohol-related cirrhosis, Child-Pugh C', 'NASH cirrhosis, Child-Pugh C', 'Cirrhosis from hepatitis C, treated']),
       `MELD-Na ${bySeverityInt(ctx, 22, 33)}`,
@@ -1589,7 +1607,11 @@ export const ARCHETYPES: CaseArchetype[] = [
         edv: ctx.rng.int(104, 116),
         noTone: bySeverity(ctx, 0.06, 0.12),
       },
-      paramOverrides: { hgb: bySeverity(ctx, 9.6, 8.2) },
+      // Every cirrhotic here is on a non-selective beta-blocker for their varices,
+      // so the blunted chronotropic response belongs in the baseline rather than
+      // being drawn as a background condition on top of the drug they are already
+      // charted for. Prophylactic dose: blunted, not blocked.
+      paramOverrides: { gainHr: 1.1, hgb: bySeverity(ctx, 9.6, 8.2) },
       rrOffset: 4,
       tempOffset: bySeverity(ctx, 0.1, 0.4),
     }),
@@ -1601,20 +1623,27 @@ export const ARCHETYPES: CaseArchetype[] = [
           page: `${ctx.name} in ${ctx.room} has a temperature and ${v.verb('say')} ${v.poss} belly is more sore than it was. ` +
             `${v.Subj} ${v.is} a bit vague with me but ${v.subj} ${v.verb('know')} where ${v.subj} ${v.is}.`,
           interventions: [
-            insult(ctx, { label: 'SBP: inflammatory tone', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.26, tauOn: 1500, eliminationHalfLife: 43200 }),
+            insult(ctx, { label: 'SBP: inflammatory tone', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.10, tauOn: 3600, eliminationHalfLife: 43200 }),
           ],
         },
         {
-          at: jitter(ctx, ctx.declareAt + 105 * MIN),
-          pageWhen: { axis: 'perf', grade: 1 },
+          at: jitter(ctx, ctx.declareAt + 150 * MIN),
+          pageWhen: { axis: 'perf', grade: 1, by: 60 * MIN },
           page: (g) => g.perf >= 2
             ? `${v.Subj} ${v.is} much more confused — pulling at the lines and ${v.subj} ${v.verb('have')} that flap. ` +
               `The pressure is down and ${v.subj} ${v.verb('have')} not passed urine since I came on.`
-            : `${v.Subj} ${v.verb('seem')} more muddled than earlier and the pressure has drifted down. ` +
-              `Urine output is poor — maybe 15 mL an hour.`,
+            : g.perf >= 1
+            ? `${v.Subj} ${v.verb('seem')} more muddled than earlier and the pressure has drifted down. ` +
+              `Urine output is poor — maybe 15 mL an hour.`
+            : `Still febrile and the belly is no more comfortable. Urine output has dropped off — ` +
+              `about 25 mL an hour. Nothing dramatic on the observations.`,
           interventions: [
-            insult(ctx, { label: 'SBP: vasoplegia', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.3, tauOn: 1800, eliminationHalfLife: 43200 }),
-            insult(ctx, { label: 'Third-spacing into ascites', category: 'scenario', kind: 'scenario', target: 'edv', delta: -20, tauOn: 2700, eliminationHalfLife: 43200 }),
+            // Deliberately kept below the level that can kill overnight even in a
+            // patient who cannot mount a tachycardia — and every cirrhotic here is
+            // on a non-selective beta-blocker for their varices. The danger of
+            // this illness is the kidneys over days, not the pressure tonight.
+            insult(ctx, { label: 'SBP: vasoplegia', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.08, tauOn: 4200, eliminationHalfLife: 43200 }),
+            insult(ctx, { label: 'Third-spacing into ascites', category: 'scenario', kind: 'scenario', target: 'edv', delta: -12, tauOn: 4800, eliminationHalfLife: 43200 }),
           ],
         },
       ];
@@ -1657,13 +1686,13 @@ export const ARCHETYPES: CaseArchetype[] = [
         `yesterday with albumin cover. Diuretics held. Hepatology reviewing for transplant workup.`,
       todo: ['Daily weights.', 'Repeat the creatinine in the morning.'],
       contingencies: [
-        `If ${ctx.voice.subj} ${ctx.voice.verb('spike')} a temperature or the abdomen becomes more tender, tap the ascites before starting antibiotics — but do not delay the antibiotics for the tap.`,
-        'Any SBP gets albumin as well as antibiotics. It is what prevents the hepatorenal syndrome.',
+        `If ${ctx.voice.subj} ${ctx.voice.verb('spike')} a temperature or the abdomen becomes more tender, start antibiotics. A tap confirms it and can wait for the day team if getting one overnight would delay treatment.`,
+        'Any SBP gets albumin as well as antibiotics. It is what prevents the hepatorenal syndrome, and the kidneys are what this illness actually costs.',
         'Avoid NSAIDs and aminoglycosides entirely — the kidneys will not forgive either.',
       ],
       misleading: 'Blood pressure runs in the nineties systolic normally for this patient. Nothing to do about it.',
     }),
-    expectedOrders: ['lab-cultures', 'abx', 'albumin', 'paracentesis', 'lab-lactate', 'transfer-icu'],
+    expectedOrders: ['abx', 'albumin', 'lab-cultures', 'lab-bmp', 'paracentesis'],
     contraindicatedOrders: ['ns-1000'],
   },
 
@@ -2071,6 +2100,312 @@ export const ARCHETYPES: CaseArchetype[] = [
     }),
     expectedOrders: ['ns-1000', 'ns-500', 'vitals-now', 'lab-bmp', 'o2-nc6', 'transfer-icu'],
     contraindicatedOrders: ['furosemide'],
+  },
+
+  {
+    id: 'sickle-vaso-occlusive',
+    label: 'Sickle cell vaso-occlusive crisis',
+    tier: 'ward',
+    setting: 'academic',
+    ageRange: [19, 46],
+    span: 3 * HOUR,
+    admissionDx: 'Sickle cell vaso-occlusive crisis',
+    hiddenDx: 'An ordinary painful crisis that stays a painful crisis — and is made worse by under-treating the pain',
+    teachingPoint:
+      'Most crises are just crises. The commonest harm done to these patients overnight is not missing an acute ' +
+      'chest — it is treating a person in genuine pain as though they were exaggerating, cutting the analgesia, ' +
+      'and producing the splinting that turns a crisis into an acute chest. They know their own regimen and their ' +
+      'own doses. The right overnight actions are analgesia, fluids, incentive spirometry, and looking at them.',
+    history: (ctx) => [
+      'Sickle cell disease, HbSS',
+      ctx.rng.pick(['Two admissions with crisis this year', 'Four admissions with crisis this year', 'Usually managed at home']),
+      ctx.rng.pick(['On hydroxyurea', 'On hydroxyurea and voxelotor', 'Declined hydroxyurea']),
+      `Baseline haemoglobin ${bySeverity(ctx, 9.0, 8.0).toFixed(1)}`,
+    ],
+    baseline: (ctx) => ({
+      stateOverrides: {
+        hr: ctx.rng.int(94, 106),
+        svr: 13.5,
+        edv: ctx.rng.int(106, 116),
+        qsQt: bySeverity(ctx, 0.03, 0.06),
+      },
+      paramOverrides: { hgb: bySeverity(ctx, 9.0, 8.0) },
+      rrOffset: 4,
+      tempOffset: bySeverity(ctx, 0.1, 0.35),
+    }),
+    script: (ctx) => {
+      const v = ctx.voice;
+      return [
+        {
+          at: ctx.declareAt,
+          page: `${ctx.name} in ${ctx.room} is asking for something more for the pain — ${v.subj} ${v.verb('say')} ` +
+            `the PCA is not holding ${v.obj} and it is in ${v.poss} back and hips. Observations are unremarkable.`,
+          interventions: [
+            insult(ctx, { label: 'Crisis: splinting', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.05, tauOn: 3600, eliminationHalfLife: 43200 }),
+          ],
+        },
+        {
+          at: jitter(ctx, ctx.declareAt + 140 * MIN),
+          page: (g) => g.wob >= 1
+            ? `${v.Subj} ${v.is} still uncomfortable and not taking deep breaths. ${v.Subj} ${v.verb('sound')} ` +
+              `a bit shallow to me, though the saturations are holding.`
+            : `The pain is better since the last dose. ${v.Subj} ${v.is} managing the spirometer now and ` +
+              `${v.verb('want')} to know when ${v.subj} can go home.`,
+        },
+      ];
+    },
+    findings: () => (panel) =>
+      panel === 'CXR'
+        ? 'Clear lung fields. Cardiomegaly and old infarcted bone changes in the humeral heads — chronic, not acute.'
+        : null,
+    medications: (ctx) => [
+      { name: ctx.rng.pick(['Hydromorphone PCA', 'Morphine PCA']), detail: 'patient-controlled, 0.2 mg bolus, 8 minute lockout', since: 'admission' },
+      { name: 'Ketorolac', detail: '15 mg IV every 6 hours', since: 'admission' },
+      { name: 'Hydroxyurea', detail: '1000 mg orally daily', since: 'home medication' },
+      { name: 'Folic acid', detail: '5 mg orally daily', since: 'home medication' },
+      { name: 'Incentive spirometry', detail: '10 breaths hourly while awake', since: 'admission' },
+      { name: 'Maintenance fluids', detail: 'dextrose–saline at 100 mL/h', since: 'admission' },
+    ],
+    priorLabs: (ctx) => [
+      prior('CBC', 480, [
+        pv('WBC', bySeverity(ctx, 10.8, 14.2), 'K/µL', 1, { low: 4, high: 11 }),
+        pv('Hgb', bySeverity(ctx, 9.0, 8.0), 'g/dL', 1, { low: 12 }),
+        pv('Platelets', 364, 'K/µL', 0, { low: 150, high: 400 }),
+        pv('Reticulocytes', 6.8, '%', 1, { high: 2.5 }),
+      ]),
+      prior('CXR', 1320, [], 'Clear lung fields on admission. No consolidation.'),
+    ],
+    handoff: (ctx) => ({
+      severityCall: 'stable',
+      summary:
+        `Painful crisis, day 2. Pain slowly improving on the PCA. Haemoglobin at ${ctx.voice.poss} baseline, ` +
+        `no chest symptoms. Haematology aware; plan is home once the pain is manageable orally.`,
+      todo: ['Continue the PCA and the regular ketorolac.', 'Incentive spirometry hourly while awake.'],
+      contingencies: [
+        `${ctx.voice.Subj} ${ctx.voice.verb('know')} ${ctx.voice.poss} own doses. If ${ctx.voice.subj} ${ctx.voice.verb('ask')} for more, ${ctx.voice.subj} ${ctx.voice.is} in pain — treat it.`,
+        'The thing to watch for is chest pain or a rising oxygen requirement, which would mean acute chest syndrome.',
+        'Keep the spirometry going. Splinting is how a crisis becomes an acute chest.',
+      ],
+      misleading: 'Using a lot of PCA demand. Consider reducing the bolus overnight.',
+    }),
+    expectedOrders: ['morphine-comfort', 'incentive-spirometry', 'ns-500', 'vitals-now'],
+    contraindicatedOrders: ['lorazepam'],
+  },
+
+  {
+    id: 'hepatic-encephalopathy',
+    label: 'Hepatic encephalopathy',
+    tier: 'ward',
+    setting: 'academic',
+    ageRange: [42, 72],
+    span: 4 * HOUR,
+    admissionDx: 'Cirrhosis — hepatic encephalopathy',
+    hiddenDx: 'Grade 2 encephalopathy with a precipitant nobody has looked for — constipation and a missed lactulose dose',
+    teachingPoint:
+      'Encephalopathy is not a diagnosis, it is a symptom with a cause, and the overnight job is to find the cause: ' +
+      'a missed lactulose dose, constipation, infection, a GI bleed, dehydration, or a sedative somebody prescribed. ' +
+      'The two harms available tonight are sedating a confused cirrhotic — which deepens the encephalopathy and can ' +
+      'be very hard to reverse — and treating the confusion without looking for what precipitated it.',
+    history: (ctx) => [
+      ctx.rng.pick(['Alcohol-related cirrhosis, Child-Pugh B', 'NASH cirrhosis, Child-Pugh B', 'Cirrhosis from hepatitis C']),
+      `MELD-Na ${bySeverityInt(ctx, 15, 24)}`,
+      ctx.rng.pick(['Three previous admissions with encephalopathy', 'Previous encephalopathy, precipitated by constipation', 'First episode was six months ago']),
+      ctx.rng.pick(['Oesophageal varices, banded', 'Ascites, controlled on diuretics', 'Portal hypertensive gastropathy']),
+    ],
+    baseline: (ctx) => ({
+      stateOverrides: {
+        hr: ctx.rng.int(80, 92),
+        // Splanchnic vasodilation, but a haemodynamically well patient. The
+        // disease here is neurological, not circulatory, and the model should not
+        // pretend otherwise.
+        svr: bySeverity(ctx, 14.2, 13.4),
+        edv: ctx.rng.int(102, 112),
+      },
+      // Every cirrhotic here is on a non-selective beta-blocker for their varices,
+      // so the blunted chronotropic response belongs in the baseline rather than
+      // being drawn as a background condition on top of the drug they are already
+      // charted for. Prophylactic dose: blunted, not blocked.
+      paramOverrides: { gainHr: 1.1, hgb: bySeverity(ctx, 10.8, 9.6) },
+      rrOffset: 2,
+    }),
+    script: (ctx) => {
+      const v = ctx.voice;
+      return [
+        {
+          at: ctx.declareAt,
+          page: `${ctx.name} in ${ctx.room} is more confused than at handover — ${v.subj} ${v.verb('think')} ` +
+            `${v.subj} ${v.is} at work and ${v.subj} ${v.verb('keep')} trying to get out of bed. ` +
+            `${v.Subj} ${v.has} that flap when I hold ${v.poss} hands out. Observations are all normal.`,
+        },
+        {
+          at: jitter(ctx, ctx.declareAt + 90 * MIN),
+          page: `Still muddled and now ${v.subj} ${v.verb('want')} to leave. I have looked back — ${v.subj} ` +
+            `${v.has} not opened ${v.poss} bowels in four days and the evening lactulose was not given.`,
+        },
+        {
+          at: jitter(ctx, ctx.declareAt + 200 * MIN),
+          page: (g) => g.perf >= 1
+            ? `${v.Subj} ${v.is} drowsier now — ${v.subj} ${v.verb('wake')} to voice but ${v.verb('drift')} straight off.`
+            : `${v.Subj} ${v.is} settled and sleeping. Nothing further needed.`,
+        },
+      ];
+    },
+    findings: () => (panel, snap) => {
+      if (panel === 'Ascitic fluid') {
+        return snap.noTone > 0.25
+          ? null
+          : 'Note: the fluid is bland. If the encephalopathy has a precipitant it is not peritonitis.';
+      }
+      return null;
+    },
+    medications: (ctx) => [
+      { name: 'Lactulose', detail: '30 mL orally three times daily, titrated to three stools — evening dose not given', since: 'home medication' },
+      { name: 'Rifaximin', detail: '550 mg orally twice daily', since: 'home medication' },
+      { name: 'Spironolactone', detail: '100 mg orally daily', since: 'home medication' },
+      { name: ctx.rng.pick(['Propranolol', 'Carvedilol']), detail: 'oral — variceal prophylaxis', since: 'home medication' },
+      { name: 'Thiamine', detail: '100 mg orally daily', since: 'admission' },
+    ],
+    priorLabs: (ctx) => [
+      prior('CMP', 400, [
+        pv('Sodium', bySeverityInt(ctx, 136, 130), 'mEq/L', 0, { low: 135, high: 145 }),
+        pv('Potassium', 3.3, 'mEq/L', 1, { low: 3.5, high: 5.1 }),
+        pv('Creatinine', bySeverity(ctx, 0.9, 1.4), 'mg/dL', 2, { high: 1.1 }),
+        pv('Bilirubin', bySeverity(ctx, 2.4, 5.1), 'mg/dL', 1, { high: 1.2 }),
+        pv('Albumin', 2.9, 'g/dL', 1, { low: 3.5 }),
+        pv('INR', bySeverity(ctx, 1.4, 1.8), '', 1, { high: 1.1 }),
+      ]),
+      prior('Ammonia', 400, [pv('Ammonia', bySeverityInt(ctx, 78, 132), 'µmol/L', 0, { high: 35 })]),
+      prior('CBC', 400, [
+        pv('WBC', 5.8, 'K/µL', 1, { low: 4, high: 11 }),
+        pv('Hgb', bySeverity(ctx, 10.8, 9.6), 'g/dL', 1, { low: 12 }),
+        pv('Platelets', bySeverityInt(ctx, 104, 68), 'K/µL', 0, { low: 150 }),
+      ]),
+    ],
+    handoff: (ctx) => ({
+      severityCall: 'stable',
+      summary:
+        `Cirrhosis admitted with encephalopathy, day 2. Clearer today than on admission. Back on ${ctx.voice.poss} ` +
+        `usual lactulose and rifaximin. Hepatology reviewing in the morning.`,
+      todo: ['Chart bowel movements — the lactulose is titrated to three a day.', 'Repeat the sodium in the morning.'],
+      contingencies: [
+        'If more confused, look for the precipitant before treating the confusion: bowels not open, a missed dose, infection, a bleed, or dehydration.',
+        `Do not give ${ctx.voice.obj} a benzodiazepine or an antipsychotic for the agitation. It deepens the encephalopathy and it is hard to undo.`,
+        'An ammonia level does not change management. The bowel chart does.',
+      ],
+      misleading: 'Gets agitated at night. A small dose of lorazepam settled them last admission.',
+    }),
+    expectedOrders: ['lactulose', 'delirium-precautions', 'lab-cultures', 'lab-cbc', 'rifaximin'],
+    contraindicatedOrders: ['lorazepam', 'haloperidol', 'trazodone', 'morphine-comfort'],
+  },
+
+  {
+    id: 'variceal-bleed',
+    label: 'Bleeding oesophageal varices',
+    tier: 'critical',
+    setting: 'academic',
+    ageRange: [40, 70],
+    span: 3 * HOUR,
+    admissionDx: 'Cirrhosis — haematemesis',
+    hiddenDx: 'Rebleeding oesophageal varices in portal hypertension — a different disease from a bleeding ulcer',
+    teachingPoint:
+      'A variceal bleed is a portal pressure problem wearing a haemorrhage costume. Octreotide lowers the pressure ' +
+      'driving it, antibiotics are given to every cirrhotic who bleeds because they halve mortality, and the ' +
+      'definitive treatment is banding. Transfuse to a haemoglobin of 7 and no higher — over-transfusion raises ' +
+      'portal pressure and makes the bleeding worse, which is the one place where more blood is the wrong answer.',
+    history: (ctx) => [
+      ctx.rng.pick(['Alcohol-related cirrhosis, Child-Pugh B', 'Alcohol-related cirrhosis, Child-Pugh C', 'Cirrhosis from hepatitis C']),
+      `MELD-Na ${bySeverityInt(ctx, 16, 26)}`,
+      ctx.rng.pick(['Grade 3 oesophageal varices, banded twice', 'Grade 2 varices, banded last month', 'Previous variceal bleed requiring TIPS discussion']),
+      'On a non-selective beta-blocker for prophylaxis',
+    ],
+    baseline: (ctx) => ({
+      stateOverrides: {
+        hr: ctx.rng.int(88, 98),
+        svr: bySeverity(ctx, 13.4, 12.6),
+        edv: ctx.rng.int(100, 110),
+      },
+      // Every cirrhotic here is on a non-selective beta-blocker for their varices,
+      // so the blunted chronotropic response belongs in the baseline rather than
+      // being drawn as a background condition on top of the drug they are already
+      // charted for. Prophylactic dose: blunted, not blocked.
+      paramOverrides: { gainHr: 1.1, hgb: bySeverity(ctx, 10.4, 8.0) },
+      rrOffset: 4,
+    }),
+    script: (ctx) => {
+      const v = ctx.voice;
+      return [
+        {
+          at: ctx.declareAt,
+          page: (g) => `${ctx.name} in ${ctx.room} has vomited a cupful of fresh blood. ` +
+            (g.perf >= 1 ? `${v.Subj} ${v.is} pale and the heart rate is up.`
+              : `${v.Subj} ${v.verb('look')} frightened but the observations are holding for now.`),
+          interventions: [
+            insult(ctx, { label: 'Variceal bleed: volume loss', category: 'scenario', kind: 'scenario', target: 'edv', delta: -18, tauOn: 1200, eliminationHalfLife: 86400 }),
+          ],
+          hgbDelta: -1.4 * bloodLossScale(ctx.severity),
+        },
+        {
+          at: jitter(ctx, ctx.declareAt + 85 * MIN),
+          urgent: true,
+          page: (g) => `${v.Subj} ${v.is} vomiting blood again and there is a lot of it this time. ` +
+            (g.perf >= 2 ? `${v.Subj} ${v.is} grey and clammy and I can barely get a pressure.`
+              : g.perf >= 1 ? `${v.Subj} ${v.verb('look')} washed out and the pressure is coming down.`
+              : `Observations are still holding, but this was a much bigger bleed.`),
+          interventions: [
+            insult(ctx, { label: 'Variceal rebleed', category: 'scenario', kind: 'scenario', target: 'edv', delta: -30, tauOn: 1800, eliminationHalfLife: 86400 }),
+          ],
+          // Scaled hard by severity: most variceal rebleeds are a frightening
+          // cupful that stops, and the one that does not is a different night.
+          hgbDelta: -1.4 * bloodLossScale(ctx.severity) * lerp(ctx.severity, 0.7, 1.8),
+        },
+      ];
+    },
+    findings: () => (panel, snap) => {
+      if (panel === 'EKG') return null;
+      if (panel === 'CXR') return 'Small right effusion. No aspiration change. No free air.';
+      if (panel === 'Ascitic fluid' && snap.noTone < 0.2) {
+        return 'Bland fluid — no peritonitis. Note that every cirrhotic who bleeds gets prophylactic antibiotics ' +
+          'regardless of this result: it halves mortality, and the indication is the bleed, not an infection.';
+      }
+      return null;
+    },
+    medications: (ctx) => [
+      { name: ctx.rng.pick(['Propranolol', 'Carvedilol']), detail: 'oral — HELD since admission', since: 'home medication, held' },
+      { name: 'Pantoprazole', detail: '8 mg/h continuous infusion', since: 'admission' },
+      { name: 'Ondansetron', detail: '4 mg IV every 8 hours as needed', since: 'admission' },
+      { name: 'Lactulose', detail: '30 mL orally three times daily', since: 'home medication' },
+      { name: 'Nil by mouth', detail: 'for endoscopy', since: 'admission' },
+    ],
+    priorLabs: (ctx) => [
+      prior('CBC', 320, [
+        pv('WBC', 7.4, 'K/µL', 1, { low: 4, high: 11 }),
+        pv('Hgb', bySeverity(ctx, 9.4, 8.0), 'g/dL', 1, { low: 12, critical: true }),
+        pv('Platelets', bySeverityInt(ctx, 92, 58), 'K/µL', 0, { low: 150 }),
+      ]),
+      prior('CMP', 320, [
+        pv('Bilirubin', bySeverity(ctx, 2.8, 6.4), 'mg/dL', 1, { high: 1.2 }),
+        pv('Albumin', 2.7, 'g/dL', 1, { low: 3.5 }),
+        pv('INR', bySeverity(ctx, 1.5, 2.1), '', 1, { high: 1.1 }),
+        pv('Creatinine', 1.1, 'mg/dL', 2, { high: 1.1 }),
+      ]),
+      prior('Endoscopy', 2880, [], 'Three columns of grade 3 oesophageal varices with red wale marks. Four bands applied. Portal hypertensive gastropathy in the fundus.'),
+      prior('Type and screen', 900, [], 'Group A positive. Antibody screen negative. Four units crossmatched and held.'),
+    ],
+    handoff: (ctx) => ({
+      severityCall: 'watcher',
+      summary:
+        `Cirrhosis with a variceal bleed, banded two days ago. No further haematemesis since. Haemoglobin has ` +
+        `been stable. Beta-blocker held. Gastroenterology plan repeat banding in two weeks.`,
+      todo: ['Repeat haemoglobin at 06:00.', 'Nil by mouth from midnight.'],
+      contingencies: [
+        `If ${ctx.voice.subj} ${ctx.voice.verb('bleed')} again: octreotide, antibiotics, and call gastroenterology tonight rather than in the morning.`,
+        'Transfuse to a haemoglobin of 7 and stop. Over-transfusion raises portal pressure and makes the bleeding worse.',
+        'Antibiotics go to every cirrhotic who bleeds, whether or not they look infected. It halves mortality.',
+      ],
+      misleading: 'If the haemoglobin drops, transfuse up to 10 to give some margin overnight.',
+    }),
+    expectedOrders: ['octreotide', 'abx', 'prbc', 'consult-gi', 'transfer-icu', 'lab-cbc'],
+    contraindicatedOrders: ['ns-1000'],
   },
 ];
 

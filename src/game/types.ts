@@ -562,6 +562,13 @@ export interface PatientRuntime {
    * doctor already has.
    */
   reportedGrade: number;
+  /**
+   * The last concern the nurse voiced about a set of observations.
+   *
+   * Compared before speaking again, so a persistently abnormal patient is charted
+   * without being announced afresh every observation round.
+   */
+  lastConcern: string | null;
   /** Sim-time of the last charted vitals, for routine-rounds pacing. */
   lastVitalsAt: number;
   /** Sim-time the patient first met shock criteria — drives late-recognition scoring. */

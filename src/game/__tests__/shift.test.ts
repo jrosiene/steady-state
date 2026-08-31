@@ -1510,7 +1510,7 @@ describe('the service you are working on', () => {
     }
   });
 
-  it('can kill every specialist critical case, and none of the ward ones', () => {
+  it('can kill every specialist critical case, and no specialist ward one', () => {
     for (const archetype of ARCHETYPES.filter((a) => a.setting === 'academic')) {
       const s = soloShift(archetype.id, { severity: 0.85, declareAt: 20 * 60 });
       for (let i = 0; i < 12 * 60; i++) {
@@ -1632,5 +1632,122 @@ describe('a background condition shades a case, it does not decide it', () => {
     for (let i = 1; i < survivalMinutes.length; i++) {
       expect(survivalMinutes[i], `step ${i}`).toBeGreaterThan(survivalMinutes[i - 1] * 0.4);
     }
+  });
+});
+
+// ─── Clinical shape of the academic cases ───────────────────────────────────
+
+describe('the academic library covers the range, not just the extremes', () => {
+  it('offers a sickle cell crisis that stays a crisis', () => {
+    // Most crises are just crises. The commonest harm done overnight is not
+    // missing an acute chest — it is treating a person in real pain as though
+    // they were exaggerating, and producing the splinting that causes one.
+    for (const severity of [0.2, 0.5, 0.9]) {
+      const s = soloShift('sickle-vaso-occlusive', { severity, declareAt: 20 * 60 });
+      for (let i = 0; i < 12 * 60; i++) run(s.engine, MIN, 30);
+      expect(s.patient.status, `severity ${severity}`).toBe('stable');
+    }
+    expect(ARCHETYPE_BY_ID['sickle-vaso-occlusive'].contraindicatedOrders)
+      .toContain('lorazepam');
+  });
+
+  it('makes hepatic encephalopathy a hunt for the precipitant, not a pressure problem', () => {
+    const s = soloShift('hepatic-encephalopathy', { severity: 0.7, declareAt: 20 * 60 });
+    const opening = s.engine.snapshot(s.patient).map;
+    for (let i = 0; i < 12 * 60; i++) run(s.engine, MIN, 30);
+
+    // Haemodynamically uneventful all night, which is the point: the illness is
+    // neurological and the model should not pretend otherwise.
+    expect(s.patient.status).toBe('stable');
+    expect(Math.abs(s.engine.snapshot(s.patient).map - opening)).toBeLessThan(20);
+
+    // The precipitant is in the messages and in the medication list.
+    const said = s.patient.messages.map((m) => m.text).join(' ');
+    expect(said).toMatch(/bowels/i);
+    expect(s.patient.case.medications.some((m) => /Lactulose/i.test(m.name))).toBe(true);
+
+    const harms = ARCHETYPE_BY_ID['hepatic-encephalopathy'].contraindicatedOrders ?? [];
+    expect(harms).toContain('lorazepam');
+    expect(harms).toContain('haloperidol');
+  });
+
+  it('separates a variceal bleed from a bleeding ulcer', () => {
+    const varices = ARCHETYPE_BY_ID['variceal-bleed'];
+    // Portal pressure, not just volume: octreotide and antibiotics are what make
+    // this a different disease from the peptic ulcer next door.
+    expect(varices.expectedOrders).toContain('octreotide');
+    expect(varices.expectedOrders).toContain('abx');
+    expect(ARCHETYPE_BY_ID['gi-bleed'].expectedOrders).not.toContain('octreotide');
+
+    const c = makeCase('variceal-bleed', { severity: 0.5 });
+    expect(c.priorLabs.some((l) => /Endoscopy/i.test(l.panel))).toBe(true);
+    expect(c.handoff.summary + c.teachingPoint).toMatch(/varic/i);
+  });
+
+  it('treats spontaneous bacterial peritonitis as the subacute illness it is', () => {
+    const sbp = ARCHETYPE_BY_ID['cirrhosis-sbp'];
+    // Dangerous over days, through the kidneys — not a haemodynamic emergency
+    // that kills before morning.
+    expect(sbp.tier).toBe('ward');
+    expect(sbp.expectedOrders.slice(0, 2)).toEqual(['abx', 'albumin']);
+
+    for (const severity of [0.3, 0.7, 1]) {
+      const s = soloShift('cirrhosis-sbp', { severity, declareAt: 20 * 60 });
+      for (let i = 0; i < 12 * 60; i++) run(s.engine, MIN, 30);
+      expect(s.patient.status, `severity ${severity}`).toBe('stable');
+    }
+  });
+
+  it('makes a right ventricle failing for the first time overnight a rare night', () => {
+    let pah = 0;
+    let total = 0;
+    for (let i = 0; i < 60; i++) {
+      for (const c of generateWard({ seed: `RARE${i}`, setting: 'academic' }).cases) {
+        total += 1;
+        if (c.archetypeId === 'pah-rv-failure') pah += 1;
+      }
+    }
+    // Present, but not a case you meet every third shift.
+    expect(pah).toBeGreaterThan(0);
+    expect(pah / total).toBeLessThan(0.035);
+  });
+});
+
+describe('a ward-level case is serious, not lethal', () => {
+  it('does not lose a ward or benign patient overnight, at any severity', () => {
+    const lost: string[] = [];
+    for (const archetype of ARCHETYPES.filter((a) => a.tier !== 'critical')) {
+      // The exception, and the only one: a dying patient on comfort measures is
+      // the case whose whole point is that the intervention is a conversation.
+      if (archetype.id === 'end-of-life-pneumonia') continue;
+
+      for (const severity of [0.3, 0.6, 0.9, 1]) {
+        const s = soloShift(archetype.id, { severity, declareAt: 20 * 60 });
+        for (let i = 0; i < 12 * 60; i++) {
+          run(s.engine, MIN, 30);
+          if (s.patient.status !== 'stable') break;
+        }
+        if (s.patient.status !== 'stable') {
+          lost.push(`${archetype.id}@${severity} (${s.patient.case.comorbidities.join('+') || 'no comorbidities'})`);
+        }
+      }
+    }
+    expect(lost).toEqual([]);
+  });
+});
+
+describe('the nurse says a thing once', () => {
+  it('does not re-read the same observations down the phone all night', () => {
+    // A subacute illness sits on an abnormal set of numbers for hours. Announcing
+    // them afresh every observation round is an alarm, not a colleague, and the
+    // player learns to stop reading the channel.
+    const s = soloShift('cirrhosis-sbp', { severity: 0.6, declareAt: 20 * 60 });
+    for (let i = 0; i < 12 * 60; i++) run(s.engine, MIN, 30);
+
+    const flags = s.patient.messages
+      .filter((m) => /Just flagging this|I need you to know about this one/.test(m.text))
+      .map((m) => m.text.replace(/\d+/g, '#'));
+
+    expect(new Set(flags).size).toBe(flags.length);
   });
 });

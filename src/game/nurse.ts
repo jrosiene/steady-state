@@ -132,6 +132,8 @@ function activeTreatmentLabels(patient: PatientRuntime): string[] {
 
 export interface VitalsConcern {
   urgent: boolean;
+  /** What this concern is about, without the numbers — for suppressing repeats. */
+  key: string;
   text: string;
 }
 
@@ -144,14 +146,19 @@ export interface VitalsConcern {
  */
 export function vitalsConcern(v: Vitals, snap: Snapshot, baselineDrive = 0): VitalsConcern | null {
   const problems: string[] = [];
+  // What the concern is *about*, without the numbers. Two readings of a heart
+  // rate that has drifted from 116 to 117 are the same piece of news, and a
+  // caller who says both is an alarm rather than a colleague.
+  const kinds: string[] = [];
   let urgent = false;
 
   if (snap.cardiovascularStatus === 'arrest') {
-    return { urgent: true, text: 'I have no pulse — I need help in here now!' };
+    return { urgent: true, key: 'arrest', text: 'I have no pulse — I need help in here now!' };
   }
 
   if (v.map < 55 || v.sbp < 80) {
     problems.push(`BP ${v.sbp}/${v.dbp}`);
+    kinds.push('bp');
     urgent = true;
   } else if (v.map < 65 || v.sbp < 90) {
     problems.push(`BP ${v.sbp}/${v.dbp}`);
@@ -159,13 +166,16 @@ export function vitalsConcern(v: Vitals, snap: Snapshot, baselineDrive = 0): Vit
 
   if (v.spo2 < 88) {
     problems.push(`sat ${v.spo2}%${v.o2 === 'RA' ? ' on room air' : ` on ${v.o2}`}`);
+    kinds.push('spo2');
     urgent = true;
   } else if (v.spo2 < 92) {
     problems.push(`sat ${v.spo2}% on ${v.o2}`);
+    kinds.push('spo2');
   }
 
   if (v.hr > 130) {
     problems.push(`heart rate ${v.hr}`);
+    kinds.push('hr');
     urgent = true;
   } else if (v.hr > 115 || v.hr < 45) {
     problems.push(`heart rate ${v.hr}`);
@@ -173,11 +183,13 @@ export function vitalsConcern(v: Vitals, snap: Snapshot, baselineDrive = 0): Vit
 
   if (v.rr > 30) {
     problems.push(`respiratory rate ${v.rr}`);
+    kinds.push('rr');
     urgent = true;
   }
 
   if (v.tempC >= 38.5) {
     problems.push(`temp ${v.tempC.toFixed(1)}`);
+    kinds.push('temp');
   }
 
   if (problems.length === 0) return null;
@@ -189,6 +201,7 @@ export function vitalsConcern(v: Vitals, snap: Snapshot, baselineDrive = 0): Vit
 
   return {
     urgent,
+    key: `${urgent ? 'urgent' : 'flag'}:${[...new Set(kinds)].sort().join('+')}`,
     text: `${lead} — ${problems.join(', ')}. ${capitalise(gestalt)}.`,
   };
 }

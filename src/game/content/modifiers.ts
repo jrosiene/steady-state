@@ -21,6 +21,15 @@ export interface Comorbidity {
   minAge?: number;
   /** Archetypes that already imply this, so it is not doubled up. */
   skipFor?: string[];
+  /**
+   * Conditions acting on the same physiology as this one; at most one is drawn.
+   *
+   * Beta-blockade and athletic conditioning both take away the compensatory
+   * tachycardia. A patient carrying both cannot respond to anything, and a
+   * background condition that removes a compensatory mechanism outright has
+   * stopped describing the person and started deciding the case.
+   */
+  excludes?: string[];
   apply(ctx: ModifierTarget, rng: Rng): void;
 }
 
@@ -35,6 +44,14 @@ export const COMORBIDITIES: Comorbidity[] = [
     label: 'On a beta-blocker',
     weight: 3,
     minAge: 45,
+    excludes: ['athletic'],
+    /**
+     * The cirrhosis cases are on a non-selective beta-blocker for their varices —
+     * it is in their medication list and in their baseline. Drawing the
+     * comorbidity on top counted the same drug twice, and the doubled blockade
+     * was enough on its own to turn a ward-level illness into a death.
+     */
+    skipFor: ['cirrhosis-sbp', 'hepatic-encephalopathy', 'variceal-bleed'],
     apply(t, rng) {
       // The important one. A blunted chronotropic response means the tachycardia
       // that normally announces hypovolaemia never arrives, and the patient looks
@@ -50,9 +67,16 @@ export const COMORBIDITIES: Comorbidity[] = [
     weight: 2.5,
     minAge: 50,
     skipFor: ['urosepsis'],
+    // Same physiology as chronic anaemia by the time it reaches the model, so
+    // only one of the two is ever drawn.
+    excludes: ['anaemia'],
     apply(t, rng) {
-      // Anaemia of chronic disease narrows the oxygen-delivery margin.
-      t.params.hgb = (t.params.hgb ?? 15) - rng.real(1.8, 3.2);
+      // Anaemia of chronic disease narrows the oxygen-delivery margin. Toward a
+      // value rather than subtracted from it: on a case that is anaemic in its
+      // own right, subtracting took an already-low haemoglobin below the
+      // anaerobic threshold at handover, so the patient was in a lactate spiral
+      // from minute zero and the case had been decided before it started.
+      t.params.hgb = Math.min(t.params.hgb ?? 15, rng.real(9.4, 11.2));
     },
   },
   {
@@ -105,6 +129,7 @@ export const COMORBIDITIES: Comorbidity[] = [
     id: 'anaemia',
     label: 'Chronic anaemia',
     weight: 2,
+    excludes: ['ckd'],
     /**
      * Skipped where oxygen delivery is already the axis the case fails along.
      *
@@ -143,9 +168,15 @@ export const COMORBIDITIES: Comorbidity[] = [
     id: 'athletic',
     label: 'Physically fit, low resting heart rate',
     weight: 1,
+    excludes: ['beta-blocked'],
     apply(t, rng) {
       t.params.svMax = (t.params.svMax ?? 130) * rng.real(1.08, 1.18);
       t.state.hr = (t.state.hr ?? 70) - rng.int(8, 14);
+      // Reserve, not just a low number. The resting rate becomes the rate the
+      // reflex defends from, so lowering it alone took away the compensation an
+      // athlete actually has more of — and a fit patient decompensated sooner
+      // than an unfit one, which is backwards. Being fit means responding harder.
+      t.params.gainHr = (t.params.gainHr ?? 1.5) * rng.real(1.2, 1.35);
     },
   },
 ];
@@ -176,7 +207,14 @@ export function sampleComorbidities(
       roll -= pool[index].weight;
       index += 1;
     }
-    chosen.push(pool.splice(index, 1)[0]);
+    const picked = pool.splice(index, 1)[0];
+    chosen.push(picked);
+
+    // Anything acting on the same physiology drops out of the draw.
+    for (const id of picked.excludes ?? []) {
+      const clash = pool.findIndex((c) => c.id === id);
+      if (clash >= 0) pool.splice(clash, 1);
+    }
   }
   return chosen;
 }

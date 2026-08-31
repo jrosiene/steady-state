@@ -402,10 +402,19 @@ export class ShiftEngine {
     // `silent` charts the numbers without the commentary, for the case where the
     // nurse has just said the same thing in their own words.
     const concern = silent ? null : vitalsConcern(vitals, snap, p.case.baselineDrive);
-    if (concern) {
+    if (concern && concern.key !== p.lastConcern) {
+      // Only when it is news. A subacute illness sits on an abnormal set of
+      // observations for hours, and re-reading the same heart rate down the phone
+      // every forty minutes is not a nurse — it is an alarm, and the player learns
+      // to stop reading the channel. Genuine deterioration comes through
+      // `checkGestaltRise`, which fires on change rather than on state.
+      p.lastConcern = concern.key;
       this.post(p, 'nurse', p.case.nurse, concern.text, 'page', concern.urgent);
       p.lastPageAt = this.time;
       if (concern.urgent) this.markUnstable(p);
+    } else if (!concern) {
+      // Cleared: if it comes back, it is news again.
+      p.lastConcern = null;
     }
   }
 
@@ -1121,6 +1130,7 @@ function createRuntime(c: PatientCase): PatientRuntime {
     // Seeded from how the patient looks at handover, so someone who arrives on
     // the shift already unwell is not paged about for being what they were.
     reportedGrade: Math.max(handoverGestalt.wob, handoverGestalt.perf),
+    lastConcern: null,
     lastVitalsAt: 0,
     firstUnstableAt: null,
     firstActionAt: null,

@@ -150,12 +150,15 @@ rather than recall what a given name did last time.
 
 | Archetype | Presents as | Actually |
 |---|---|---|
-| `pah-rv-failure` | Group 1 PAH, volume overload | RV failure. Fluid makes it worse; phenylephrine makes it worse |
-| `cirrhosis-sbp` | Decompensated cirrhosis, AKI | Spontaneous bacterial peritonitis → hepatorenal. Needs albumin, not just antibiotics |
+| `pah-rv-failure` | Group 1 PAH, volume overload | RV failure. Fluid makes it worse; phenylephrine makes it worse. Rare — a right ventricle failing for the first time overnight is a night you remember |
+| `variceal-bleed` | Cirrhosis, banded varices | Rebleeding varices. Octreotide and antibiotics, and transfuse to 7 — more blood raises portal pressure |
 | `neutropenic-sepsis` | Day +8 transplant, neutropenic fever | Gram-negative bacteraemia. No pus, no infiltrate, no time |
 | `sickle-acute-chest` | Sickle cell crisis | Acute chest syndrome — caused partly by treating the pain too cautiously |
-| `cf-exacerbation` | CF pulmonary exacerbation | CF exacerbation. The trap is their baseline, not their trajectory |
 | `necrotising-pancreatitis` | Severe acute pancreatitis | Capillary leak and ARDS. Fluid, not antibiotics |
+| `cirrhosis-sbp` | Decompensated cirrhosis, AKI | Spontaneous bacterial peritonitis. Subacute: it costs kidneys over days, not a pressure tonight. Antibiotics and albumin overnight; the tap can wait for the day team |
+| `hepatic-encephalopathy` | Cirrhosis, confused | A symptom with a cause. Find the precipitant, and do not sedate a confused cirrhotic |
+| `sickle-vaso-occlusive` | Sickle cell crisis | A crisis that stays a crisis. The harm available is under-treating the pain |
+| `cf-exacerbation` | CF pulmonary exacerbation | CF exacerbation. The trap is their baseline, not their trajectory |
 
 A ward staggers when its cases declare so problems arrive in sequence rather than
 all at once.

@@ -265,8 +265,25 @@ function drawTier(
 function fill(rng: Rng, pool: CaseArchetype[], count: number): CaseArchetype[] {
   const drawn: CaseArchetype[] = [];
   if (pool.length === 0) return drawn;
+  // Expanded by weight, so a case that is genuinely uncommon on a night list
+  // turns up at roughly the rate it does in life. A right ventricle failing for
+  // the first time overnight happens; it does not happen every third shift.
+  const bag: CaseArchetype[] = pool.flatMap(
+    (a) => Array<CaseArchetype>(Math.max(1, Math.round((a.weight ?? 1) * 4))).fill(a),
+  );
+
   while (drawn.length < count) {
-    drawn.push(...rng.shuffle(pool).slice(0, count - drawn.length));
+    // One pass takes distinct archetypes only, so a ward never carries the same
+    // diagnosis twice while the pool still has something unused. Weighting biases
+    // which of them the pass reaches first, because a heavier archetype has more
+    // copies in the bag and so a likelier early position in the shuffle.
+    const takenThisPass = new Set<CaseArchetype>();
+    for (const archetype of rng.shuffle(bag)) {
+      if (drawn.length >= count) break;
+      if (takenThisPass.has(archetype)) continue;
+      takenThisPass.add(archetype);
+      drawn.push(archetype);
+    }
   }
   return drawn;
 }
