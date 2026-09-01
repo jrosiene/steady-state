@@ -3,12 +3,13 @@ import { DEFAULT_PARAMS, DEFAULT_STATE } from '../engine/constants';
 import { snapshot as computeSnapshot, applyInterventions, interventionEffect } from '../engine/hemodynamics';
 import { clampEffective } from '../engine/solver';
 import { stepPhysics, WARD_PHYSICS_DT } from './physics';
-import { generateWard } from './content/generate';
+import { generateWard, DEFAULT_ACUITY } from './content/generate';
 import { makeRng, type Rng } from './content/rng';
 import { ORDER_BY_ID, O2_LABEL_PREFIX } from './orders';
 import { assessAppearance, chartVitals, resolveLabPanel, clockTime, type Gestalt } from './clinical';
 import { answerQuestion, vitalsConcern, NURSE_QUESTIONS } from './nurse';
 import { attendingAdvice, specialtyAdvice } from './consults';
+import { ordersSatisfiedBy } from './scoring';
 import {
   SHIFT_DURATION_SEC,
   type CaseEvent,
@@ -146,13 +147,22 @@ export class ShiftEngine {
   readonly size: number;
   /** Which service this shift is on. */
   readonly setting: Setting;
+  /** How sick this ward was dealt, 0 to 1. */
+  readonly acuity: number;
 
-  constructor(cases?: PatientCase[], seed?: string, size?: number, setting?: Setting) {
+  constructor(
+    cases?: PatientCase[],
+    seed?: string,
+    size?: number,
+    setting?: Setting,
+    acuity?: number,
+  ) {
+    this.acuity = acuity ?? DEFAULT_ACUITY;
     if (cases) {
       this.seed = seed ?? 'custom';
       this.patients = cases.map((c) => createRuntime(c));
     } else {
-      const ward = generateWard({ seed, size, setting });
+      const ward = generateWard({ seed, size, setting, acuity: this.acuity });
       this.seed = ward.seed;
       this.patients = ward.cases.map((c) => createRuntime(c));
     }
@@ -525,6 +535,12 @@ export class ShiftEngine {
       return `${order.label} is already ordered.`;
     }
 
+    // Some decisions are not the covering doctor's alone to make.
+    if (order.requires && !p.orders.some((o) => o.orderId === order.requires!.orderId)) {
+      this.post(p, 'nurse', p.case.nurse, order.requires.refusal, 'reply', false);
+      return `${ORDER_BY_ID[order.requires.orderId]?.label ?? 'Another step'} first.`;
+    }
+
     // Vasoactive infusions and mechanical ventilation cannot run on a ward bed.
     // This is the constraint that forces the escalation decision to be made
     // explicitly and early, rather than discovered at the moment of crisis.
@@ -613,6 +629,11 @@ export class ShiftEngine {
 
     if (order.o2Device) p.o2Device = order.o2Device;
     if (order.startsMonitoring) p.monitored = true;
+    if (order.holds) {
+      // Crossed off the list the player is reading, so the chart tells the truth
+      // about what is actually running.
+      p.heldMeds = [...new Set([...p.heldMeds, ...order.holds])];
+    }
     if (order.antipyreticHours) {
       p.antipyreticUntil = this.time + order.antipyreticHours * 3600;
     }
@@ -1131,6 +1152,7 @@ function createRuntime(c: PatientCase): PatientRuntime {
     // the shift already unwell is not paged about for being what they were.
     reportedGrade: Math.max(handoverGestalt.wob, handoverGestalt.perf),
     lastConcern: null,
+    heldMeds: [],
     lastVitalsAt: 0,
     firstUnstableAt: null,
     firstActionAt: null,
@@ -1193,7 +1215,7 @@ export function roscChance(code: CodeState, snap: Snapshot): number {
  * count — knowing what is wrong does not resuscitate anybody.
  */
 export function causeIsBeingTreated(p: PatientRuntime): boolean {
-  const placed = new Set(p.orders.map((o) => o.orderId));
+  const placed = ordersSatisfiedBy(p);
   const therapeutic = p.case.expectedOrders.filter((id) => {
     if (!placed.has(id)) return false;
     const category = ORDER_BY_ID[id]?.category;

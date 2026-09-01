@@ -15,6 +15,24 @@ import { HandoffCard } from './HandoffCard';
  */
 const SIZES = [8, 16, 24, 40] as const;
 
+/**
+ * Labels for the acuity slider.
+ *
+ * Deliberately about the night rather than about the numbers: the player is
+ * choosing what kind of shift they want, not reading off a difficulty tier.
+ */
+const ACUITY_LABELS: [number, string][] = [
+  [0.15, 'A quiet one'],
+  [0.35, 'Steady'],
+  [0.55, 'A normal night'],
+  [0.75, 'Busy'],
+  [1.01, 'A bad night'],
+];
+
+function acuityLabel(value: number): string {
+  return ACUITY_LABELS.find(([at]) => value < at)?.[1] ?? 'A bad night';
+}
+
 const SETTINGS: { id: Setting; label: string; note: string }[] = [
   {
     id: 'community',
@@ -40,6 +58,7 @@ export function Briefing({
   seed,
   size,
   setting,
+  acuity,
   onStart,
   onReroll,
   onBench,
@@ -48,8 +67,9 @@ export function Briefing({
   seed: string;
   size: number;
   setting: Setting;
+  acuity: number;
   onStart: () => void;
-  onReroll: (seed?: string, size?: number, setting?: Setting) => void;
+  onReroll: (seed?: string, size?: number, setting?: Setting, acuity?: number) => void;
   onBench: () => void;
 }) {
   return (
@@ -130,6 +150,26 @@ export function Briefing({
               <span className="size-n">{n}</span>
             </button>
           ))}
+        </div>
+
+        <h2>How sick is the ward?</h2>
+        <p className="lede" style={{ marginBottom: 14 }}>
+          This slides how ill the patients are, not who is on the list. A quiet night
+          is the same diseases caught earlier; a bad one is several people in real
+          trouble at once. Either way there is spread — a quiet ward can still hold
+          one patient who is genuinely unwell, which is the point of looking.
+        </p>
+        <div className="acuity-bar">
+          <input
+            className="acuity-slider"
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={acuity}
+            onChange={(e) => onReroll(undefined, undefined, undefined, Number(e.target.value))}
+          />
+          <span className="acuity-label">{acuityLabel(acuity)}</span>
         </div>
 
         <h2>Sign-out from the day team</h2>

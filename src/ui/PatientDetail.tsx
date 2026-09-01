@@ -47,13 +47,18 @@ export function PatientDetail({
           <details className="handoff-details">
             <summary>Medications ({p.case.medications.length})</summary>
             <div className="med-list">
-              {p.case.medications.map((m) => (
-                <div key={m.name} className="med">
-                  <span className="med-name">{m.name}</span>
-                  <span className="med-detail">{m.detail}</span>
-                  <span className="med-since">{m.since}</span>
-                </div>
-              ))}
+              {p.case.medications.map((m) => {
+                // Held rather than removed: "we stopped the beta-blocker at 23:00"
+                // is something the morning team needs to be able to read.
+                const held = p.heldMeds.some((h) => m.name.toLowerCase().includes(h));
+                return (
+                  <div key={m.name} className={`med${held ? ' held' : ''}`}>
+                    <span className="med-name">{m.name}</span>
+                    <span className="med-detail">{m.detail}</span>
+                    <span className="med-since">{held ? 'held by you overnight' : m.since}</span>
+                  </div>
+                );
+              })}
             </div>
           </details>
         )}

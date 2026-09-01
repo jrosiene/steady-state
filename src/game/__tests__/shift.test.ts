@@ -4,7 +4,7 @@ import { ORDER_BY_ID } from '../orders';
 import { assessAppearance, describeAppearance, acuityLabel, resolveLabPanel, type Gestalt } from '../clinical';
 import { DEFAULT_PARAMS, DEFAULT_STATE } from '../../engine/constants';
 import { snapshot as computeSnapshot } from '../../engine/hemodynamics';
-import { buildReport } from '../scoring';
+import { buildReport, ordersSatisfiedBy } from '../scoring';
 import { ARCHETYPES, ARCHETYPE_BY_ID } from '../content/archetypes';
 import { generateWard, composition, WARD_SIZE } from '../content/generate';
 import { makeRng } from '../content/rng';
@@ -1676,7 +1676,8 @@ describe('the academic library covers the range, not just the extremes', () => {
     // Portal pressure, not just volume: octreotide and antibiotics are what make
     // this a different disease from the peptic ulcer next door.
     expect(varices.expectedOrders).toContain('octreotide');
-    expect(varices.expectedOrders).toContain('abx');
+    // Antibiotics for every cirrhotic who bleeds — the indication is the bleed.
+    expect(varices.expectedOrders).toContain('ceftriaxone');
     expect(ARCHETYPE_BY_ID['gi-bleed'].expectedOrders).not.toContain('octreotide');
 
     const c = makeCase('variceal-bleed', { severity: 0.5 });
@@ -1689,7 +1690,7 @@ describe('the academic library covers the range, not just the extremes', () => {
     // Dangerous over days, through the kidneys — not a haemodynamic emergency
     // that kills before morning.
     expect(sbp.tier).toBe('ward');
-    expect(sbp.expectedOrders.slice(0, 2)).toEqual(['abx', 'albumin']);
+    expect(sbp.expectedOrders.slice(0, 2)).toEqual(['ceftriaxone', 'albumin']);
 
     for (const severity of [0.3, 0.7, 1]) {
       const s = soloShift('cirrhosis-sbp', { severity, declareAt: 20 * 60 });
@@ -1749,5 +1750,175 @@ describe('the nurse says a thing once', () => {
       .map((m) => m.text.replace(/\d+/g, '#'));
 
     expect(new Set(flags).size).toBe(flags.length);
+  });
+});
+
+// ─── Rungs between doing nothing and doing everything ───────────────────────
+
+describe('the escalation ladders have middle rungs', () => {
+  it('grades oxygen from a cannula to positive pressure without a gap', () => {
+    const reached = (orderId: string) => {
+      const s = soloShift('adhf-mislabelled', { severity: 0.5, declareAt: 20 * 60 });
+      run(s.engine, 55 * MIN, 20);
+      s.engine.placeOrder(s.patient, orderId);
+      run(s.engine, 20 * MIN, 20);
+      return s.engine.snapshot(s.patient).spO2;
+    };
+
+    const cannula = reached('o2-nc6');
+    const mask = reached('o2-nrb');
+    const highFlow = reached('hfnc');
+    const positive = reached('bipap');
+
+    // High flow does what a mask cannot — some recruitment — without being BiPAP.
+    expect(highFlow).toBeGreaterThan(mask);
+    expect(positive).toBeGreaterThan(highFlow);
+    expect(mask).toBeGreaterThanOrEqual(cannula);
+  });
+
+  it('replaces the oxygen device rather than stacking on it', () => {
+    const s = soloShift('adhf-mislabelled', { severity: 0.5, declareAt: 20 * 60 });
+    run(s.engine, 55 * MIN, 20);
+    s.engine.placeOrder(s.patient, 'o2-nrb');
+    run(s.engine, 5 * MIN, 20);
+    s.engine.placeOrder(s.patient, 'hfnc');
+    run(s.engine, 15 * MIN, 20);
+
+    const running = s.patient.interventions.filter(
+      (i) => i.label.startsWith('O2:') && i.stopTime === undefined && i.target === 'fiO2',
+    );
+    expect(running).toHaveLength(1);
+    expect(s.engine.snapshot(s.patient).fiO2).toBeLessThanOrEqual(1);
+  });
+
+  it('offers a fluid challenge smaller than a commitment', () => {
+    const given = (orderId: string) => {
+      const s = soloShift('hypovolaemia', { severity: 0.6, declareAt: 20 * 60 });
+      run(s.engine, 60 * MIN, 30);
+      const before = s.engine.snapshot(s.patient).edv;
+      s.engine.placeOrder(s.patient, orderId);
+      run(s.engine, 25 * MIN, 30);
+      return s.engine.snapshot(s.patient).edv - before;
+    };
+    const challenge = given('ns-250');
+    const bolus = given('ns-500');
+    expect(challenge).toBeGreaterThan(0);
+    expect(challenge).toBeLessThan(bolus);
+  });
+
+  it('puts a rung between non-pharmacologic delirium care and haloperidol', () => {
+    expect(ORDER_BY_ID['quetiapine']).toBeDefined();
+    expect(ORDER_BY_ID['quetiapine'].category).toBe('comfort');
+    expect(ORDER_BY_ID['incentive-spirometry']).toBeDefined();
+    expect(ARCHETYPE_BY_ID['benign-sundowning'].expectedOrders).toContain('quetiapine');
+  });
+
+  it('offers a bed between the ward and the unit', () => {
+    const s = soloShift('adhf-mislabelled', { severity: 0.4, declareAt: 20 * 60 });
+    run(s.engine, 40 * MIN, 30);
+    expect(s.engine.placeOrder(s.patient, 'step-down')).toBeNull();
+    run(s.engine, 35 * MIN, 30);
+    // Continuous monitoring, without the ICU-only treatments.
+    expect(s.patient.monitored).toBe(true);
+    expect(s.patient.location).not.toBe('icu');
+    expect(s.engine.placeOrder(s.patient, 'norepi')).not.toBeNull();
+  });
+});
+
+describe('choosing an antibiotic, not reaching for all of them', () => {
+  it('credits a broader drug for a narrower expectation, and not the reverse', () => {
+    const treat = (archetypeId: string, orderId: string) => {
+      const s = soloShift(archetypeId, { severity: 0.6, declareAt: 20 * 60 });
+      run(s.engine, 40 * MIN, 30);
+      s.engine.placeOrder(s.patient, orderId);
+      return ordersSatisfiedBy(s.patient);
+    };
+
+    // Urosepsis wants ceftriaxone; vanc-and-zosyn covers the organism too.
+    expect(treat('urosepsis', 'abx').has('ceftriaxone')).toBe(true);
+    expect(treat('urosepsis', 'pip-tazo').has('ceftriaxone')).toBe(true);
+
+    // Neutropenic sepsis wants pseudomonal cover, and ceftriaxone has none.
+    expect(treat('neutropenic-sepsis', 'ceftriaxone').has('pip-tazo')).toBe(false);
+    expect(ARCHETYPE_BY_ID['neutropenic-sepsis'].contraindicatedOrders)
+      .toContain('ceftriaxone');
+  });
+});
+
+describe('comfort care is the end of a conversation', () => {
+  it('refuses to write it before the family has been called', () => {
+    const s = soloShift('end-of-life-pneumonia', { severity: 0.6, declareAt: 20 * 60 });
+    run(s.engine, 40 * MIN, 30);
+
+    const refusal = s.engine.placeOrder(s.patient, 'comfort-care');
+    expect(refusal).not.toBeNull();
+    expect(s.patient.messages[s.patient.messages.length - 1].text).toMatch(/family/i);
+    expect(s.patient.orders.some((o) => o.orderId === 'comfort-care')).toBe(false);
+
+    expect(s.engine.placeOrder(s.patient, 'goals-of-care')).toBeNull();
+    run(s.engine, 20 * MIN, 30);
+    expect(s.engine.placeOrder(s.patient, 'comfort-care')).toBeNull();
+  });
+
+  it('counts the conversation as management on the case that needs it', () => {
+    expect(ARCHETYPE_BY_ID['end-of-life-pneumonia'].expectedOrders).toContain('goals-of-care');
+  });
+});
+
+describe('stopping something the day team started', () => {
+  it('crosses the medication off the chart', () => {
+    const s = soloShift('variceal-bleed', { severity: 0.6, declareAt: 20 * 60 });
+    run(s.engine, 30 * MIN, 30);
+
+    const blocker = s.patient.case.medications.find(
+      (m) => /propranolol|carvedilol/i.test(m.name),
+    );
+    expect(blocker, 'every cirrhotic here is on one').toBeDefined();
+
+    expect(s.engine.placeOrder(s.patient, 'hold-rate-control')).toBeNull();
+    run(s.engine, 10 * MIN, 30);
+    expect(
+      s.patient.heldMeds.some((h) => blocker!.name.toLowerCase().includes(h)),
+    ).toBe(true);
+  });
+});
+
+describe('the acuity slider changes how sick the ward is, not who is on it', () => {
+  it('slides the severity distribution monotonically', () => {
+    const meanSeverity = (acuity: number) => {
+      let sum = 0;
+      let n = 0;
+      for (let i = 0; i < 40; i++) {
+        for (const c of generateWard({ seed: `ACUITY${i}`, acuity }).cases) {
+          sum += c.severity;
+          n += 1;
+        }
+      }
+      return sum / n;
+    };
+
+    const quiet = meanSeverity(0);
+    const normal = meanSeverity(0.5);
+    const bad = meanSeverity(1);
+    expect(quiet).toBeLessThan(normal);
+    expect(normal).toBeLessThan(bad);
+  });
+
+  it('keeps the spread, so a quiet night can still hold one sick patient', () => {
+    const severities: number[] = [];
+    for (let i = 0; i < 60; i++) {
+      for (const c of generateWard({ seed: `SPREAD${i}`, acuity: 0.15 }).cases) {
+        severities.push(c.severity);
+      }
+    }
+    // A difficulty setting that removed the variance would remove the triage.
+    expect(Math.max(...severities)).toBeGreaterThan(0.5);
+    expect(Math.min(...severities)).toBeLessThan(0.1);
+  });
+
+  it('does not change which diagnoses are on the list', () => {
+    const idsAt = (acuity: number) =>
+      new Set(generateWard({ seed: 'SAMEWARD', acuity }).cases.map((c) => c.archetypeId));
+    expect([...idsAt(0)].sort()).toEqual([...idsAt(1)].sort());
   });
 });

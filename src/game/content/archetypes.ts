@@ -270,7 +270,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       ]),
       prior('Urine culture', 2160, [], 'Escherichia coli, >10⁵ cfu/mL. Sensitive to ceftriaxone and nitrofurantoin; resistant to trimethoprim.'),
     ],
-    expectedOrders: ['vitals-now', 'lab-lactate', 'lab-cultures', 'abx', 'ns-1000', 'transfer-icu'],
+    expectedOrders: ['vitals-now', 'lab-lactate', 'lab-cultures', 'ceftriaxone', 'ns-1000', 'transfer-icu'],
     contraindicatedOrders: ['furosemide', 'trazodone'],
   },
 
@@ -370,7 +370,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       prior('Lactate', 420, [pv('Lactate', bySeverity(ctx, 1.8, 2.9), 'mmol/L', 1, { high: 2.0 })]),
       prior('Blood cultures', 1200, [], 'No growth to date, 12 hours.'),
     ],
-    expectedOrders: ['vitals-now', 'lab-lactate', 'abx', 'ns-1000', 'o2-nc6', 'transfer-icu'],
+    expectedOrders: ['vitals-now', 'lab-lactate', 'ceftriaxone', 'ns-1000', 'o2-nc6', 'transfer-icu'],
     contraindicatedOrders: ['furosemide', 'morphine-comfort'],
   },
 
@@ -839,7 +839,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       ]),
       prior('CXR', 960, [], 'Hyperinflated lungs with flattened hemidiaphragms. No consolidation or pneumothorax.'),
     ],
-    expectedOrders: ['duoneb', 'steroids', 'o2-nc6', 'sit-up', 'bipap'],
+    expectedOrders: ['duoneb', 'steroids', 'o2-nc6', 'sit-up', 'bipap', 'hfnc'],
     contraindicatedOrders: ['ns-1000', 'morphine-comfort'],
   },
 
@@ -906,7 +906,7 @@ export const ARCHETYPES: CaseArchetype[] = [
         pv('Urea', bySeverityInt(ctx, 46, 74), 'mg/dL', 0, { high: 20 }),
       ]),
     ],
-    expectedOrders: ['vitals-now', 'ns-500', 'lab-bmp'],
+    expectedOrders: ['vitals-now', 'ns-500', 'ns-250', 'lab-bmp'],
     contraindicatedOrders: ['furosemide', 'norepi'],
   },
 
@@ -1006,7 +1006,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       ]),
       prior('CXR', 1800, [], 'Bilateral basal consolidation, worse than the film four days ago.'),
     ],
-    expectedOrders: ['comfort-care', 'call-attending', 'morphine-comfort', 'delirium-precautions'],
+    expectedOrders: ['goals-of-care', 'comfort-care', 'morphine-comfort', 'call-attending'],
     contraindicatedOrders: ['intubate', 'norepi', 'transfer-icu'],
   },
 
@@ -1243,7 +1243,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       ]),
       prior('Urine culture', 2160, [], 'Mixed growth, likely contaminant. No dominant organism.'),
     ],
-    expectedOrders: ['vitals-now', 'delirium-precautions'],
+    expectedOrders: ['delirium-precautions', 'quetiapine', 'vitals-now'],
     contraindicatedOrders: ['haloperidol', 'lorazepam', 'trazodone', 'img-ctpe'],
   },
 
@@ -1565,7 +1565,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       ],
       misleading: 'Blood pressure has been soft all day. If it drops further, try a 500 mL bolus before calling anyone.',
     }),
-    expectedOrders: ['o2-nrb', 'norepi', 'transfer-icu', 'img-echo', 'call-attending', 'furosemide'],
+    expectedOrders: ['o2-nrb', 'norepi', 'transfer-icu', 'img-echo', 'call-attending', 'hfnc'],
     contraindicatedOrders: ['ns-1000', 'ns-500', 'phenylephrine'],
   },
 
@@ -1692,7 +1692,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       ],
       misleading: 'Blood pressure runs in the nineties systolic normally for this patient. Nothing to do about it.',
     }),
-    expectedOrders: ['abx', 'albumin', 'lab-cultures', 'lab-bmp', 'paracentesis'],
+    expectedOrders: ['ceftriaxone', 'albumin', 'lab-cultures', 'lab-bmp', 'paracentesis'],
     contraindicatedOrders: ['ns-1000'],
   },
 
@@ -1797,8 +1797,8 @@ export const ARCHETYPES: CaseArchetype[] = [
       ],
       misleading: 'Temperature spiked once this afternoon and settled with paracetamol. Reasonable to give another dose and review in the morning.',
     }),
-    expectedOrders: ['lab-cultures', 'abx', 'ns-1000', 'lab-lactate', 'transfer-icu', 'norepi'],
-    contraindicatedOrders: ['acetaminophen'],
+    expectedOrders: ['lab-cultures', 'pip-tazo', 'ns-1000', 'lab-lactate', 'transfer-icu', 'norepi'],
+    contraindicatedOrders: ['acetaminophen', 'ceftriaxone'],
   },
 
   {
@@ -1898,7 +1898,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       ],
       misleading: 'Requesting a lot of opioid. Consider weaning the PCA overnight so they can go home tomorrow.',
     }),
-    expectedOrders: ['o2-nc6', 'abx', 'img-cxr', 'morphine-comfort', 'transfer-icu', 'prbc'],
+    expectedOrders: ['o2-nc6', 'ceftriaxone', 'img-cxr', 'morphine-comfort', 'hfnc', 'prbc'],
     contraindicatedOrders: ['ns-1000'],
   },
 
@@ -1991,8 +1991,8 @@ export const ARCHETYPES: CaseArchetype[] = [
       ],
       misleading: 'Saturations have been in the low nineties. Consider oxygen if they drop further.',
     }),
-    expectedOrders: ['duoneb', 'physio-airway', 'img-cxr', 'sit-up', 'lab-cbc'],
-    contraindicatedOrders: ['morphine-comfort'],
+    expectedOrders: ['physio-airway', 'duoneb', 'pip-tazo', 'img-cxr', 'sit-up'],
+    contraindicatedOrders: ['morphine-comfort', 'ceftriaxone'],
   },
 
   {
@@ -2098,7 +2098,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       ],
       misleading: 'Fluid balance is strongly positive already. Would keep the rate where it is and consider a diuretic if the oxygen requirement rises.',
     }),
-    expectedOrders: ['ns-1000', 'ns-500', 'vitals-now', 'lab-bmp', 'o2-nc6', 'transfer-icu'],
+    expectedOrders: ['ns-1000', 'ns-500', 'vitals-now', 'lab-bmp', 'hold-nephrotoxics', 'transfer-icu'],
     contraindicatedOrders: ['furosemide'],
   },
 
@@ -2188,7 +2188,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       ],
       misleading: 'Using a lot of PCA demand. Consider reducing the bolus overnight.',
     }),
-    expectedOrders: ['morphine-comfort', 'incentive-spirometry', 'ns-500', 'vitals-now'],
+    expectedOrders: ['morphine-comfort', 'incentive-spirometry', 'ns-500', 'vitals-now', 'ns-250'],
     contraindicatedOrders: ['lorazepam'],
   },
 
@@ -2295,7 +2295,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       misleading: 'Gets agitated at night. A small dose of lorazepam settled them last admission.',
     }),
     expectedOrders: ['lactulose', 'delirium-precautions', 'lab-cultures', 'lab-cbc', 'rifaximin'],
-    contraindicatedOrders: ['lorazepam', 'haloperidol', 'trazodone', 'morphine-comfort'],
+    contraindicatedOrders: ['lorazepam', 'haloperidol', 'trazodone', 'morphine-comfort', 'quetiapine'],
   },
 
   {
@@ -2404,7 +2404,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       ],
       misleading: 'If the haemoglobin drops, transfuse up to 10 to give some margin overnight.',
     }),
-    expectedOrders: ['octreotide', 'abx', 'prbc', 'consult-gi', 'transfer-icu', 'lab-cbc'],
+    expectedOrders: ['octreotide', 'ceftriaxone', 'prbc', 'consult-gi', 'transfer-icu', 'hold-rate-control'],
     contraindicatedOrders: ['ns-1000'],
   },
 ];

@@ -115,7 +115,9 @@ export default function App() {
   const restart = () => {
     // A fresh seed, so the next night is a different ward rather than a retry —
     // but the same size of list, since that is a preference, not part of the deal.
-    setEngine(new ShiftEngine(undefined, undefined, engine.size, engine.setting));
+    setEngine(new ShiftEngine(
+      undefined, undefined, engine.size, engine.setting, engine.acuity,
+    ));
     setSelectedId(null);
     setPaused(false);
     setRefusal(null);
@@ -150,9 +152,11 @@ export default function App() {
           seed={engine.seed}
           size={engine.size}
           setting={engine.setting}
-          onReroll={(seed, size, setting) =>
+          acuity={engine.acuity}
+          onReroll={(seed, size, setting, acuity) =>
             setEngine(new ShiftEngine(
               undefined, seed, size ?? engine.size, setting ?? engine.setting,
+              acuity ?? engine.acuity,
             ))}
           onStart={() => {
             engine.start();

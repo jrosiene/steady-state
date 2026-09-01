@@ -65,6 +65,14 @@ export const ORDERS: OrderDef[] = [
     ack: (v) => `Good — I'll get ${v.poss} glasses in and turn the lights down. I'll take the telemetry leads off if you don't need them.`,
   },
   {
+    id: 'quetiapine',
+    label: 'Quetiapine 12.5 mg',
+    category: 'comfort',
+    detail: 'Low-dose atypical at night for agitated delirium. Less extrapyramidal risk than haloperidol, and it helps them sleep.',
+    leadTimeSec: 900,
+    ack: (v) => `Quetiapine given. I'll stay with ${v.obj} while it settles.`,
+  },
+  {
     id: 'haloperidol',
     label: 'Haloperidol 0.5 mg',
     category: 'comfort',
@@ -133,6 +141,17 @@ export const ORDERS: OrderDef[] = [
   },
 
   // ─── Fluids / blood ───────────────────────────────────────────────────────
+  {
+    id: 'ns-250',
+    label: '250 mL fluid challenge',
+    category: 'fluids',
+    detail: 'A small bolus given to see what happens. Safe to repeat, and safe in a patient you are not yet sure about.',
+    leadTimeSec: 180,
+    ack: (v) => `Running 250 over twenty minutes — I'll recheck ${v.poss} pressure after.`,
+    interventions: [
+      { label: '250 mL NS', category: 'treatment', kind: 'bolus', target: 'edv', delta: 10, tauOn: 480, eliminationHalfLife: 5400 },
+    ],
+  },
   {
     id: 'ns-500',
     label: '500 mL NS bolus',
@@ -289,6 +308,23 @@ export const ORDERS: OrderDef[] = [
     ],
   },
   {
+    id: 'hfnc',
+    label: 'High-flow nasal oxygen',
+    category: 'respiratory',
+    detail: 'Heated humidified high-flow, FiO2 up to 1.0 with a little positive pressure and dead-space washout. The step between a mask and BiPAP.',
+    leadTimeSec: 600,
+    o2Device: 'HFNC 50L',
+    covers: ['o2-nrb', 'o2-nc6'],
+    ack: "Respiratory are setting up the high-flow now.",
+    interventions: [
+      // Both carry the O2 prefix so that ordering a different device stops them.
+      // Without it high-flow would stack on top of whatever mask was already on.
+      { label: `${O2_LABEL_PREFIX} HFNC`, category: 'treatment', kind: 'infusion', target: 'fiO2', delta: 0.79, tauOn: 300, eliminationHalfLife: 600 },
+      // A few centimetres of PEEP: less than BiPAP, more than a mask.
+      { label: `${O2_LABEL_PREFIX} HFNC recruitment`, category: 'treatment', kind: 'infusion', target: 'qsQt', delta: -0.05, tauOn: 900, eliminationHalfLife: 1800 },
+    ],
+  },
+  {
     id: 'bipap',
     label: 'BiPAP',
     category: 'respiratory',
@@ -363,11 +399,37 @@ export const ORDERS: OrderDef[] = [
 
   // ─── Medications ──────────────────────────────────────────────────────────
   {
+    id: 'ceftriaxone',
+    label: 'Ceftriaxone 2 g IV',
+    category: 'meds',
+    detail: 'Covers the community organisms — pneumonia, urinary sepsis, spontaneous bacterial peritonitis. No pseudomonal or MRSA cover.',
+    leadTimeSec: 900,
+    ack: "Ceftriaxone ordered — I'll get it up as soon as pharmacy release it.",
+    interventions: [
+      // Narrower, and a little slower to bite than the full-court press — but the
+      // right drug for the right bug works, and the wrong one does not.
+      { label: 'Ceftriaxone', category: 'treatment', kind: 'bolus', target: 'noTone', delta: -0.45, tauOn: 6000, eliminationHalfLife: 43200 },
+    ],
+  },
+  {
+    id: 'pip-tazo',
+    label: 'Piperacillin–tazobactam 4.5 g IV',
+    category: 'meds',
+    detail: 'Broad Gram-negative and pseudomonal cover. The neutropenic and hospital-acquired choice; no MRSA cover.',
+    leadTimeSec: 1200,
+    covers: ['ceftriaxone'],
+    ack: "Zosyn ordered, first dose as soon as it's up.",
+    interventions: [
+      { label: 'Piperacillin–tazobactam', category: 'treatment', kind: 'bolus', target: 'noTone', delta: -0.5, tauOn: 5400, eliminationHalfLife: 43200 },
+    ],
+  },
+  {
     id: 'abx',
     label: 'Broad-spectrum antibiotics',
     category: 'meds',
-    detail: 'Vancomycin + piperacillin-tazobactam. Reverses the septic driver over hours.',
+    detail: 'Vancomycin and piperacillin–tazobactam together. Covers everything, and reaches for everything.',
     leadTimeSec: 1200,
+    covers: ['ceftriaxone', 'pip-tazo'],
     ack: "Pharmacy is verifying — I'll run the vanc and zosyn as soon as they're up.",
     interventions: [
       // Source control is slow: the inflammatory tone falls over hours, not minutes.
@@ -587,13 +649,61 @@ export const ORDERS: OrderDef[] = [
     ack: "Paging cardiology.",
   },
   {
+    id: 'hold-rate-control',
+    label: 'Hold the beta-blocker',
+    category: 'meds',
+    detail: 'Stop the negative chronotrope in a patient who needs their heart rate to compensate.',
+    leadTimeSec: 300,
+    once: true,
+    holds: ['beta-blocker', 'metoprolol', 'bisoprolol', 'carvedilol', 'propranolol'],
+    ack: "Held — it's not due again until the morning anyway.",
+    interventions: [
+      // Restores some of the chronotropic reserve the drug was taking away.
+      { label: 'Beta-blocker held', category: 'treatment', kind: 'infusion', target: 'hrMod', delta: 10, tauOn: 3600, eliminationHalfLife: 86400 },
+    ],
+  },
+  {
+    id: 'hold-nephrotoxics',
+    label: 'Hold diuretics and nephrotoxics',
+    category: 'meds',
+    detail: 'Stop the ACE inhibitor, the diuretic and any NSAID in a patient whose kidneys are being asked too much of.',
+    leadTimeSec: 300,
+    once: true,
+    holds: ['furosemide', 'spironolactone', 'lisinopril', 'ramipril', 'ketorolac', 'nsaid'],
+    ack: "All held and crossed off the chart.",
+  },
+  {
+    id: 'goals-of-care',
+    label: 'Call the family — goals of care',
+    category: 'disposition',
+    detail: 'Ring the next of kin and find out what this person would have wanted. A real intervention, and the one that has to come first.',
+    leadTimeSec: 900,
+    once: true,
+    ack: (v) => `I'll find the number and get them on the phone for you — ${v.poss} daughter has been in every day.`,
+  },
+  {
+    id: 'step-down',
+    label: 'Transfer to step-down',
+    category: 'disposition',
+    detail: 'Continuous monitoring and one-to-two nursing, without the ventilator or the infusions. The bed between a ward and the unit.',
+    leadTimeSec: 1800,
+    once: true,
+    covers: ['telemetry'],
+    startsMonitoring: true,
+    ack: (v) => `Step-down have a bed and will take ${v.obj}. I'll get report ready.`,
+  },
+  {
     id: 'comfort-care',
     label: 'Transition to comfort care',
     category: 'disposition',
-    detail: 'Goals-of-care conversation and symptom-directed treatment only.',
+    detail: 'Symptom-directed treatment only. The end of a conversation, not a substitute for one.',
     leadTimeSec: 600,
     once: true,
-    ack: "I'll get the family on the phone and set up a morphine drip for comfort.",
+    requires: {
+      orderId: 'goals-of-care',
+      refusal: 'Not without speaking to the family first — call them, and then we can talk about what to do overnight.',
+    },
+    ack: "Understood. I'll set up a morphine drip for comfort and stop the observations.",
   },
 ];
 

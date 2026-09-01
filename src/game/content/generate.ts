@@ -17,6 +17,19 @@ export const WARD_SIZE = 8;
 /** Largest list the game will deal. Past this the board stops being readable. */
 export const MAX_WARD_SIZE = 60;
 
+/** Acuity at the middle of the slider — the night everything else is tuned against. */
+export const DEFAULT_ACUITY = 0.5;
+
+/**
+ * How far the ends of the acuity slider move the centre of the severity draw.
+ *
+ * ±0.22 on a scale where 1 is as bad as a case gets. Enough that the quiet end
+ * is a night of ward-level problems and the heavy end is one where several
+ * patients are genuinely in trouble, without either end becoming a different
+ * game: the diseases are the same, and so is the spread around them.
+ */
+export const ACUITY_SHIFT = 0.22;
+
 /**
  * The composition rule for a night.
  *
@@ -48,6 +61,14 @@ export interface WardOptions {
   severity?: Severity;
   /** Which service the shift is on. Defaults to community. */
   setting?: Setting;
+  /**
+   * How sick the ward is, 0 to 1. Defaults to 0.5.
+   *
+   * Shifts where the severity distribution sits rather than changing what is on
+   * the list, so a quiet night is the same diseases caught earlier and milder,
+   * not a different ward. See `ACUITY_SHIFT`.
+   */
+  acuity?: number;
   /** Force when every case declares. Tests use this to get a known clock. */
   declareAt?: number;
 }
@@ -69,6 +90,7 @@ export function generateWard(options: WardOptions = {}): GeneratedWard {
   const rng = makeRng(seed);
   const size = clampWardSize(options.size ?? WARD_SIZE);
   const setting = options.setting ?? 'community';
+  const acuity = Math.max(0, Math.min(1, options.acuity ?? DEFAULT_ACUITY));
 
   const chosen = options.only
     ? options.only.map((id) => requireArchetype(id))
@@ -84,7 +106,7 @@ export function generateWard(options: WardOptions = {}): GeneratedWard {
   const cases = chosen.map((archetype, i) => {
     const severity = options.severity !== undefined
       ? clampSeverity(options.severity)
-      : pickSeverity(rng, archetype);
+      : pickSeverity(rng, archetype, acuity);
     const demo = nextDemographics(archetype.ageRange);
     const ctx: ArchetypeContext = {
       severity,
@@ -296,10 +318,16 @@ function fill(rng: Rng, pool: CaseArchetype[], count: number): CaseArchetype[] {
  * matter. Ward-level cases sit lower. Benign cases have no severity worth
  * speaking of.
  */
-function pickSeverity(rng: Rng, archetype: CaseArchetype): Severity {
-  if (archetype.tier === 'benign') return sampleSeverity(rng, 0.2, 0.18);
-  if (archetype.tier === 'critical') return sampleSeverity(rng, 0.52, 0.42);
-  return sampleSeverity(rng, 0.38, 0.36);
+function pickSeverity(rng: Rng, archetype: CaseArchetype, acuity: number): Severity {
+  // Acuity slides the centre of the distribution; the spread is untouched, so
+  // even a quiet night can turn up one genuinely sick patient and a heavy one
+  // still has patients who are fine. A difficulty setting that removed the
+  // variance would remove the triage.
+  const shift = (acuity - DEFAULT_ACUITY) * 2 * ACUITY_SHIFT;
+
+  if (archetype.tier === 'benign') return sampleSeverity(rng, 0.2 + shift * 0.4, 0.18);
+  if (archetype.tier === 'critical') return sampleSeverity(rng, 0.52 + shift, 0.42);
+  return sampleSeverity(rng, 0.38 + shift * 0.8, 0.36);
 }
 
 /**

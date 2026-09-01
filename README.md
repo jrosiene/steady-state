@@ -371,6 +371,30 @@ generated ward testable.
 bar during play. The same seed and list size always deal the same patients, at
 the same severities, declaring at the same times.
 
+**Escalation is graded.** Every ladder has middle rungs, because most of a night
+is spent between doing nothing and doing everything: a 250 mL fluid challenge you
+reassess before committing; high-flow nasal oxygen between a mask and BiPAP; a
+step-down bed between the ward and the unit; quetiapine between non-pharmacologic
+delirium care and haloperidol; a named antibiotic instead of reaching for
+vancomycin and piperacillin–tazobactam every time. Spectrum is modelled one way,
+so a broader drug is credited for a narrower expectation and never the reverse.
+
+**Comfort care is the end of a conversation.** You cannot write it before calling
+the family — the nurse refuses, and says why. Goals of care is its own order, and
+on the dying patient it is what the case is scored on.
+
+**You can stop what the day team started.** Holding the beta-blocker in a patient
+who needs their rate, or the diuretics and nephrotoxics in one whose kidneys are
+being asked too much of, is a real overnight action — and one that only became
+possible when the medication list started being handed over. Held drugs stay on
+the chart, struck through, because the morning team needs to read what changed.
+
+**How sick the ward is, is a slider.** It moves the centre of the severity
+distribution without touching the spread and without changing which diagnoses are
+on the list — so a quiet night is the same diseases caught earlier and milder, and
+can still hold one patient who is genuinely unwell. A difficulty setting that
+removed the variance would remove the triage.
+
 **The acuity mix is not shown.** The list size is a choice; what is on the list
 is not. Telling the player that three of their eight can kill them turns the first
 hour into arithmetic instead of triage.

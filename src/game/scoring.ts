@@ -84,15 +84,34 @@ export function buildReport(patients: PatientRuntime[]): ShiftReport {
   };
 }
 
+/**
+ * Everything the player's orders count as having done.
+ *
+ * A broader antibiotic covers the organism a narrower one was wanted for, and
+ * high-flow oxygen does the work a mask was being asked to do — so the debrief
+ * should not report a miss for a player who reached one rung further up. The
+ * relation runs one way only: reaching *lower* than the case needed is a miss,
+ * and being told so is the point.
+ */
+export function ordersSatisfiedBy(patient: PatientRuntime): Set<string> {
+  const satisfied = new Set<string>();
+  for (const order of patient.orders) {
+    satisfied.add(order.orderId);
+    for (const covered of ORDER_BY_ID[order.orderId]?.covers ?? []) satisfied.add(covered);
+  }
+  return satisfied;
+}
+
 function buildDebrief(patient: PatientRuntime): PatientDebrief {
-  const placed = new Set(patient.orders.map((o) => o.orderId));
+  const satisfied = ordersSatisfiedBy(patient);
 
   const hits = patient.case.expectedOrders
-    .filter((id) => placed.has(id))
+    .filter((id) => satisfied.has(id))
     .map(orderLabel);
   const misses = patient.case.expectedOrders
-    .filter((id) => !placed.has(id))
+    .filter((id) => !satisfied.has(id))
     .map(orderLabel);
+  const placed = new Set(patient.orders.map((o) => o.orderId));
   const harms = (patient.case.contraindicatedOrders ?? [])
     .filter((id) => placed.has(id))
     .map(orderLabel);

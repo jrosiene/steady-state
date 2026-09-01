@@ -149,6 +149,33 @@ export interface OrderDef {
   requiresIcu?: boolean;
   /** Orders that only make sense once (intubation, transfer). */
   once?: boolean;
+  /**
+   * Other orders this one satisfies.
+   *
+   * Antibiotic spectrum, mostly: a case that wants ceftriaxone is treated by
+   * piperacillin–tazobactam too, because the broader drug covers the organism —
+   * so a player who reached for it should not be marked down for a miss. The
+   * relation is deliberately one-way; ceftriaxone does not cover pseudomonas,
+   * and a neutropenic patient given it has not been treated.
+   */
+  covers?: string[];
+  /**
+   * Another order that has to have been placed first, with the refusal to give
+   * when it has not been.
+   *
+   * For decisions that are not the doctor's alone to make. Comfort care is the
+   * one that matters: it is the end of a conversation, and a covering doctor who
+   * has not had the conversation is not in a position to write it.
+   */
+  requires?: { orderId: string; refusal: string };
+  /**
+   * Inherited medications this order stops.
+   *
+   * Holding something the day team started is a real overnight action and often
+   * the right one — and it is only possible because the medication list is now
+   * handed over.
+   */
+  holds?: string[];
   /** Raises Hgb — handled specially since Hgb is a param, not a state variable. */
   raisesHgb?: number;
   /** Marks the patient as continuously monitored (live vitals). */
@@ -569,6 +596,13 @@ export interface PatientRuntime {
    * without being announced afresh every observation round.
    */
   lastConcern: string | null;
+  /**
+   * Lowercase fragments matching inherited medications the player has stopped.
+   *
+   * Held rather than deleted: the chart still shows them, struck through, because
+   * "we stopped the beta-blocker at 23:00" is information the morning team needs.
+   */
+  heldMeds: string[];
   /** Sim-time of the last charted vitals, for routine-rounds pacing. */
   lastVitalsAt: number;
   /** Sim-time the patient first met shock criteria — drives late-recognition scoring. */
