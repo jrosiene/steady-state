@@ -56,6 +56,10 @@ export const COMORBIDITIES: Comorbidity[] = [
       // The bradycardia here is the disease. Another rate-limiting condition on
       // top of it is not a background feature, it is a second diagnosis.
       'post-meningitis-dysautonomia',
+      // Same reasoning: a rate that falls as the posterior fossa swells is the
+      // warning sign the case is built around, and a patient who is bradycardic
+      // to begin with has no such sign to give.
+      'post-stroke-vertigo',
     ],
     apply(t, rng) {
       // The important one. A blunted chronotropic response means the tachycardia
@@ -71,7 +75,12 @@ export const COMORBIDITIES: Comorbidity[] = [
     label: 'Chronic kidney disease',
     weight: 2.5,
     minAge: 50,
-    skipFor: ['urosepsis', 'post-meningitis-dysautonomia', 'new-dialysis-uremia'],
+    skipFor: [
+      'urosepsis', 'post-meningitis-dysautonomia', 'new-dialysis-uremia',
+      // The graft is the kidney function in this case, and the whole point is
+      // that it is preload-dependent rather than chronically scarred.
+      'renal-transplant-aki',
+    ],
     // Same physiology as chronic anemia by the time it reaches the model, so
     // only one of the two is ever drawn.
     excludes: ['anemia'],
@@ -109,7 +118,10 @@ export const COMORBIDITIES: Comorbidity[] = [
     label: 'Chronic lung disease',
     weight: 2,
     minAge: 50,
-    skipFor: ['copd-exacerbation', 'adhf-mislabeled', 'cf-exacerbation', 'pah-rv-failure'],
+    skipFor: [
+      'copd-exacerbation', 'adhf-mislabeled', 'cf-exacerbation', 'pah-rv-failure',
+      'meth-pah-right-failure', 'withdrawal-in-pah',
+    ],
     apply(t, rng) {
       t.state.qsQt = (t.state.qsQt ?? 0.02) + rng.real(0.04, 0.08);
       t.state.pvr = (t.state.pvr ?? 1.5) + rng.real(0.4, 0.9);
@@ -122,7 +134,7 @@ export const COMORBIDITIES: Comorbidity[] = [
     // Now that RV output is afterload-sensitive, adding pulmonary resistance to a
     // case whose whole mechanism is pulmonary resistance is not a background
     // condition — it is a second disease.
-    skipFor: ['pulmonary-embolism', 'pah-rv-failure'],
+    skipFor: ['pulmonary-embolism', 'pah-rv-failure', 'meth-pah-right-failure', 'withdrawal-in-pah'],
     minAge: 55,
     apply(t, rng) {
       // Leaves the right ventricle with far less to give when it is loaded.
@@ -181,7 +193,7 @@ export const COMORBIDITIES: Comorbidity[] = [
     label: 'Physically fit, low resting heart rate',
     weight: 1,
     excludes: ['beta-blocked'],
-    skipFor: ['post-meningitis-dysautonomia'],
+    skipFor: ['post-meningitis-dysautonomia', 'post-stroke-vertigo'],
     apply(t, rng) {
       t.params.svMax = (t.params.svMax ?? 130) * rng.real(1.08, 1.18);
       t.state.hr = (t.state.hr ?? 70) - rng.int(8, 14);

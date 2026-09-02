@@ -431,6 +431,19 @@ export interface PatientCase {
   /** Illness script. */
   events: CaseEvent[];
   /**
+   * Whether the illness this case is built around actually happens tonight.
+   *
+   * Most of a cross-cover list is people whose mechanism cannot plausibly
+   * decompensate between sign-out and morning — a transplant recipient whose
+   * creatinine drifted up on the day shift, someone three days into a steroid
+   * taper, a post-stroke patient who is dizzy. They are on the board, they have
+   * a chart worth reading, and on most nights nothing happens. When this is
+   * false the patient's `events` are the ordinary-night script instead of the
+   * illness script, and the debrief does not grade management that was never
+   * called for.
+   */
+  declared: boolean;
+  /**
    * Findings this particular case can show on a diagnostic study, once the
    * physiology that produces them is actually present.
    *

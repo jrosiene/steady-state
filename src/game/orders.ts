@@ -650,7 +650,7 @@ export const ORDERS: OrderDef[] = [
   { id: 'lab-cultures', label: 'Blood cultures ×2', category: 'labs', detail: 'Draw before antibiotics when feasible.', leadTimeSec: 0, lab: { panel: 'Blood cultures', turnaroundSec: 1800 }, ack: "Getting two sets from separate sites." },
   { id: 'img-ekg', label: '12-lead EKG', category: 'imaging', detail: 'Rhythm, ischemia, strain pattern.', leadTimeSec: 0, lab: { panel: 'EKG', turnaroundSec: 600 }, ack: "Doing the EKG now." },
   { id: 'img-cxr', label: 'Portable chest X-ray', category: 'imaging', detail: 'Edema, consolidation, pneumothorax.', leadTimeSec: 0, lab: { panel: 'CXR', turnaroundSec: 2100 }, ack: "Ordered the portable film." },
-  { id: 'img-ctpe', label: 'CT pulmonary angiogram', category: 'imaging', detail: 'Definitive test for pulmonary embolism. Requires transport.', leadTimeSec: 0, lab: { panel: 'CT PE protocol', turnaroundSec: 3000 }, ack: "Calling CT — she'll need a nurse to travel with her." },
+  { id: 'img-ctpe', label: 'CT pulmonary angiogram', category: 'imaging', detail: 'Definitive test for pulmonary embolism. Requires transport.', leadTimeSec: 0, lab: { panel: 'CT PE protocol', turnaroundSec: 3000 }, ack: (v) => `Calling CT — ${v.subj} will need a nurse to travel with ${v.obj}.` },
   { id: 'img-echo', label: 'Bedside echo', category: 'imaging', detail: 'Ventricular function, filling, RV strain. Fast and at the bedside.', leadTimeSec: 0, lab: { panel: 'Bedside echo', turnaroundSec: 1500 }, ack: "I'll get the ultrasound machine." },
 
   // ─── Nursing ──────────────────────────────────────────────────────────────

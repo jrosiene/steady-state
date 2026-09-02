@@ -151,6 +151,7 @@ rather than recall what a given name did last time.
 | Archetype | Presents as | Actually |
 |---|---|---|
 | `eczema-ssti-sepsis` | Cellulitis on eczematous skin | Broken skin over a whole limb is a portal, not a rash |
+| `post-stroke-vertigo` | Cerebellar infarct, day 3 | Days three to five are when the posterior fossa swells. The exam is the monitor — do not sedate it away |
 
 **Academic service only** — the patients a community hospital transfers out:
 
@@ -171,6 +172,10 @@ rather than recall what a given name did last time.
 | `discitis-mrse-bacteremia` | Back pain and fever after kyphoplasty | MRSE discitis on hardware. Ceftriaxone does not cover it |
 | `new-dialysis-uremia` | Diabetic kidney disease, for dialysis | Anuric and overloaded — the one place a soft pressure is not a fluid problem |
 | `withdrawal-in-pah` | PAH admitted for diuresis | Untreated opioid withdrawal. The tachycardia is what the right ventricle cannot afford |
+| `renal-transplant-aki` | Transplant kidney, creatinine up | A preload-dependent graft on a calcineurin inhibitor. Stop taking volume away; do not reach for a diuretic |
+| `autoimmune-hepatitis-taper` | Autoimmune hepatitis, improving | Adrenal suppression uncovered by the taper. The pressure answers to steroid, not to a pressor |
+| `autoimmune-encephalitis` | Encephalopathy, antibody panel pending | Anti-NMDA receptor encephalitis. Agitation that settles abruptly is a level of consciousness falling |
+| `meth-pah-right-failure` | PAH in right heart failure, diuresing well | Diuresed past the point the right ventricle can fill. Volume back, in measured amounts |
 
 A ward staggers when its cases declare so problems arrive in sequence rather than
 all at once.
@@ -212,7 +217,7 @@ information is always available to a player who reads the chart.
 
 | Axis | Depth |
 |---|---|
-| Archetypes | 15 — 6 critical, 5 ward, 4 benign |
+| Archetypes | 36 — 17 critical, 15 ward, 4 benign |
 | Severity | continuous, with per-insult variation of ±0.16 around it |
 | Comorbidities | 9, zero to two per patient |
 | Distinct archetype combinations | ~190 per 200 generated wards |
@@ -434,8 +439,19 @@ and ward tiers sub-linearly, so covering forty is not five times as many people
 dying — it is the same handful of real problems buried in five times the noise.
 On a long list a proportion of the benign patients never page at all, because a
 board where everyone calls teaches the player to work a queue rather than to
-triage a list. Only benign cases fall silent; a real problem always declares
-itself.
+triage a list.
+
+**Some patients just exist.** Most of a real cross-cover list is people whose
+problem has no mechanism to turn between sign-out and morning: the creatinine
+that drifted up today, the steroid taper, the dizziness after a stroke. Those
+archetypes carry a `declareChance` — the probability the illness script runs at
+all tonight, as distinct from `weight`, which decides how often the case appears
+on the board. When it does not run, the patient still has a chart worth reading,
+a medication list worth checking, and a `quietScript`: the nurse asks when the
+tacrolimus is due, or says the urine output has picked up, and that is the whole
+of it. Reading a chart and deciding that nothing needs doing is the commonest
+correct action of the night, and the debrief does not score a patient on the
+management of a problem that never happened.
 
 ---
 

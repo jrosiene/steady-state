@@ -78,6 +78,15 @@ export interface WardOptions {
   acuity?: number;
   /** Force when every case declares. Tests use this to get a known clock. */
   declareAt?: number;
+  /**
+   * Force whether the illness script runs, overriding `declareChance`.
+   *
+   * Defaults to true whenever `only` is set: asking for a specific archetype is
+   * asking to see that case, and a calibration run or a test that got the
+   * patient's quiet night instead would be measuring nothing. Set false to
+   * exercise the quiet path deliberately.
+   */
+  declare?: boolean;
 }
 
 export interface GeneratedWard {
@@ -98,6 +107,8 @@ export function generateWard(options: WardOptions = {}): GeneratedWard {
   const size = clampWardSize(options.size ?? WARD_SIZE);
   const setting = options.setting ?? 'community';
   const acuity = Math.max(0, Math.min(1, options.acuity ?? DEFAULT_ACUITY));
+  // Naming an archetype is asking to see what it does.
+  const forceDeclare = options.declare ?? (options.only !== undefined ? true : undefined);
 
   const chosen = options.only
     ? options.only.map((id) => requireArchetype(id))
@@ -125,16 +136,30 @@ export function generateWard(options: WardOptions = {}): GeneratedWard {
       declareAt: slots[i],
     };
 
-    // Patients you never hear about.
+    // Whether tonight is the night this patient's problem happens.
     //
-    // On a list of eight everyone calls, because eight patients who all stay
-    // silent is not a shift. On a list of forty that is wrong in a way that
-    // matters: most of a cross-cover list is people whose night passes without
-    // anyone picking up the phone, and a board where every single patient pages
-    // teaches the player that the board is a queue to be worked through rather
-    // than a list to be triaged. Only benign cases fall silent — a real problem
-    // always declares itself.
-    const quiet = archetype.tier === 'benign' && rng.chance(quietChance(size));
+    // Two separate reasons it might not be. The first is the list: on a ward of
+    // eight everyone calls, because eight patients who all stay silent is not a
+    // shift, but on a list of forty most of the names are people whose night
+    // passes without anyone picking up the phone, and a board where every single
+    // patient pages teaches the player that the board is a queue to be worked
+    // through rather than a list to be triaged.
+    //
+    // The second is the disease. A good many admitted patients are carrying a
+    // problem that has no mechanism to turn between sign-out and morning — the
+    // creatinine that drifted up today, the steroid taper, the dizziness after a
+    // stroke. Those cases still belong on the list, because reading the chart and
+    // deciding that nothing needs doing is the commonest correct action of the
+    // night, and because occasionally one of them is the patient the shift turns
+    // on. `declareChance` is how often that occasional night comes up.
+    //
+    // The `>= 1` guard is not just an optimisation: it keeps the draw sequence
+    // untouched for every archetype that always declares, so existing seeds keep
+    // generating the wards they generated before.
+    const declareChance = archetype.declareChance ?? 1;
+    const sampled = (declareChance >= 1 || rng.chance(declareChance))
+      && !(archetype.tier === 'benign' && rng.chance(quietChance(size)));
+    const declares = forceDeclare ?? sampled;
 
     const base = archetype.baseline(ctx);
 
@@ -200,7 +225,9 @@ export function generateWard(options: WardOptions = {}): GeneratedWard {
       baselineDrive: respiratoryDrive(atHandover),
       findings: archetype.findings?.(ctx, atHandover),
       declaresAt: slots[i],
-      events: quiet ? [] : archetype.script(ctx).sort((a, b) => a.at - b.at),
+      declared: declares,
+      events: (declares ? archetype.script(ctx) : archetype.quietScript?.(ctx) ?? [])
+        .sort((a, b) => a.at - b.at),
       expectedOrders: archetype.expectedOrders,
       contraindicatedOrders: archetype.contraindicatedOrders,
     } satisfies PatientCase;

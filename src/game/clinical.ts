@@ -348,9 +348,14 @@ export function resolveLabPanel(
       return {
         ...base,
         values: [],
-        impression: snap.noTone > 0.25
+        // A case that already knows what is growing says so. The generic read is
+        // for the patient whose cultures were drawn tonight; a patient admitted
+        // three days ago with an organism and sensitivities in the chart should
+        // not have the microbiology lab report "no growth to date" back at the
+        // one player who thought to look.
+        impression: specific ?? (snap.noTone > 0.25
           ? 'Two sets drawn from separate sites. Gram stain pending; preliminary result in 12–24h.'
-          : 'Two sets drawn from separate sites. No growth to date.',
+          : 'Two sets drawn from separate sites. No growth to date.'),
       };
 
     case 'EKG': {

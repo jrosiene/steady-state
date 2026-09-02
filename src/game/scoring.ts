@@ -105,12 +105,19 @@ export function ordersSatisfiedBy(patient: PatientRuntime): Set<string> {
 function buildDebrief(patient: PatientRuntime): PatientDebrief {
   const satisfied = ordersSatisfiedBy(patient);
 
+  // A patient whose problem never happened is not graded on the management of a
+  // problem that never happened. Credit anything the player did order that the
+  // case would have wanted — reading a chart carefully and acting early is worth
+  // recording — but never count a miss, because on this night there was nothing
+  // to miss, and a management score that punishes the player for not treating a
+  // quiet patient teaches exactly the wrong reflex.
+  const graded = patient.case.declared;
   const hits = patient.case.expectedOrders
     .filter((id) => satisfied.has(id))
     .map(orderLabel);
-  const misses = patient.case.expectedOrders
-    .filter((id) => !satisfied.has(id))
-    .map(orderLabel);
+  const misses = graded
+    ? patient.case.expectedOrders.filter((id) => !satisfied.has(id)).map(orderLabel)
+    : [];
   const placed = new Set(patient.orders.map((o) => o.orderId));
   const harms = (patient.case.contraindicatedOrders ?? [])
     .filter((id) => placed.has(id))
@@ -124,7 +131,10 @@ function buildDebrief(patient: PatientRuntime): PatientDebrief {
   return {
     patient,
     outcomeTone: outcomeTone(patient),
-    outcomeLine: patient.outcome?.summary ?? 'Still under your care at sign-out.',
+    outcomeLine: patient.outcome?.summary
+      ?? (patient.case.declared
+        ? 'Still under your care at sign-out.'
+        : 'An uneventful night. Still under your care at sign-out.'),
     hits,
     misses,
     harms,
