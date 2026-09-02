@@ -425,6 +425,13 @@ nobody touching the pager all night:
 | 0.70 — A rough one | 1.25 | 67% | 4.0 of 8 |
 | 1.00 — The worst night of the month | 2.08 | 92% | 4.8 of 8 |
 
+The deaths counted here are the unexpected ones. The comfort-care patient dies
+untouched at every setting on the slider — that is what the case is — and counting
+that as a lost patient puts a floor under the quiet end that the slider cannot
+move, which makes the whole measurement read as noise. It is the same distinction
+the debrief draws between a death that was expected, discussed and managed and a
+death from a deterioration nobody saw.
+
 The first calibration was badly wrong in a way that only showed up when measured
 this way: every setting was lethal, the default lost someone in **100%** of wards,
 and even the quietest setting on the slider lost one in nearly two thirds. It had
