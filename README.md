@@ -146,6 +146,12 @@ rather than recall what a given name did last time.
 | `benign-sundowning` | Pneumonia, improving | Sundowning — looks like early sepsis, is not |
 | `benign-anxiety` | Chest pain, workup negative | Anxiety. The workup is done and it was negative |
 
+**Community and academic** — the general medicine floor, either place:
+
+| Archetype | Presents as | Actually |
+|---|---|---|
+| `eczema-ssti-sepsis` | Cellulitis on eczematous skin | Broken skin over a whole limb is a portal, not a rash |
+
 **Academic service only** — the patients a community hospital transfers out:
 
 | Archetype | Presents as | Actually |
@@ -159,6 +165,12 @@ rather than recall what a given name did last time.
 | `hepatic-encephalopathy` | Cirrhosis, confused | A symptom with a cause. Find the precipitant, and do not sedate a confused cirrhotic |
 | `sickle-vaso-occlusive` | Sickle cell crisis | A crisis that stays a crisis. The harm available is under-treating the pain |
 | `cf-exacerbation` | CF pulmonary exacerbation | CF exacerbation. The trap is their baseline, not their trajectory |
+| `post-meningitis-dysautonomia` | Recovering meningitis, bradycardic | Autonomic *and* adrenal failure. The pressure will not answer a catecholamine until it is steroid-replaced |
+| `lung-transplant-rejection` | Transplant on ATG, spiking | Cytokine release and graft rejection at once, needing opposite reflexes |
+| `post-ercp-hydropneumothorax` | Sore after a transgastric ERCP | Left hydropneumothorax. The pain has a story that closes itself |
+| `discitis-mrse-bacteremia` | Back pain and fever after kyphoplasty | MRSE discitis on hardware. Ceftriaxone does not cover it |
+| `new-dialysis-uremia` | Diabetic kidney disease, for dialysis | Anuric and overloaded — the one place a soft pressure is not a fluid problem |
+| `withdrawal-in-pah` | PAH admitted for diuresis | Untreated opioid withdrawal. The tachycardia is what the right ventricle cannot afford |
 
 A ward staggers when its cases declare so problems arrive in sequence rather than
 all at once.
@@ -394,6 +406,24 @@ distribution without touching the spread and without changing which diagnoses ar
 on the list — so a quiet night is the same diseases caught earlier and milder, and
 can still hold one patient who is genuinely sick. A difficulty setting that
 removed the variance would remove the triage.
+
+The default sits low on purpose, and below the middle of the slider's travel.
+Admitted patients are robust: on an ordinary night several will need a decision
+from you, and it is uncommon for one to be on a trajectory that ends before
+morning without anybody doing anything. Measured over untouched wards of eight —
+nobody touching the pager all night:
+
+| Acuity | Deaths per ward | Wards losing someone | Patients needing a decision |
+|---|---|---|---|
+| 0.00 — Quiet | 0.00 | 0% | 2.4 of 8 |
+| 0.35 — An ordinary night *(default)* | 0.25 | 25% | 3.2 of 8 |
+| 0.70 — A rough one | 1.25 | 67% | 4.0 of 8 |
+| 1.00 — The worst night of the month | 2.08 | 92% | 4.8 of 8 |
+
+The first calibration was badly wrong in a way that only showed up when measured
+this way: every setting was lethal, the default lost someone in **100%** of wards,
+and even the quietest setting on the slider lost one in nearly two thirds. It had
+conflated "a case that can kill" with "a case that usually does".
 
 **The acuity mix is not shown.** The list size is a choice; what is on the list
 is not. Telling the player that three of their eight can kill them turns the first

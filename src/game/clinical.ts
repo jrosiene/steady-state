@@ -329,6 +329,21 @@ export function resolveLabPanel(
       };
     }
 
+    case 'MRI spine': {
+      // Weakness is the finding that changes the night, and it tracks the
+      // inflammatory burden driving the collection.
+      const compressive = snap.noTone > 0.22;
+      return {
+        ...base,
+        values: [],
+        impression: compressive
+          ? 'L5–S1 discitis with an enlarging anterior epidural abscess causing thecal sac compression. ' +
+            'Surgical decompression should be discussed tonight.'
+          : 'L5–S1 discitis with an epidural phlegmon, not significantly changed from the prior study. ' +
+            'No drainable collection and no cord compression.',
+      };
+    }
+
     case 'Blood cultures':
       return {
         ...base,

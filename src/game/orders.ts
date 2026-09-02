@@ -437,6 +437,85 @@ export const ORDERS: OrderDef[] = [
     ],
   },
   {
+    id: 'hydrocortisone',
+    label: 'Hydrocortisone 100 mg IV',
+    category: 'meds',
+    detail: 'Stress-dose steroid. In adrenal insufficiency it restores the vascular tone that catecholamines cannot, and the response is fast.',
+    leadTimeSec: 600,
+    ack: "Hydrocortisone is in.",
+    interventions: [
+      // Restores vascular responsiveness rather than adding tone of its own,
+      // which is why it works where a pressor alone does not.
+      { label: 'Hydrocortisone: vascular tone', category: 'treatment', kind: 'bolus', target: 'svr', delta: 5.5, tauOn: 1500, eliminationHalfLife: 28800 },
+      { label: 'Hydrocortisone: inflammatory tone', category: 'treatment', kind: 'bolus', target: 'noTone', delta: -0.22, tauOn: 2400, eliminationHalfLife: 28800 },
+    ],
+  },
+  {
+    id: 'vancomycin',
+    label: 'Vancomycin IV',
+    category: 'meds',
+    detail: 'Gram-positive cover including MRSA and coagulase-negative staph. The drug for line, hardware and skin infections; useless against Gram-negatives.',
+    leadTimeSec: 1500,
+    ack: "Vanc ordered — pharmacy is dosing it by weight.",
+    interventions: [
+      { label: 'Vancomycin', category: 'treatment', kind: 'bolus', target: 'noTone', delta: -0.42, tauOn: 6000, eliminationHalfLife: 43200 },
+    ],
+  },
+  {
+    id: 'insulin-dextrose',
+    label: 'Insulin and dextrose for hyperkalemia',
+    category: 'meds',
+    detail: 'Shifts potassium into cells within minutes. Buys time; it does not remove any potassium from the body.',
+    leadTimeSec: 480,
+    ack: "Ten of regular with an amp of D50, and I'll recheck the glucose in an hour.",
+  },
+  {
+    id: 'calcium-gluconate',
+    label: 'Calcium gluconate',
+    category: 'meds',
+    detail: 'Stabilizes the myocardium against hyperkalemia. Does nothing to the potassium — it buys you the minutes to do something that does.',
+    leadTimeSec: 300,
+    ack: "Calcium is going in now.",
+  },
+  {
+    id: 'dialysis',
+    label: 'Urgent hemodialysis',
+    category: 'disposition',
+    detail: 'Removes potassium, acid and volume. The definitive answer when the kidneys have stopped and the medical measures are only buying time.',
+    leadTimeSec: 3600,
+    once: true,
+    ack: (v) => `I'll call the renal fellow and the dialysis nurse — they'll want a line before they can start on ${v.obj}.`,
+    interventions: [
+      { label: 'Hemodialysis: volume removal', category: 'treatment', kind: 'bolus', target: 'edv', delta: -22, tauOn: 3600, eliminationHalfLife: 86400 },
+    ],
+  },
+  {
+    id: 'buprenorphine',
+    label: 'Buprenorphine',
+    category: 'meds',
+    detail: 'Treats opioid withdrawal at its cause. Settles the autonomic storm — the tachycardia, the sweating, the vomiting — rather than sedating around it.',
+    leadTimeSec: 900,
+    ack: (v) => `Buprenorphine given. I'll score ${v.obj} again in an hour.`,
+    interventions: [
+      // The withdrawal drive is sympathetic; treating it takes the drive away.
+      { label: 'Buprenorphine: withdrawal', category: 'treatment', kind: 'bolus', target: 'hrMod', delta: -22, tauOn: 1800, eliminationHalfLife: 43200 },
+    ],
+  },
+  {
+    id: 'clonidine',
+    label: 'Clonidine',
+    category: 'meds',
+    detail: 'Central α2 agonist. Blunts the autonomic signs of withdrawal, and drops the systemic pressure while it does it.',
+    leadTimeSec: 600,
+    ack: "Clonidine given.",
+    interventions: [
+      { label: 'Clonidine: sympatholysis', category: 'treatment', kind: 'bolus', target: 'hrMod', delta: -14, tauOn: 1200, eliminationHalfLife: 21600 },
+      // The half that matters in a patient whose right ventricle needs the
+      // systemic pressure to perfuse its own coronary supply.
+      { label: 'Clonidine: SVR', category: 'treatment', kind: 'bolus', target: 'svr', delta: -3.2, tauOn: 1200, eliminationHalfLife: 21600 },
+    ],
+  },
+  {
     id: 'steroids',
     label: 'Methylprednisolone IV',
     category: 'meds',
@@ -558,6 +637,15 @@ export const ORDERS: OrderDef[] = [
     leadTimeSec: 1200,
     lab: { panel: 'Ascitic fluid', turnaroundSec: 1800 },
     ack: (v) => `I'll set up for the tap and get ${v.obj} positioned.`,
+  },
+  {
+    id: 'img-mri-spine',
+    label: 'MRI lumbar spine, urgent',
+    category: 'imaging',
+    detail: 'The study that separates a phlegmon from an abscess compressing the cord. New weakness does not wait for the morning.',
+    leadTimeSec: 2400,
+    lab: { panel: 'MRI spine', turnaroundSec: 2700 },
+    ack: (v) => `I'll call MRI and see how soon they can take ${v.obj}.`,
   },
   { id: 'lab-cultures', label: 'Blood cultures ×2', category: 'labs', detail: 'Draw before antibiotics when feasible.', leadTimeSec: 0, lab: { panel: 'Blood cultures', turnaroundSec: 1800 }, ack: "Getting two sets from separate sites." },
   { id: 'img-ekg', label: '12-lead EKG', category: 'imaging', detail: 'Rhythm, ischemia, strain pattern.', leadTimeSec: 0, lab: { panel: 'EKG', turnaroundSec: 600 }, ack: "Doing the EKG now." },

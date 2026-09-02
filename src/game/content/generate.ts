@@ -17,18 +17,25 @@ export const WARD_SIZE = 8;
 /** Largest list the game will deal. Past this the board stops being readable. */
 export const MAX_WARD_SIZE = 60;
 
-/** Acuity at the middle of the slider — the night everything else is tuned against. */
-export const DEFAULT_ACUITY = 0.5;
+/**
+ * Where the slider starts, and the zero point the severity shift is measured from.
+ *
+ * Deliberately below the middle. An ordinary night is one where several patients
+ * need a decision and it would be uncommon for any of them to die without one;
+ * that is the night the game should open on, and it leaves most of the slider's
+ * travel above it for the nights that are not ordinary.
+ */
+export const DEFAULT_ACUITY = 0.35;
 
 /**
  * How far the ends of the acuity slider move the centre of the severity draw.
  *
- * ±0.22 on a scale where 1 is as bad as a case gets. Enough that the quiet end
+ * ±0.26 on a scale where 1 is as bad as a case gets. Enough that the quiet end
  * is a night of ward-level problems and the heavy end is one where several
  * patients are genuinely in trouble, without either end becoming a different
  * game: the diseases are the same, and so is the spread around them.
  */
-export const ACUITY_SHIFT = 0.22;
+export const ACUITY_SHIFT = 0.26;
 
 /**
  * The composition rule for a night.
@@ -323,11 +330,22 @@ function pickSeverity(rng: Rng, archetype: CaseArchetype, acuity: number): Sever
   // even a quiet night can turn up one genuinely sick patient and a heavy one
   // still has patients who are fine. A difficulty setting that removed the
   // variance would remove the triage.
+  //
+  // The centres sit low on purpose. Admitted ward patients are robust: it is
+  // uncommon for one to be on a trajectory that ends in death before morning
+  // without anybody doing anything, and much more common for several to need a
+  // decision overnight that changes how the night goes. The first calibration
+  // conflated those, and produced a default night where a ward of eight left
+  // completely alone lost two patients — and where even the quietest setting on
+  // the slider lost one in nearly two thirds of wards. A "critical" tier names
+  // what a case *can* do at the top of its range, not what it usually does.
   const shift = (acuity - DEFAULT_ACUITY) * 2 * ACUITY_SHIFT;
 
-  if (archetype.tier === 'benign') return sampleSeverity(rng, 0.2 + shift * 0.4, 0.18);
-  if (archetype.tier === 'critical') return sampleSeverity(rng, 0.52 + shift, 0.42);
-  return sampleSeverity(rng, 0.38 + shift * 0.8, 0.36);
+  // These centres are read at DEFAULT_ACUITY, where the shift is zero — so they
+  // are the ordinary night, not the middle of the slider's travel.
+  if (archetype.tier === 'benign') return sampleSeverity(rng, 0.15 + shift * 0.4, 0.16);
+  if (archetype.tier === 'critical') return sampleSeverity(rng, 0.21 + shift, 0.34);
+  return sampleSeverity(rng, 0.24 + shift * 0.8, 0.32);
 }
 
 /**

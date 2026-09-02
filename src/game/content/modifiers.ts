@@ -51,7 +51,12 @@ export const COMORBIDITIES: Comorbidity[] = [
      * comorbidity on top counted the same drug twice, and the doubled blockade
      * was enough on its own to turn a ward-level illness into a death.
      */
-    skipFor: ['cirrhosis-sbp', 'hepatic-encephalopathy', 'variceal-bleed'],
+    skipFor: [
+      'cirrhosis-sbp', 'hepatic-encephalopathy', 'variceal-bleed',
+      // The bradycardia here is the disease. Another rate-limiting condition on
+      // top of it is not a background feature, it is a second diagnosis.
+      'post-meningitis-dysautonomia',
+    ],
     apply(t, rng) {
       // The important one. A blunted chronotropic response means the tachycardia
       // that normally announces hypovolemia never arrives, and the patient looks
@@ -66,7 +71,7 @@ export const COMORBIDITIES: Comorbidity[] = [
     label: 'Chronic kidney disease',
     weight: 2.5,
     minAge: 50,
-    skipFor: ['urosepsis'],
+    skipFor: ['urosepsis', 'post-meningitis-dysautonomia', 'new-dialysis-uremia'],
     // Same physiology as chronic anemia by the time it reaches the model, so
     // only one of the two is ever drawn.
     excludes: ['anemia'],
@@ -143,6 +148,13 @@ export const COMORBIDITIES: Comorbidity[] = [
     skipFor: [
       'gi-bleed', 'adhf-mislabeled', 'acs-cardiogenic',
       'sickle-acute-chest', 'neutropenic-sepsis', 'cirrhosis-sbp',
+      // A bradycardic patient runs a low cardiac output by definition, so their
+      // oxygen delivery margin is the narrow thing about them already. Adding
+      // anemia put mixed venous saturation below the anaerobic threshold at
+      // sign-out and the spiral ran from minute one regardless of the case —
+      // which made severity 0.2 lethal while 0.8 survived.
+      'post-meningitis-dysautonomia',
+      'new-dialysis-uremia',
     ],
     apply(t, rng) {
       // Toward a characteristic value, never subtracted from whatever the case
@@ -169,6 +181,7 @@ export const COMORBIDITIES: Comorbidity[] = [
     label: 'Physically fit, low resting heart rate',
     weight: 1,
     excludes: ['beta-blocked'],
+    skipFor: ['post-meningitis-dysautonomia'],
     apply(t, rng) {
       t.params.svMax = (t.params.svMax ?? 130) * rng.real(1.08, 1.18);
       t.state.hr = (t.state.hr ?? 70) - rng.int(8, 14);

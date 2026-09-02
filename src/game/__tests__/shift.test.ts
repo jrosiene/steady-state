@@ -117,11 +117,14 @@ describe('seeded generation', () => {
     expect(times[times.length - 1] - times[0]).toBeGreaterThan(3 * 3600);
   });
 
-  it('varies severity continuously across the ward', () => {
+  it('varies severity continuously across the acuity range', () => {
     const values: number[] = [];
     const bands = new Set<string>();
     for (let i = 0; i < 20; i++) {
-      for (const c of generateWard({ seed: `SEV${i}` }).cases) {
+      // Across the slider, not at the default: a severe case on an ordinary
+      // night is uncommon on purpose, which is the point of the recalibration.
+      // The continuum still has to reach both ends of itself.
+      for (const c of generateWard({ seed: `SEV${i}`, acuity: (i % 5) / 4 }).cases) {
         values.push(c.severity);
         bands.add(c.severityBand);
         expect(c.severity).toBeGreaterThanOrEqual(0);
@@ -1245,10 +1248,12 @@ describe('covering more than one ward', () => {
       expect(engine.size).toBe(size);
       for (let i = 0; i < 4 * 3600 / 60; i++) engine.tick(60);
 
-      const urgent = engine.patients.reduce(
-        (n, p) => n + p.messages.filter((m) => m.urgent).length, 0,
+      // A page, not necessarily an emergency: on an ordinary night four hours
+      // can pass on a ward of eight without anyone needing a rapid response.
+      const pages = engine.patients.reduce(
+        (n, p) => n + p.messages.filter((m) => m.kind === 'page').length, 0,
       );
-      expect(urgent, `size ${size}`).toBeGreaterThan(0);
+      expect(pages, `size ${size}`).toBeGreaterThan(0);
     }
   });
 });
@@ -1913,7 +1918,10 @@ describe('the acuity slider changes how sick the ward is, not who is on it', () 
       }
     }
     // A difficulty setting that removed the variance would remove the triage.
-    expect(Math.max(...severities)).toBeGreaterThan(0.5);
+    // Stated as spread rather than as an absolute, because the quiet end of the
+    // slider is genuinely quiet now — what has to survive is the range.
+    const mean = severities.reduce((a, b) => a + b, 0) / severities.length;
+    expect(Math.max(...severities)).toBeGreaterThan(mean * 2.5);
     expect(Math.min(...severities)).toBeLessThan(0.1);
   });
 

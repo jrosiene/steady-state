@@ -22,11 +22,12 @@ const SIZES = [8, 16, 24, 40] as const;
  * choosing what kind of shift they want, not reading off a difficulty tier.
  */
 const ACUITY_LABELS: [number, string][] = [
-  [0.15, 'A quiet one'],
-  [0.35, 'Steady'],
-  [0.55, 'A normal night'],
-  [0.75, 'Busy'],
-  [1.01, 'A bad night'],
+  [0.12, 'Quiet'],
+  [0.28, 'Calm'],
+  [0.46, 'An ordinary night'],
+  [0.64, 'Busy'],
+  [0.82, 'A rough one'],
+  [1.01, 'The worst night of the month'],
 ];
 
 function acuityLabel(value: number): string {
@@ -154,10 +155,11 @@ export function Briefing({
 
         <h2>How sick is the ward?</h2>
         <p className="lede" style={{ marginBottom: 14 }}>
-          This slides how ill the patients are, not who is on the list. A quiet night
-          is the same diseases caught earlier; a bad one is several people in real
-          trouble at once. Either way there is spread — a quiet ward can still hold
-          one patient who is genuinely sick, which is the point of looking.
+          This slides how ill the patients are, not who is on the list. Admitted
+          patients are mostly robust: on an ordinary night several will need a
+          decision from you and it is uncommon for one to be dying. Slide it right
+          and that stops being true. Either way there is spread — a quiet ward can
+          still hold one patient who is genuinely sick, which is the point of looking.
         </p>
         <div className="acuity-bar">
           <input

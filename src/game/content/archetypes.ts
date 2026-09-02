@@ -2407,6 +2407,732 @@ export const ARCHETYPES: CaseArchetype[] = [
     expectedOrders: ['octreotide', 'ceftriaxone', 'prbc', 'consult-gi', 'transfer-icu', 'hold-rate-control'],
     contraindicatedOrders: ['ns-1000'],
   },
+
+  {
+    id: 'eczema-ssti-sepsis',
+    label: 'Severe skin and soft tissue infection on eczematous skin',
+    tier: 'critical',
+    ageRange: [24, 68],
+    span: 3 * HOUR,
+    admissionDx: 'Cellulitis on a background of severe atopic dermatitis',
+    hiddenDx: 'Streptococcal soft tissue infection spreading through broken eczematous skin, becoming septic',
+    teachingPoint:
+      'Broken skin over a wide area is a portal, not a rash. Eczema that has been scratched raw is colonized with ' +
+      'staph and strep everywhere at once, so the infection does not start at one edge and creep — it lights up a ' +
+      'whole limb. Mark the margin, look at it again yourself in two hours, and if the pain is out of proportion ' +
+      'to what you can see, that is the question that has to be answered tonight rather than in the morning.',
+    history: (ctx) => [
+      ctx.rng.pick(['Severe atopic dermatitis since childhood', 'Atopic dermatitis, on dupilumab', 'Eczema, poorly controlled']),
+      ctx.rng.pick(['Two admissions with skin infection this year', 'Previous MRSA skin infection', 'Chronic excoriation']),
+      ctx.rng.pick(['Asthma', 'Allergic rhinitis', 'Type 2 diabetes']),
+    ],
+    baseline: (ctx) => ({
+      stateOverrides: {
+        hr: ctx.rng.int(94, 106),
+        svr: bySeverity(ctx, 14, 12.8),
+        edv: ctx.rng.int(102, 112),
+        noTone: bySeverity(ctx, 0.06, 0.16),
+      },
+      rrOffset: 3,
+      tempOffset: bySeverity(ctx, 0.5, 1.0),
+    }),
+    script: (ctx) => {
+      const v = ctx.voice;
+      return [
+        {
+          at: ctx.declareAt,
+          page: (g) => `${ctx.name} in ${ctx.room} says the leg is much more painful than it was, and the redness ` +
+            `is past the line the day team drew. ` +
+            (g.perf >= 1 ? `${v.Subj} ${v.is} shivering and ${v.verb('look')} washed out.`
+              : `${v.Subj} ${v.is} shivering but the vitals are holding.`),
+          interventions: [
+            insult(ctx, { label: 'SSTI: inflammatory tone', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.28, tauOn: 1800, eliminationHalfLife: 36000 }),
+          ],
+        },
+        {
+          at: jitter(ctx, ctx.declareAt + 110 * MIN),
+          pageWhen: { axis: 'perf', grade: 1 },
+          page: (g) => g.perf >= 2
+            ? `${v.Subj} ${v.is} shut down — cold, mottled, and the pressure is not reading properly. ` +
+              `The leg looks worse again and ${v.subj} ${v.verb('scream')} if I touch it.`
+            : g.perf >= 1
+            ? `The pressure has come down and ${v.subj} ${v.verb('look')} gray to me. The pain is worse than the leg looks.`
+            : `Still spiking and the redness has moved again. The pain seems out of proportion to me.`,
+          interventions: [
+            insult(ctx, { label: 'Septic vasoplegia', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.42, tauOn: 2100, eliminationHalfLife: 36000 }),
+            insult(ctx, { label: 'Capillary leak', category: 'scenario', kind: 'scenario', target: 'edv', delta: -28, tauOn: 2700, eliminationHalfLife: 36000 }),
+          ],
+        },
+      ];
+    },
+    medications: () => [
+      { name: 'Cefazolin', detail: '2 g IV every 8 hours', since: 'day 2 of admission' },
+      { name: 'Triamcinolone ointment', detail: '0.1%, twice daily to unbroken skin', since: 'home medication' },
+      { name: 'Cetirizine', detail: '10 mg orally daily', since: 'home medication' },
+      { name: 'Acetaminophen', detail: '1 g orally every 6 hours as needed', since: 'admission' },
+      { name: 'Enoxaparin', detail: '40 mg subcutaneously daily', since: 'admission' },
+    ],
+    priorLabs: (ctx) => [
+      prior('CBC', 480, [
+        pv('WBC', bySeverity(ctx, 14.6, 22.4), 'K/µL', 1, { low: 4, high: 11 }),
+        pv('Hgb', 12.4, 'g/dL', 1, { low: 12 }),
+        pv('Platelets', 218, 'K/µL', 0, { low: 150, high: 400 }),
+      ]),
+      prior('CRP', 480, [pv('CRP', bySeverityInt(ctx, 148, 290), 'mg/L', 0, { high: 5 })]),
+      prior('Wound culture', 1800, [], 'Skin swab: Staphylococcus aureus, methicillin-sensitive, and group A Streptococcus. Sensitive to cefazolin and vancomycin.'),
+      prior('Lactate', 420, [pv('Lactate', bySeverity(ctx, 1.6, 2.8), 'mmol/L', 1, { high: 2.0 })]),
+    ],
+    handoff: (ctx) => ({
+      severityCall: 'watcher',
+      summary:
+        `Cellulitis of the left leg on a background of severe eczema, day 2 of cefazolin. The margin was marked ` +
+        `this morning. Afebrile until this afternoon.`,
+      todo: ['Remark the margin at each shift.', 'Repeat the white count in the morning.'],
+      contingencies: [
+        `If the redness crosses the mark or ${ctx.voice.subj} ${ctx.voice.verb('spike')}, broaden the antibiotics and send a lactate.`,
+        'Pain out of proportion to the appearance, or crepitus, means surgery needs to look at it tonight — not in the morning.',
+        'The eczema is the portal. Whatever grows, the whole skin surface is colonized, so a single clean edge means nothing.',
+      ],
+      misleading: 'Redness has been slowly improving. Reasonable to continue the current antibiotic and review in the morning.',
+    }),
+    expectedOrders: ['vancomycin', 'lab-cultures', 'ns-1000', 'lab-lactate', 'call-attending', 'transfer-icu'],
+    contraindicatedOrders: ['steroids'],
+  },
+
+  {
+    id: 'post-ercp-hydropneumothorax',
+    label: 'Hydropneumothorax after biliary intervention',
+    tier: 'critical',
+    setting: 'academic',
+    ageRange: [42, 76],
+    span: 3 * HOUR,
+    admissionDx: 'Choledocholithiasis — ERCP via gastrogastrostomy',
+    hiddenDx: 'Left hydropneumothorax after transgastric access, filling steadily and unrecognized because the pain was attributed to the procedure',
+    teachingPoint:
+      'A patient who has had something passed through the diaphragm and then becomes breathless has a chest problem ' +
+      'until a film says otherwise. The trap is attribution: they are sore because they had a procedure, they are ' +
+      'breathless because they are sore, and the story closes itself. Post-procedural pain that changes character, ' +
+      'or breathlessness that was not there when they came back, buys a chest film and nothing less.',
+    history: (ctx) => [
+      'Roux-en-Y gastric bypass, 2016',
+      ctx.rng.pick(['Choledocholithiasis with cholangitis', 'Retained common bile duct stone', 'Choledocholithiasis, recurrent']),
+      'ERCP this afternoon via a surgically created gastrogastrostomy',
+      ctx.rng.pick(['Type 2 diabetes', 'Obstructive sleep apnea', 'Hypertension']),
+    ],
+    baseline: (ctx) => ({
+      stateOverrides: {
+        hr: ctx.rng.int(90, 100),
+        svr: 14.5,
+        edv: ctx.rng.int(100, 110),
+        qsQt: bySeverity(ctx, 0.05, 0.09),
+      },
+      rrOffset: 4,
+      tempOffset: 0.3,
+    }),
+    script: (ctx) => {
+      const v = ctx.voice;
+      return [
+        {
+          at: ctx.declareAt,
+          pageWhen: { axis: 'wob', grade: 1, by: 25 * MIN },
+          page: (g) => g.wob >= 2
+            ? `${ctx.name} in ${ctx.room} is working hard to breathe and the sats are down. ` +
+              `${v.Subj} ${v.verb('say')} the pain has moved up into ${v.poss} left shoulder.`
+            : `${ctx.name} in ${ctx.room} is more uncomfortable since the procedure and ${v.subj} ${v.verb('say')} ` +
+              `it hurts more to breathe in now than it did earlier. I put ${v.obj} on 2 liters.`,
+          interventions: [
+            insult(ctx, { label: 'Hydropneumothorax: shunt', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.16, tauOn: 2100, eliminationHalfLife: 86400 }),
+          ],
+        },
+        {
+          at: jitter(ctx, ctx.declareAt + 95 * MIN),
+          pageWhen: { axis: 'either', grade: 2 },
+          page: (g) => g.perf >= 2
+            ? `${v.Subj} ${v.is} much worse — the pressure has dropped and the trachea does not look midline to me.`
+            : `${v.Subj} ${v.is} really struggling now and the left side sounds dull all the way up.`,
+          interventions: [
+            insult(ctx, { label: 'Collection enlarging: shunt', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.2, tauOn: 1800, eliminationHalfLife: 86400 }),
+            insult(ctx, { label: 'Collection enlarging: venous return', category: 'scenario', kind: 'scenario', target: 'edv', delta: -34, tauOn: 1800, eliminationHalfLife: 86400 }),
+            insult(ctx, { label: 'Tension: intrathoracic pressure', category: 'scenario', kind: 'scenario', target: 'cvp', delta: 7, tauOn: 1800, eliminationHalfLife: 86400 }),
+          ],
+        },
+      ];
+    },
+    findings: (_ctx, atHandover) => (panel, snap) => {
+      if (panel !== 'CXR') return null;
+      const excess = snap.qsQtEffective - atHandover.qsQtEffective;
+      if (excess > 0.14 && snap.edv < atHandover.edv - 10) {
+        return 'Large left hydropneumothorax with an air–fluid level and mediastinal shift to the right. Under tension.';
+      }
+      if (excess > 0.05) {
+        return 'Left hydropneumothorax — visceral pleural line with a horizontal air–fluid level in the left hemithorax. No shift yet.';
+      }
+      return 'Small left basal effusion and atelectasis. Post-procedural changes.';
+    },
+    medications: () => [
+      { name: 'Piperacillin–tazobactam', detail: '4.5 g IV every 8 hours', since: 'admission, for cholangitis' },
+      { name: 'Hydromorphone', detail: '0.5 mg IV every 3 hours as needed', since: 'post-procedure' },
+      { name: 'Ondansetron', detail: '4 mg IV every 8 hours as needed', since: 'post-procedure' },
+      { name: 'NPO', detail: 'nothing by mouth since the procedure', since: 'post-procedure' },
+      { name: 'Maintenance fluids', detail: 'lactated Ringer’s at 100 mL/h', since: 'admission' },
+    ],
+    priorLabs: (ctx) => [
+      prior('CMP', 260, [
+        pv('Bilirubin', bySeverity(ctx, 2.6, 5.4), 'mg/dL', 1, { high: 1.2 }),
+        pv('ALP', bySeverityInt(ctx, 280, 460), 'U/L', 0, { high: 120 }),
+        pv('ALT', 142, 'U/L', 0, { high: 40 }),
+        pv('Lipase', 88, 'U/L', 0, { high: 60 }),
+      ]),
+      prior('CBC', 260, [
+        pv('WBC', bySeverity(ctx, 12.4, 17.2), 'K/µL', 1, { low: 4, high: 11 }),
+        pv('Hgb', 11.9, 'g/dL', 1, { low: 12 }),
+      ]),
+      prior('Procedure note', 200, [], 'ERCP via gastrogastrostomy. Sphincterotomy and stone extraction, two stones retrieved. Access was technically difficult. No immediate complication identified.'),
+    ],
+    handoff: () => ({
+      severityCall: 'stable',
+      summary:
+        `ERCP this afternoon through a gastrogastrostomy — a difficult access because of the previous bypass. ` +
+        `Stones out, stent in. Sore afterward as expected, settling with hydromorphone.`,
+      todo: ['NPO overnight, diet in the morning if comfortable.', 'Repeat the liver tests at 06:00.'],
+      contingencies: [
+        `Post-procedural pain is expected. Pain that changes character, or any new breathlessness, needs a chest film before anything else — the access crossed the diaphragm.`,
+        'A rising white count with abdominal pain would mean perforation, and that is a surgical call tonight.',
+      ],
+      misleading: 'Sore tonight as expected after the procedure. Hydromorphone as needed and reassess in the morning.',
+    }),
+    expectedOrders: ['img-cxr', 'chest-drain', 'o2-nrb', 'transfer-icu', 'call-attending'],
+    contraindicatedOrders: ['morphine-comfort'],
+  },
+
+  {
+    id: 'post-meningitis-dysautonomia',
+    label: 'Autonomic and adrenal failure after bacterial meningitis',
+    tier: 'critical',
+    setting: 'academic',
+    ageRange: [26, 62],
+    span: 4 * HOUR,
+    admissionDx: 'Recovering pneumococcal meningitis — bradycardia for monitoring',
+    hiddenDx: 'Autonomic insufficiency with secondary adrenal failure after meningitis; the pressure will not respond to catecholamines until it is steroid-replaced',
+    teachingPoint:
+      'This patient cannot compensate. The autonomic outflow that normally answers a falling pressure with a faster ' +
+      'heart is gone, so the usual early warning — a rising rate — never arrives, and the first sign is the pressure ' +
+      'itself. Worse, the adrenal axis is out too, so vascular smooth muscle will not answer a catecholamine either: ' +
+      'norepinephrine at increasing doses does very little until hydrocortisone is given, and then the same dose works. ' +
+      'A pressure that will not respond to a pressor is a diagnosis, not a reason for more pressor.',
+    history: (ctx) => [
+      'Pneumococcal meningitis, treated — day 11',
+      ctx.rng.pick(['Prolonged ICU stay with septic shock', 'Complicated by seizures', 'Complicated by hydrocephalus, shunted']),
+      'Documented sinus bradycardia since the acute illness',
+      ctx.rng.pick(['Sensorineural hearing loss from the meningitis', 'Residual cognitive slowing', 'Deconditioned, needs two to transfer']),
+    ],
+    baseline: (ctx) => ({
+      stateOverrides: {
+        // Bradycardic and unable to speed up: the defining feature. The large
+        // ventricular volume is how a chronically slow heart holds a normal
+        // output — take it away and the handover pressure is in the forties,
+        // which is not a patient anybody leaves on a ward.
+        hr: bySeverityInt(ctx, 58, 48),
+        svr: bySeverity(ctx, 19.5, 16.2),
+        edv: ctx.rng.int(136, 146),
+      },
+      paramOverrides: {
+        // Autonomic insufficiency. The reflex is present on paper and cannot act.
+        gainHr: bySeverity(ctx, 0.5, 0.2),
+        gainHrVolume: bySeverity(ctx, 20, 8),
+        hrMax: 110,
+      },
+      rrOffset: 2,
+    }),
+    script: (ctx) => {
+      const v = ctx.voice;
+      return [
+        {
+          at: ctx.declareAt,
+          pageWhen: { axis: 'perf', grade: 1, by: 40 * MIN },
+          page: (g) => g.perf >= 2
+            ? `${ctx.name} in ${ctx.room} has a systolic in the seventies and the heart rate is still in the fifties. ` +
+              `${v.Subj} ${v.verb('look')} gray. It does not look right to me — the rate should be up and it is not.`
+            : `${ctx.name} in ${ctx.room} has a soft pressure again and the rate is unchanged at fifty-something. ` +
+              `${v.Subj} ${v.verb('say')} ${v.subj} ${v.verb('feel')} lightheaded sitting up.`,
+          interventions: [
+            insult(ctx, { label: 'Autonomic failure: vasodilation', category: 'scenario', kind: 'scenario', target: 'svr', delta: -2.6, tauOn: 3600, eliminationHalfLife: 86400 }),
+            insult(ctx, { label: 'Adrenal insufficiency', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.4, tauOn: 4200, eliminationHalfLife: 86400 }),
+          ],
+        },
+        {
+          at: jitter(ctx, ctx.declareAt + 120 * MIN),
+          pageWhen: { axis: 'perf', grade: 2 },
+          page: (g) => g.perf >= 3
+            ? `I cannot get a pressure and ${v.subj} ${v.is} barely arousable. The rate is fifty. I need help.`
+            : `The pressure is down again and whatever we are running does not seem to be touching it.`,
+          interventions: [
+            insult(ctx, { label: 'Refractory vasoplegia', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.22, tauOn: 3600, eliminationHalfLife: 86400 }),
+          ],
+        },
+      ];
+    },
+    findings: () => (panel, snap) => {
+      if (panel === 'EKG') {
+        return `Sinus bradycardia at ${Math.round(snap.hr)}. No ischemic change, no block — the rate is the rhythm, not a conduction problem.`;
+      }
+      return null;
+    },
+    medications: () => [
+      { name: 'Ceftriaxone', detail: '2 g IV every 12 hours', since: 'day 11 of 14' },
+      { name: 'Fludrocortisone', detail: '0.1 mg orally daily — STOPPED four days ago', since: 'discontinued by the day team' },
+      { name: 'Enoxaparin', detail: '40 mg subcutaneously daily', since: 'admission' },
+      { name: 'Acetaminophen', detail: '1 g orally every 6 hours as needed', since: 'admission' },
+      { name: 'Compression stockings', detail: 'both legs, for orthostatic intolerance', since: 'day 6' },
+    ],
+    priorLabs: (ctx) => [
+      prior('Cortisol', 900, [
+        pv('Random cortisol', bySeverity(ctx, 6.2, 2.1), 'µg/dL', 1, { low: 10, critical: true }),
+      ], 'Drawn at 09:00. Low for an inpatient under physiologic stress — endocrine were asked to review and have not yet seen the patient.'),
+      prior('CMP', 400, [
+        pv('Sodium', bySeverityInt(ctx, 133, 128), 'mEq/L', 0, { low: 135, high: 145 }),
+        pv('Potassium', bySeverity(ctx, 4.9, 5.4), 'mEq/L', 1, { low: 3.5, high: 5.1 }),
+        pv('Glucose', bySeverityInt(ctx, 78, 62), 'mg/dL', 0, { low: 70 }),
+        pv('Creatinine', 0.9, 'mg/dL', 2, { high: 1.1 }),
+      ]),
+      prior('CSF', 15840, [
+        pv('WBC', 12, 'cells/mm³', 0, { high: 5 }),
+        pv('Protein', 88, 'mg/dL', 0, { high: 45 }),
+      ], 'Repeat tap day 7: markedly improved from admission. Culture negative on treatment.'),
+    ],
+    handoff: (ctx) => ({
+      severityCall: 'watcher',
+      summary:
+        `Recovering pneumococcal meningitis, day 11 of ceftriaxone. Neurologically much improved. Persistently ` +
+        `bradycardic in the fifties since the acute illness and drops ${ctx.voice.poss} pressure whenever ${ctx.voice.subj} ${ctx.voice.verb('sit')} up.`,
+      todo: ['Lying and standing pressures each shift.', 'Endocrine to review the cortisol.'],
+      contingencies: [
+        'The bradycardia is autonomic, not a block — do not chase it with atropine or a pacer.',
+        `If the pressure drops and does not answer a pressor, think adrenal. The 09:00 cortisol was low and the fludrocortisone was stopped four days ago. Hydrocortisone is the test and the treatment.`,
+        `${ctx.voice.Subj} cannot mount a tachycardia. A normal heart rate in ${ctx.voice.obj} means nothing reassuring.`,
+      ],
+      misleading: 'Runs a low pressure and a slow rate at baseline. Nothing to do overnight unless symptomatic.',
+    }),
+    expectedOrders: ['hydrocortisone', 'ns-500', 'norepi', 'transfer-icu', 'call-attending', 'lab-bmp'],
+    contraindicatedOrders: ['ns-1000'],
+  },
+
+  {
+    id: 'discitis-mrse-bacteremia',
+    label: 'MRSE bacteremia and discitis after kyphoplasty',
+    tier: 'ward',
+    setting: 'academic',
+    ageRange: [54, 80],
+    span: 4 * HOUR,
+    admissionDx: 'Back pain and fever after L5 kyphoplasty',
+    hiddenDx: 'Methicillin-resistant Staphylococcus epidermidis discitis seeded at kyphoplasty, bacteremic, in a MASLD cirrhotic',
+    teachingPoint:
+      'Coagulase-negative staph in one bottle is a contaminant; in four bottles, in a patient with hardware and new ' +
+      'back pain, it is the diagnosis. The organism is the clue to the source, and the source is cement in a ' +
+      'vertebral body — which no antibiotic sterilizes on its own. Two things about the overnight job: ceftriaxone ' +
+      'does not cover it, and the neurologic exam is the one that has to be repeated, because an epidural collection ' +
+      'declares itself as weakness hours before it declares itself on a scan nobody has ordered.',
+    history: (ctx) => [
+      ctx.rng.pick(['MASLD cirrhosis, Child-Pugh A', 'MASLD cirrhosis, Child-Pugh B', 'MASLD with portal hypertension']),
+      'L5 kyphoplasty six weeks ago for an osteoporotic fracture',
+      ctx.rng.pick(['Type 2 diabetes on insulin', 'Obesity, BMI 38', 'Chronic kidney disease stage 3']),
+      'Blood cultures growing MRSE in 4 of 4 bottles',
+    ],
+    baseline: (ctx) => ({
+      stateOverrides: {
+        hr: ctx.rng.int(88, 98),
+        svr: bySeverity(ctx, 14, 13.2),
+        edv: ctx.rng.int(102, 112),
+        noTone: bySeverity(ctx, 0.05, 0.13),
+      },
+      paramOverrides: { hgb: bySeverity(ctx, 11.2, 9.8) },
+      rrOffset: 3,
+      tempOffset: bySeverity(ctx, 0.4, 0.9),
+    }),
+    script: (ctx) => {
+      const v = ctx.voice;
+      return [
+        {
+          at: ctx.declareAt,
+          page: `${ctx.name} in ${ctx.room} has spiked again and the back pain is worse tonight — ${v.subj} ` +
+            `${v.verb('say')} it goes down the back of both legs now, which is new. Vitals are otherwise reasonable.`,
+          interventions: [
+            insult(ctx, { label: 'Bacteremia: inflammatory tone', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.16, tauOn: 3000, eliminationHalfLife: 43200 }),
+          ],
+        },
+        {
+          at: jitter(ctx, ctx.declareAt + 130 * MIN),
+          page: (g) => g.perf >= 1
+            ? `Still febrile and ${v.subj} ${v.verb('look')} washed out. ${v.Subj} ${v.verb('say')} ${v.poss} legs ` +
+              `feel heavy and ${v.subj} could not lift the right one off the bed for me just now.`
+            : `Still febrile. The vitals are holding, but ${v.subj} ${v.verb('say')} ${v.poss} legs feel heavy ` +
+              `and ${v.subj} could not lift the right one off the bed for me just now.`,
+          interventions: [
+            insult(ctx, { label: 'Ongoing bacteremia', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.12, tauOn: 3600, eliminationHalfLife: 43200 }),
+          ],
+        },
+      ];
+    },
+    findings: () => (panel) => {
+      if (panel === 'CXR') return 'Clear lung fields. Cement is visible in the L5 vertebral body at the lower edge of the film.';
+      if (panel === 'Blood cultures') {
+        return 'Methicillin-resistant Staphylococcus epidermidis, 4 of 4 bottles. Sensitive to vancomycin and linezolid; resistant to oxacillin and to cephalosporins.';
+      }
+      return null;
+    },
+    medications: () => [
+      { name: 'Ceftriaxone', detail: '2 g IV daily — started empirically before cultures resulted', since: 'day 2 of admission' },
+      { name: 'Oxycodone', detail: '5 mg orally every 4 hours as needed', since: 'admission' },
+      { name: 'Acetaminophen', detail: '1 g orally every 6 hours', since: 'admission' },
+      { name: 'Insulin glargine', detail: '22 units subcutaneously at night', since: 'home medication' },
+      { name: 'Enoxaparin', detail: '40 mg subcutaneously daily', since: 'admission' },
+    ],
+    priorLabs: (ctx) => [
+      prior('Blood cultures', 2400, [], 'Methicillin-resistant Staphylococcus epidermidis in 4 of 4 bottles. Resistant to oxacillin and cephalosporins; sensitive to vancomycin.'),
+      prior('CBC', 500, [
+        pv('WBC', bySeverity(ctx, 12.8, 17.4), 'K/µL', 1, { low: 4, high: 11 }),
+        pv('Hgb', bySeverity(ctx, 11.2, 9.8), 'g/dL', 1, { low: 12 }),
+        pv('Platelets', bySeverityInt(ctx, 132, 88), 'K/µL', 0, { low: 150 }),
+      ]),
+      prior('CMP', 500, [
+        pv('Bilirubin', 1.8, 'mg/dL', 1, { high: 1.2 }),
+        pv('Albumin', 3.0, 'g/dL', 1, { low: 3.5 }),
+        pv('INR', 1.3, '', 1, { high: 1.1 }),
+        pv('Creatinine', bySeverity(ctx, 1.2, 1.7), 'mg/dL', 2, { high: 1.1 }),
+      ]),
+      prior('MRI lumbar spine', 1200, [], 'L5–S1 discitis with endplate destruction and a small anterior epidural phlegmon. No frank abscess and no cord compression on this study. Cement in the L5 body.'),
+    ],
+    handoff: (ctx) => ({
+      severityCall: 'watcher',
+      summary:
+        `Discitis after a kyphoplasty six weeks ago, with MRSE bacteremia. MRI shows a phlegmon and no abscess. ` +
+        `Spine surgery and infectious disease have both been consulted; plan is prolonged IV antibiotics.`,
+      todo: ['Repeat blood cultures in the morning.', 'Neuro checks each shift.'],
+      contingencies: [
+        `The organism is resistant to cephalosporins. If ${ctx.voice.subj} ${ctx.voice.verb('remain')} on ceftriaxone alone, that is an error — vancomycin is what covers this.`,
+        'New weakness, saddle anesthesia or retention means an urgent MRI and a call to spine surgery, whatever the hour.',
+        'Cirrhotic and thrombocytopenic — check the platelets before anyone puts a needle near the spine.',
+      ],
+      misleading: 'Cultures are growing a skin organism, most likely a contaminant. Continue ceftriaxone and reassess with infectious disease in the morning.',
+    }),
+    expectedOrders: ['vancomycin', 'lab-cultures', 'call-attending', 'lab-cbc', 'img-mri-spine'],
+    contraindicatedOrders: ['ceftriaxone', 'steroids'],
+  },
+
+  {
+    id: 'lung-transplant-rejection',
+    label: 'Acute rejection in a lung transplant recipient on ATG',
+    tier: 'critical',
+    setting: 'academic',
+    ageRange: [28, 66],
+    span: 3 * HOUR,
+    admissionDx: 'Bilateral lung transplant — acute cellular rejection, receiving ATG',
+    hiddenDx:
+      'Grade A3 rejection with a cytokine release reaction to antithymocyte globulin; the fever and hypotension ' +
+      'are the infusion, the falling oxygenation is the rejection, and both are happening at once',
+    teachingPoint:
+      'Two things are true at the same time and they need opposite reflexes. The fever and soft pressure during an ' +
+      'ATG infusion are cytokine release — slow the infusion, premedicate, support the pressure — while the falling ' +
+      'oxygenation is the graft rejecting and needs the steroids continued, not held. And underneath both, this is ' +
+      'a profoundly immunosuppressed patient in whom infection looks exactly like rejection, so cultures go off ' +
+      'before you decide which story you believe.',
+    history: (ctx) => [
+      ctx.rng.pick(['Bilateral lung transplant for cystic fibrosis, 14 months ago', 'Bilateral lung transplant for IPF, 8 months ago', 'Bilateral lung transplant for COPD, 2 years ago']),
+      ctx.rng.pick(['Two previous episodes of acute rejection', 'Previous CMV viremia, treated', 'Baseline FEV1 down 22% from best']),
+      'Transbronchial biopsy this week: grade A3 acute cellular rejection',
+      'Day 2 of antithymocyte globulin',
+    ],
+    baseline: (ctx) => ({
+      stateOverrides: {
+        hr: ctx.rng.int(96, 108),
+        svr: bySeverity(ctx, 13.6, 12.4),
+        edv: ctx.rng.int(100, 110),
+        qsQt: bySeverity(ctx, 0.09, 0.16),
+        noTone: bySeverity(ctx, 0.08, 0.18),
+      },
+      rrOffset: 4,
+      tempOffset: bySeverity(ctx, 0.5, 1.0),
+    }),
+    script: (ctx) => {
+      const v = ctx.voice;
+      return [
+        {
+          at: ctx.declareAt,
+          urgent: true,
+          page: (g) => `${ctx.name} in ${ctx.room} has spiked to ${bySeverity(ctx, 38.7, 39.6).toFixed(1)} and ` +
+            `started rigoring about twenty minutes into the ATG. ` +
+            (g.perf >= 1 ? `The pressure is down and ${v.subj} ${v.verb('look')} sick.`
+              : `The pressure is soft but holding. Do you want me to slow the infusion?`),
+          interventions: [
+            insult(ctx, { label: 'Cytokine release: vasoplegia', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.34, tauOn: 1200, eliminationHalfLife: 21600 }),
+          ],
+        },
+        {
+          at: jitter(ctx, ctx.declareAt + 85 * MIN),
+          pageWhen: { axis: 'wob', grade: 1 },
+          page: (g) => g.wob >= 2
+            ? `${v.Subj} ${v.is} needing much more oxygen than at handover and working hard with it. ` +
+              `The fever has settled but the breathing has not.`
+            : `The fever has settled, but ${v.subj} ${v.is} needing more oxygen than ${v.subj} ${v.was} on earlier.`,
+          interventions: [
+            insult(ctx, { label: 'Rejection: graft shunt', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.28, tauOn: 3000, eliminationHalfLife: 86400 }),
+            insult(ctx, { label: 'Rejection: graft vascular resistance', category: 'scenario', kind: 'scenario', target: 'pvr', delta: 1.6, tauOn: 3000, eliminationHalfLife: 86400 }),
+          ],
+        },
+      ];
+    },
+    findings: (_ctx, atHandover) => (panel, snap) => {
+      if (panel !== 'CXR') return null;
+      return snap.qsQtEffective - atHandover.qsQtEffective > 0.05
+        ? 'New bilateral perihilar and lower zone ground-glass opacity in both allografts, worse than the film on admission. ' +
+          'Normal heart size. The differential is rejection or infection and the film does not separate them.'
+        : 'Bilateral allografts clear. Surgical clips at both anastomoses.';
+    },
+    medications: (ctx) => [
+      { name: 'Antithymocyte globulin', detail: 'IV infusion over 6 hours — day 2 of 5', since: 'day 2' },
+      { name: 'Methylprednisolone', detail: '500 mg IV daily — pulse for rejection, day 3 of 3', since: 'day 1' },
+      { name: 'Tacrolimus', detail: `${ctx.rng.pick(['2 mg', '3 mg'])} orally twice daily`, since: 'home medication' },
+      { name: 'Mycophenolate', detail: '1 g orally twice daily — held during ATG', since: 'held' },
+      { name: 'Valganciclovir', detail: '450 mg orally daily — CMV prophylaxis', since: 'home medication' },
+      { name: 'Trimethoprim–sulfamethoxazole', detail: 'one tablet daily — PJP prophylaxis', since: 'home medication' },
+      { name: 'Acetaminophen and diphenhydramine', detail: 'premedication before each ATG dose', since: 'day 1' },
+    ],
+    priorLabs: (ctx) => [
+      prior('CBC', 420, [
+        pv('WBC', bySeverity(ctx, 3.2, 1.6), 'K/µL', 1, { low: 4, high: 11 }),
+        pv('Absolute lymphocytes', 0.08, 'K/µL', 2, { low: 1.0, critical: true }),
+        pv('Hgb', 10.2, 'g/dL', 1, { low: 12 }),
+        pv('Platelets', bySeverityInt(ctx, 118, 74), 'K/µL', 0, { low: 150 }),
+      ]),
+      prior('Tacrolimus level', 420, [pv('Tacrolimus', 9.8, 'ng/mL', 1, { low: 8, high: 12 })]),
+      prior('Transbronchial biopsy', 4320, [], 'Grade A3 acute cellular rejection. No organisms on special stains. Bronchoalveolar lavage culture negative to date.'),
+      prior('Spirometry', 1440, [
+        pv('FEV1', bySeverityInt(ctx, 68, 51), '% of best', 0, { low: 90 }),
+      ]),
+    ],
+    handoff: (ctx) => ({
+      severityCall: 'watcher',
+      summary:
+        `Bilateral lung transplant with grade A3 rejection on biopsy. Third day of pulse steroid, second day of ATG. ` +
+        `Transplant pulmonology round early — they want to be called about anything overnight.`,
+      todo: ['Spirometry each morning.', 'Tacrolimus level with the morning labs.'],
+      contingencies: [
+        'Fever and rigors during the ATG infusion are cytokine release. Slow the infusion and premedicate; it is not a reason to stop treating the rejection.',
+        `${ctx.voice.Subj} ${ctx.voice.has} no lymphocytes. Infection presents exactly like rejection here, so send cultures before you commit to a story.`,
+        'A rising oxygen requirement is the graft. Call transplant pulmonology overnight rather than waiting for rounds.',
+      ],
+      misleading: 'Fever during ATG is expected. Give acetaminophen, continue the infusion, and review in the morning.',
+    }),
+    expectedOrders: ['lab-cultures', 'hfnc', 'steroids', 'ns-500', 'call-attending', 'transfer-icu'],
+    contraindicatedOrders: ['ceftriaxone'],
+  },
+
+  {
+    id: 'new-dialysis-uremia',
+    label: 'Diabetic kidney disease reaching dialysis',
+    tier: 'ward',
+    setting: 'academic',
+    ageRange: [46, 78],
+    span: 4 * HOUR,
+    admissionDx: 'Diabetic nephropathy — uremia and volume overload, for dialysis initiation',
+    hiddenDx:
+      'End-stage diabetic nephropathy with volume overload and rising potassium; the trap is treating a soft ' +
+      'blood pressure in an anuric, fluid-overloaded patient with more fluid',
+    teachingPoint:
+      'Anuric and overloaded is the one common ward situation where a low blood pressure is not a fluid problem, ' +
+      'and where the instinct that serves you everywhere else does harm here. There is nowhere for a liter to go. ' +
+      'The potassium is the thing that kills tonight and the medical measures only move it into cells for an hour ' +
+      'or two — calcium protects the heart, insulin buys the time, and only dialysis removes any of it.',
+    history: (ctx) => [
+      'Type 2 diabetes, 22 years',
+      ctx.rng.pick(['Diabetic nephropathy, eGFR 8', 'Diabetic nephropathy, eGFR 6', 'Diabetic and hypertensive nephropathy, eGFR 9']),
+      ctx.rng.pick(['Arteriovenous fistula created, not yet mature', 'Declined dialysis until now', 'Proliferative retinopathy, laser treated']),
+      ctx.rng.pick(['Heart failure with preserved ejection fraction', 'Peripheral vascular disease', 'Previous NSTEMI']),
+    ],
+    baseline: (ctx) => ({
+      stateOverrides: {
+        hr: ctx.rng.int(80, 92),
+        svr: 15,
+        // Overloaded, not dry. The number that matters is which direction to go.
+        edv: bySeverityInt(ctx, 130, 144),
+        emax: bySeverity(ctx, 1.75, 1.55),
+        qsQt: bySeverity(ctx, 0.05, 0.09),
+      },
+      paramOverrides: { hgb: bySeverity(ctx, 9.8, 8.6) },
+      rrOffset: 3,
+    }),
+    script: (ctx) => {
+      const v = ctx.voice;
+      return [
+        {
+          at: ctx.declareAt,
+          page: (g) => `${ctx.name} in ${ctx.room} has passed almost nothing since I came on and the legs are ` +
+            `more swollen. ` +
+            (g.wob >= 1 ? `${v.Subj} ${v.is} breathing faster and ${v.verb('want')} to sit up.`
+              : `The blood pressure is on the low side, which is why I'm calling.`),
+          interventions: [
+            insult(ctx, { label: 'Uremic volume overload', category: 'scenario', kind: 'scenario', target: 'edv', delta: 10, tauOn: 3600, eliminationHalfLife: 86400 }),
+          ],
+        },
+        {
+          at: jitter(ctx, ctx.declareAt + 140 * MIN),
+          page: (g) => g.wob >= 2
+            ? `${v.Subj} ${v.is} much more short of breath and will not lie flat at all now. ` +
+              `The potassium from this evening is back and it is 6.4.`
+            : `The potassium from this evening is back — 6.4. ${v.Subj} ${v.is} not complaining of anything new.`,
+          interventions: [
+            insult(ctx, { label: 'Progressive overload', category: 'scenario', kind: 'scenario', target: 'edv', delta: 8, tauOn: 3600, eliminationHalfLife: 86400 }),
+          ],
+        },
+      ];
+    },
+    findings: () => (panel, snap) => {
+      if (panel === 'EKG') {
+        return snap.edv > 142
+          ? 'Peaked T waves in the precordial leads with a widening QRS. Hyperkalemia, and it is at the stage that treats itself as an emergency.'
+          : 'Peaked T waves in V2 to V4. No widening yet.';
+      }
+      if (panel === 'CXR') return 'Pulmonary vascular congestion with small bilateral effusions. Cardiomegaly.';
+      return null;
+    },
+    medications: () => [
+      { name: 'Insulin glargine', detail: '18 units subcutaneously at night', since: 'home medication' },
+      { name: 'Insulin sliding scale', detail: 'subcutaneous, before meals', since: 'admission' },
+      { name: 'Furosemide', detail: '120 mg IV twice daily — minimal response', since: 'day 2' },
+      { name: 'Sodium bicarbonate', detail: '650 mg orally three times daily', since: 'home medication' },
+      { name: 'Sevelamer', detail: '800 mg orally with meals', since: 'home medication' },
+      { name: 'Amlodipine', detail: '10 mg orally daily', since: 'home medication' },
+    ],
+    priorLabs: (ctx) => [
+      prior('BMP', 300, [
+        pv('Potassium', bySeverity(ctx, 5.6, 6.2), 'mEq/L', 1, { low: 3.5, high: 5.1, critical: true }),
+        pv('Bicarbonate', bySeverityInt(ctx, 18, 14), 'mEq/L', 0, { low: 22, high: 26 }),
+        pv('Creatinine', bySeverity(ctx, 6.8, 9.4), 'mg/dL', 1, { high: 1.1, critical: true }),
+        pv('Urea', bySeverityInt(ctx, 98, 142), 'mg/dL', 0, { high: 20, critical: true }),
+        pv('Calcium', 8.1, 'mg/dL', 1, { low: 8.5 }),
+      ]),
+      prior('CBC', 300, [
+        pv('Hgb', bySeverity(ctx, 9.8, 8.6), 'g/dL', 1, { low: 12 }),
+        pv('WBC', 7.2, 'K/µL', 1, { low: 4, high: 11 }),
+      ]),
+      prior('Renal ultrasound', 2880, [], 'Bilaterally small echogenic kidneys with loss of corticomedullary differentiation. No hydronephrosis. Chronic disease; nothing obstructive to relieve.'),
+    ],
+    handoff: (ctx) => ({
+      severityCall: 'watcher',
+      summary:
+        `End-stage diabetic nephropathy, admitted for dialysis initiation. Fistula is not mature so ${ctx.voice.subj} ` +
+        `${ctx.voice.verb('need')} a tunneled catheter first. Renal plan to start tomorrow. Barely making urine.`,
+      todo: ['Strict intake and output.', 'Repeat the potassium at 06:00 — or sooner if anything changes.'],
+      contingencies: [
+        `${ctx.voice.Subj} ${ctx.voice.is} anuric and overloaded. If the pressure is soft, it is not volume — do not give fluid, there is nowhere for it to go.`,
+        'A potassium above 6 with EKG change is an emergency: calcium first, then insulin and dextrose, then call renal. The medical measures buy an hour or two and remove nothing.',
+        'Furosemide has been doing very little. Do not keep escalating it in place of dialysis.',
+      ],
+      misleading: 'Blood pressure has been running soft this evening. A gentle 500 mL bolus would be reasonable.',
+    }),
+    expectedOrders: ['calcium-gluconate', 'insulin-dextrose', 'dialysis', 'img-ekg', 'lab-bmp', 'sit-up'],
+    contraindicatedOrders: ['ns-1000', 'ns-500', 'ns-250'],
+  },
+
+  {
+    id: 'withdrawal-in-pah',
+    label: 'Opioid withdrawal in pulmonary hypertension',
+    tier: 'ward',
+    setting: 'academic',
+    ageRange: [28, 56],
+    span: 4 * HOUR,
+    admissionDx: 'Pulmonary arterial hypertension — admitted for diuresis',
+    hiddenDx:
+      'Untreated opioid withdrawal in a patient with pulmonary arterial hypertension, where the tachycardia the ' +
+      'withdrawal produces is what the failing right ventricle cannot afford',
+    teachingPoint:
+      'Withdrawal is not dangerous in most people and is dangerous in this one. A right ventricle against a fixed ' +
+      'high resistance depends on diastolic filling time and on a systemic pressure high enough to perfuse its own ' +
+      'coronary supply, and withdrawal takes away both — the rate goes up and the volume goes out through vomiting ' +
+      'and diarrhea. Treat the withdrawal itself. Clonidine looks tempting because it settles the signs, and it ' +
+      'drops exactly the pressure this ventricle is relying on.',
+    history: (ctx) => [
+      ctx.rng.pick(['Group 1 PAH, possibly methamphetamine-associated', 'PAH, drug and toxin associated', 'Group 1 PAH on triple therapy']),
+      ctx.rng.pick(['Opioid use disorder, on buprenorphine at home', 'Opioid use disorder, out of treatment for three months', 'Long-term prescribed opioids, self-discontinued']),
+      ctx.rng.pick(['Right heart catheterization: mPAP 44, PVR 7 WU', 'Right heart catheterization: mPAP 51, PVR 9 WU']),
+      'Home buprenorphine not reordered on admission',
+    ],
+    baseline: (ctx) => ({
+      stateOverrides: {
+        hr: ctx.rng.int(92, 102),
+        svr: 15,
+        pvr: bySeverity(ctx, 6.5, 8),
+        rvEmax: bySeverity(ctx, 0.7, 0.62),
+        rvedv: bySeverityInt(ctx, 150, 162),
+        edv: ctx.rng.int(94, 104),
+        cvp: 11,
+        qsQt: 0.07,
+      },
+      rrOffset: 3,
+    }),
+    script: (ctx) => {
+      const v = ctx.voice;
+      return [
+        {
+          at: ctx.declareAt,
+          page: `${ctx.name} in ${ctx.room} is sweating, yawning and cannot keep still — ${v.subj} ${v.verb('say')} ` +
+            `${v.subj} ${v.verb('feel')} awful and ${v.subj} ${v.has} been sick twice. ${v.Subj} ${v.verb('tell')} me ` +
+            `${v.subj} ${v.verb('take')} buprenorphine at home and nobody has written it up.`,
+          interventions: [
+            // Withdrawal is a sympathetic storm: rate up, volume out.
+            insult(ctx, { label: 'Withdrawal: sympathetic drive', category: 'scenario', kind: 'scenario', target: 'hrMod', delta: 26, tauOn: 2400, eliminationHalfLife: 43200 }),
+            insult(ctx, { label: 'Withdrawal: GI losses', category: 'scenario', kind: 'scenario', target: 'edv', delta: -16, tauOn: 3000, eliminationHalfLife: 43200 }),
+          ],
+        },
+        {
+          at: jitter(ctx, ctx.declareAt + 120 * MIN),
+          page: (g) => g.wob >= 1 || g.perf >= 1
+            ? `${v.Subj} ${v.is} worse — still retching, and now ${v.subj} ${v.verb('say')} ${v.subj} ${v.is} ` +
+              `more short of breath than ${v.subj} ${v.was} at handover. The heart rate is up in the hundred-and-twenties.`
+            : `Still in withdrawal and asking repeatedly for something. The heart rate is up but the rest looks all right.`,
+          interventions: [
+            insult(ctx, { label: 'Withdrawal: ongoing losses', category: 'scenario', kind: 'scenario', target: 'edv', delta: -12, tauOn: 3000, eliminationHalfLife: 43200 }),
+          ],
+        },
+      ];
+    },
+    findings: () => (panel) =>
+      panel === 'EKG'
+        ? 'Sinus tachycardia. Right axis deviation and a tall R in V1 — the right heart changes are chronic and unchanged.'
+        : null,
+    medications: (ctx) => [
+      { name: 'Ambrisentan', detail: '10 mg orally daily', since: 'home medication' },
+      { name: 'Tadalafil', detail: '40 mg orally daily', since: 'home medication' },
+      { name: ctx.rng.pick(['Selexipag', 'Treprostinil, oral']), detail: 'twice daily', since: 'home medication' },
+      { name: 'Furosemide', detail: '60 mg IV twice daily', since: 'day 2 of admission' },
+      { name: 'Ondansetron', detail: '4 mg IV every 8 hours as needed', since: 'admission' },
+      { name: 'Buprenorphine', detail: '16 mg sublingual daily — HOME DOSE NOT REORDERED', since: 'omitted on admission' },
+    ],
+    priorLabs: (ctx) => [
+      prior('BMP', 360, [
+        pv('Potassium', 3.3, 'mEq/L', 1, { low: 3.5, high: 5.1 }),
+        pv('Bicarbonate', 22, 'mEq/L', 0, { low: 22, high: 26 }),
+        pv('Creatinine', bySeverity(ctx, 1.1, 1.6), 'mg/dL', 2, { high: 1.1 }),
+      ]),
+      prior('BNP', 720, [pv('NT-proBNP', bySeverityInt(ctx, 1400, 3800), 'pg/mL', 0, { high: 300 })]),
+      prior('Urine drug screen', 2880, [], 'Positive for fentanyl and buprenorphine on admission. Documented in the chart; home buprenorphine was not reordered.'),
+    ],
+    handoff: (ctx) => ({
+      severityCall: 'stable',
+      summary:
+        `PAH admitted for diuresis, day 2. Two liters negative. Pulmonary hypertension service following. ` +
+        `Restless and uncomfortable this afternoon, put down to anxiety about being in hospital.`,
+      todo: ['Daily weights.', 'Repeat the renal function in the morning.'],
+      contingencies: [
+        `${ctx.voice.Subj} ${ctx.voice.verb('take')} buprenorphine at home and it was not reordered. If ${ctx.voice.subj} ${ctx.voice.verb('look')} like withdrawal, that is what it is — treat it.`,
+        'A tachycardia in this patient is not benign. The right ventricle needs the filling time, and the systemic pressure is what perfuses it.',
+        'Do not reach for clonidine. It settles the signs and takes away the systemic pressure the right heart is depending on.',
+      ],
+      misleading: 'Agitated and demanding overnight. Clonidine or a small benzodiazepine would settle things.',
+    }),
+    expectedOrders: ['buprenorphine', 'ondansetron', 'ns-250', 'vitals-now', 'call-attending'],
+    contraindicatedOrders: ['clonidine', 'lorazepam', 'furosemide'],
+  },
 ];
 
 export const ARCHETYPE_BY_ID: Record<string, CaseArchetype> = Object.fromEntries(
