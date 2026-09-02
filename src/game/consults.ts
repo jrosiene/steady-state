@@ -25,7 +25,7 @@ export function attendingAdvice(patient: PatientRuntime, snap: Snapshot): string
   // proven otherwise.
   if (rvStrained && snap.pcwp < 18) {
     return (
-      `That combination — sudden hypoxaemia, a clear-ish chest, and a patient who is tanking — ` +
+      `That combination — sudden hypoxemia, a clear-ish chest, and a patient who is tanking — ` +
       `makes me think obstructive physiology rather than anything you will fix with volume. ` +
       `If the right ventricle is the problem, filling it further makes it worse. ` +
       `Get an echo at the bedside; if the RV is dilated and the septum is flat you have your answer. ` +
@@ -55,7 +55,7 @@ export function attendingAdvice(patient: PatientRuntime, snap: Snapshot): string
     );
   }
 
-  // Hypovolaemic / haemorrhagic.
+  // Hypovolemic / hemorrhagic.
   if (shocked && snap.edv < 90 && !congested) {
     return (
       `Empty tank. Tachycardic, under-filled, narrow pulse pressure — ${v.subj} ${v.has} lost volume, and if ` +
@@ -108,7 +108,7 @@ export function attendingAdvice(patient: PatientRuntime, snap: Snapshot): string
 /**
  * Specialty consult responses, likewise reasoned from physiology.
  *
- * Repeatable on purpose. A consultant's answer is a read on the patient in front
+ * Repeatable on purpose. A attending's answer is a read on the patient in front
  * of them, so the same referral made two hours later is a different conversation
  * — and the moment it is most worth making the call again is exactly the moment
  * the patient has changed.
@@ -131,7 +131,7 @@ export function specialtyAdvice(
         `come and do it there. Call interventional radiology in parallel if ${v.subj} ${v.verb('keep')} dropping.`;
     }
     return activeBleed
-      ? `GI fellow: ${again}we will scope ${v.obj} tonight. Keep transfusing to a haemoglobin of 7, keep the PPI drip running, ` +
+      ? `GI fellow: ${again}we will scope ${v.obj} tonight. Keep transfusing to a hemoglobin of 7, keep the PPI drip running, ` +
         `and make sure ${v.subj} ${v.is} in a monitored bed before we start — I do not want to be sedating ${v.obj} on the ward.`
       : `GI fellow: ${again}sounds stable at the moment. Keep the PPI drip going and we will scope first thing. ` +
         `Call me back tonight if ${v.subj} ${v.verb('drop')} the pressure or ${v.verb('have')} another large bleed.`;

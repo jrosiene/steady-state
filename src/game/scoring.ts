@@ -124,7 +124,7 @@ function buildDebrief(patient: PatientRuntime): PatientDebrief {
   return {
     patient,
     outcomeTone: outcomeTone(patient),
-    outcomeLine: patient.outcome?.summary ?? 'Still under your care at handover.',
+    outcomeLine: patient.outcome?.summary ?? 'Still under your care at sign-out.',
     hits,
     misses,
     harms,
@@ -170,7 +170,7 @@ function outcomeTone(patient: PatientRuntime): 'good' | 'mixed' | 'bad' {
 
   if (patient.status === 'died') {
     // A death that was expected, discussed, and managed for comfort is not the
-    // same event as a death from an unrecognised deterioration, and the debrief
+    // same event as a death from an unrecognized deterioration, and the debrief
     // should not pretend otherwise.
     return comfortFocused || patient.case.codeStatus === 'DNR/DNI' ? 'mixed' : 'bad';
   }
@@ -184,7 +184,7 @@ function orderLabel(id: string): string {
 
 function headline(died: number, arrested: number, score: number, harms: number): string {
   if (died === 0 && arrested === 0 && score > 0.7 && harms === 0) {
-    return 'A good night. Everyone you were covering was still there at handover, and the sick ones got what they needed in time.';
+    return 'A good night. Everyone you were covering was still there at sign-out, and the sick ones got what they needed in time.';
   }
   if (died === 0 && arrested === 0) {
     return 'Nobody died on your watch. There is room to be quicker and more decisive, but the shift held.';

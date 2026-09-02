@@ -6,7 +6,7 @@ import type { Rng } from './rng';
  * 0 is the mildest form of the illness that still warrants a page; 1 is as bad as
  * this case gets. Discrete bands were a mistake: three buckets meant every
  * urosepsis at a given label was physiologically the same patient, so the ward
- * had thirty-three possible setups and a returning player could recognise them.
+ * had thirty-three possible setups and a returning player could recognize them.
  * A continuous axis gives a genuine spectrum, and — because each insult within a
  * case draws its own value around the case severity — two patients at the same
  * overall severity still present differently.
@@ -67,7 +67,7 @@ export function insultScale(severity: Severity): number {
  *
  * Severity raises the ceiling on how bad things get; it does not shorten the
  * window in which the player can act. Scaling magnitude and speed together made
- * severe cases unwinnable rather than hard — a severe flash oedema arrested
+ * severe cases unwinnable rather than hard — a severe flash edema arrested
  * twenty-six minutes after its first page, which no realistic response beats, and
  * which tests reaction time rather than clinical reasoning.
  */
@@ -76,11 +76,11 @@ export function onsetScale(severity: Severity): number {
 }
 
 /**
- * Dampened scaling for haemoglobin loss.
+ * Dampened scaling for hemoglobin loss.
  *
  * Oxygen-carrying capacity sits upstream of SvO2, lactate, and the acidosis
  * feedback loop, so it compounds far harder than a preload change of the same
- * nominal size. At full insult scaling a severe bleed reached a haemoglobin no
+ * nominal size. At full insult scaling a severe bleed reached a hemoglobin no
  * transfusion could catch up with.
  */
 export function bloodLossScale(severity: Severity): number {

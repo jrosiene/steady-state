@@ -54,7 +54,7 @@ export function respiratoryDrive(snap: Snapshot): number {
  *
  * `rrOffset` is the chronic part of a given patient's rate — the COPD patient who
  * lives at 20 — and is carried by the case rather than derived, because nothing
- * in the model represents their years of remodelling.
+ * in the model represents their years of remodeling.
  */
 export function respiratoryRate(snap: Snapshot, rrOffset = 0): number {
   return Math.round(Math.min(45, 13 + rrOffset + respiratoryDrive(snap)));
@@ -137,7 +137,7 @@ export function assessAppearance(snap: Snapshot, baselineDrive = 0): Gestalt {
   }
 
   // Pulmonary congestion is visible and audible at the bedside long before it is
-  // hypoxaemic — the patient will not lie flat, and the bases crackle.
+  // hypoxemic — the patient will not lie flat, and the bases crackle.
   const congested = snap.pcwp > 22;
   const drowning = snap.pcwp > 28;
 
@@ -176,7 +176,7 @@ export function assessAppearance(snap: Snapshot, baselineDrive = 0): Gestalt {
     null;
 
   const perfusion =
-    perf === 3 ? 'mottled to the knees, clammy, barely rousable' :
+    perf === 3 ? 'mottled to the knees, clammy, barely arousable' :
     perf === 2 ? 'cool and diaphoretic, confused' :
     perf === 1 ? 'pale and tired, slow to answer' :
     null;
@@ -195,7 +195,7 @@ export function describeAppearance(snap: Snapshot, baselineDrive = 0): string {
  * A one-line triage label for the patient board.
  *
  * Restricted to what a monitor actually shows. Lactate is a send-away test, so
- * letting it colour the dot would hand the player a result they never ordered —
+ * letting it color the dot would hand the player a result they never ordered —
  * and quietly undo the case where a septic patient looks fine on the numbers.
  */
 export function acuityLabel(snap: Snapshot, baselineDrive = 0): 'ok' | 'watch' | 'unstable' | 'critical' {
@@ -352,7 +352,7 @@ export function resolveLabPanel(
       // and "ST depressions laterally" is three different diagnoses in one line.
       const electrical = specific
         ? ` ${specific}`
-        : `${strain}${ischemia}` || ' No acute ischaemic changes.';
+        : `${strain}${ischemia}` || ' No acute ischemic changes.';
       return {
         ...base,
         values: [],

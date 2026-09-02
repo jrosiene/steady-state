@@ -39,7 +39,7 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   // 55 bpm at a completely empty ventricle; a 30% volume deficit gives +17 bpm.
   // Swept against the two things this limb has to do at once: put a visible
   // tachycardia on the chart during the compensated phase (109 → 131 bpm in a
-  // moderate haemorrhage) without rescuing the patient out of the shock. Above
+  // moderate hemorrhage) without rescuing the patient out of the shock. Above
   // about 70 the reflex fully compensates a class III bleed and a patient who
   // should decompensate runs a normal pressure all night.
   gainHrVolume: 55,
@@ -100,7 +100,7 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   // Anaerobic threshold. Normal SvO2 is 0.65–0.75, so the threshold must sit well
   // below that: lactate rises at the *critical* oxygen extraction ratio (~50%),
   // not at any reduction in delivery. At 0.65 the model produced resting lactic
-  // acidosis in ordinary chronic anaemia — Hgb 9.8 gave a lactate of 2.4 and
+  // acidosis in ordinary chronic anemia — Hgb 9.8 gave a lactate of 2.4 and
   // Hgb 7 gave 6.1, both clinically wrong, and both seeded false death spirals
   // through the acidosis → Emax penalty.
   lactateSvO2Threshold: 0.50,
@@ -134,7 +134,7 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   acidosisHrPhFloor: 6.8,      // at pH ≤ 6.8: HR clamped to hrMin (agonal rhythm)
                                 // linear scaling: pH=7.0 → ceiling ~147; pH=6.9 → ceiling ~73
   lowFlowCoThreshold: 2.0,     // L/min: below this, pulmonary hypoperfusion adds effective shunt
-  // Cardiogenic pulmonary oedema → shunt.
+  // Cardiogenic pulmonary edema → shunt.
   // PCWP=25 → +0.126 shunt (SpO2 ~88% on room air); PCWP=32 → +0.252 (SpO2 ~80%).
   // Reversing preload (nitrates, diuresis, PEEP) lowers PCWP and un-floods alveoli,
   // which is why oxygenation improves within minutes of effective offloading.

@@ -34,14 +34,14 @@ import {
  */
 const PAGE_PATIENCE = 30 * 60;
 
-/** Routine observation intervals, in sim-seconds. */
+/** Routine vitals intervals, in sim-seconds. */
 const VITALS_INTERVAL_FLOOR = 4 * 3600;
 const VITALS_INTERVAL_ICU = 3600;
 /**
- * Observations on someone the nurse is already worried about.
+ * Vital signs on someone the nurse is already worried about.
  *
- * Forty minutes: a ward patient escalated to hourly-or-better obs, which is what
- * happens in practice the moment anyone rings the doctor about them.
+ * Forty minutes: a ward patient escalated to hourly-or-better vitals, which is what
+ * happens in practice the moment anyone calls the doctor about them.
  */
 const VITALS_INTERVAL_WATCHED = 40 * 60;
 /** Minimum gap between nurse-initiated calls, so a fast decline is not a wall of text. */
@@ -59,13 +59,13 @@ const NOTICE_INTERVAL_CRITICAL = 18 * 60;
 const NOTICE_INTERVAL_SHOCK = 45 * 60;
 
 /**
- * Time constant for haemoglobin change (seconds).
+ * Time constant for hemoglobin change (seconds).
  *
  * Covers both directions: blood lost into the gut and blood transfused back in
  * equilibrate over roughly half an hour, not instantaneously. Getting this
  * timescale right matters more than it looks — oxygen-carrying capacity feeds
  * SvO2, which feeds lactate, which feeds the acidosis-contractility loop, so a
- * step change in haemoglobin detonates a feedback spiral that no treatment
+ * step change in hemoglobin detonates a feedback spiral that no treatment
  * arriving at realistic speed could ever catch.
  */
 const TAU_HGB = 1800;
@@ -195,7 +195,7 @@ export class ShiftEngine {
         if (isInactive(p)) continue;
         p.state = stepPhysics(p.state, p.params, p.interventions, step);
 
-        // First-order approach to the haemoglobin target.
+        // First-order approach to the hemoglobin target.
         if (Math.abs(p.hgbTarget - p.params.hgb) > 1e-4) {
           const alpha = 1 - Math.exp(-step / TAU_HGB);
           p.params = { ...p.params, hgb: p.params.hgb + (p.hgbTarget - p.params.hgb) * alpha };
@@ -211,7 +211,7 @@ export class ShiftEngine {
       this.applyPendingEffects(p);
       this.fireCaseEvents(p);
       this.resolveLabs(p);
-      this.routineObservations(p);
+      this.routineVitals(p);
       this.checkGestaltRise(p);
       this.checkDeterioration(p);
       this.resolveArrest(p);
@@ -257,7 +257,7 @@ export class ShiftEngine {
   /**
    * Temperature offset applied when charting, in °C.
    *
-   * Antipyresis is deliberately modelled here rather than in the engine: it must
+   * Antipyresis is deliberately modeled here rather than in the engine: it must
    * change the recorded number without touching the inflammatory tone driving it,
    * so a player who treats the fever and then trusts the chart has blinded one of
    * their own instruments while the sepsis carries on underneath.
@@ -375,7 +375,7 @@ export class ShiftEngine {
 
   // ─── Observation ──────────────────────────────────────────────────────────
 
-  private routineObservations(p: PatientRuntime) {
+  private routineVitals(p: PatientRuntime) {
     if (p.monitored) {
       // Continuous monitoring keeps the chart current without a nurse walking in.
       p.lastVitals = chartVitals(this.snapshot(p), this.time, p.o2Device, this.tempOffsetFor(p), p.case.rrOffset);
@@ -414,7 +414,7 @@ export class ShiftEngine {
     const concern = silent ? null : vitalsConcern(vitals, snap, p.case.baselineDrive);
     if (concern && concern.key !== p.lastConcern) {
       // Only when it is news. A subacute illness sits on an abnormal set of
-      // observations for hours, and re-reading the same heart rate down the phone
+      // vitals for hours, and re-reading the same heart rate down the phone
       // every forty minutes is not a nurse — it is an alarm, and the player learns
       // to stop reading the channel. Genuine deterioration comes through
       // `checkGestaltRise`, which fires on change rather than on state.
@@ -429,18 +429,18 @@ export class ShiftEngine {
   }
 
   /**
-   * The call-back: a nurse rings again when the patient is worse than the last
+   * The call-back: a nurse calls back when the patient is worse than the last
    * thing they told you.
    *
    * Without this the only unprompted channel was `checkDeterioration`, which
    * keys off cardiovascular status — so a patient drowning at a saturation of 60%
    * with an intact blood pressure was 'compensated', said nothing, and turned up
-   * four hours later on the routine observation round already unsalvageable. That
+   * four hours later on the routine vitals round already unsalvageable. That
    * is not how a ward works. Whoever paged you about someone keeps looking at
-   * them, and rings back when the picture changes for the worse.
+   * them, and calls back when the picture changes for the worse.
    *
    * The trigger is a *rise* against what has already been reported, which is why
-   * a patient who was handed over unwell does not page immediately, and a patient
+   * a patient who was handed over sick does not page immediately, and a patient
    * who improves and then deteriorates again pages a second time.
    */
   private checkGestaltRise(p: PatientRuntime) {
@@ -463,7 +463,7 @@ export class ShiftEngine {
     p.reportedGrade = grade;
     const v = p.case.voice;
     const lead = grade >= 2
-      ? `Calling you back about ${p.case.room} — ${v.subj} ${v.is} worse than when I rang.`
+      ? `Calling you back about ${p.case.room} — ${v.subj} ${v.is} worse than when I called.`
       : `Just so you know, ${p.case.room} has changed since I last looked.`;
 
     this.post(p, 'nurse', p.case.nurse, `${lead} ${capitalise(gestalt.text)}.`, 'page', grade >= 2);
@@ -476,7 +476,7 @@ export class ShiftEngine {
   }
 
   /**
-   * Unscheduled notice: a nurse walking past a patient who is visibly unwell.
+   * Unscheduled notice: a nurse walking past a patient who is visibly sick.
    * Rate-limited so a deteriorating patient produces escalating concern rather
    * than a wall of identical pages.
    */
@@ -830,7 +830,7 @@ export class ShiftEngine {
       'system',
       'Code blue',
       `Code blue, room ${p.case.room}. ${witnessed ? 'Witnessed arrest' : 'Found unresponsive'} — ` +
-        `CPR in progress, rhythm is ${p.code.rhythm}. Critical care are at the bedside.`,
+        `CPR in progress, rhythm is ${p.code.rhythm}. The code team is at the bedside.`,
       'event',
       true,
     );
@@ -853,7 +853,7 @@ export class ShiftEngine {
     // stated: PCWP is (EDV − V0) × stiffness / emax, so as contractility
     // approaches its clamp floor the wedge diverges no matter how empty the
     // patient is. Every terminal patient therefore looked congested, and a
-    // haemorrhage that had bled its way down to an end-diastolic volume of 68
+    // hemorrhage that had bled its way down to an end-diastolic volume of 68
     // arrested in ventricular fibrillation — which is not a rhythm a bleeding
     // patient arrests in, and told the player the wrong thing about why.
     const filled = snap.edv > p.params.edvRef * 0.85;
@@ -887,7 +887,7 @@ export class ShiftEngine {
       beats.push('airway secured and the tube is confirmed');
     }
 
-    // Shock a shockable rhythm; adrenaline every other cycle otherwise.
+    // Shock a shockable rhythm; epinephrine every other cycle otherwise.
     if (code.rhythm === 'VF' || code.rhythm === 'pulseless VT') {
       code.shocks += 1;
       beats.push(`shocked at ${code.shocks === 1 ? 200 : 360} joules`);
@@ -901,15 +901,15 @@ export class ShiftEngine {
     if (code.cycle % 2 === 1) {
       code.epiDoses += 1;
       p.interventions.push(
-        { label: 'Adrenaline (code)', category: 'treatment', kind: 'bolus', target: 'svr', delta: 7, tauOn: 30, eliminationHalfLife: 180, startTime: t },
-        { label: 'Adrenaline (code, inotropy)', category: 'treatment', kind: 'bolus', target: 'emax', delta: 0.6, tauOn: 30, eliminationHalfLife: 180, startTime: t },
+        { label: 'Epinephrine (code)', category: 'treatment', kind: 'bolus', target: 'svr', delta: 7, tauOn: 30, eliminationHalfLife: 180, startTime: t },
+        { label: 'Epinephrine (code, inotropy)', category: 'treatment', kind: 'bolus', target: 'emax', delta: 0.6, tauOn: 30, eliminationHalfLife: 180, startTime: t },
       );
-      beats.push(`adrenaline given, dose ${code.epiDoses}`);
+      beats.push(`epinephrine given, dose ${code.epiDoses}`);
     }
 
     // Report what the team did before checking whether it worked. Rolling first
     // and narrating second loses the beat entirely on a cycle that achieves ROSC —
-    // the airway went in and the adrenaline was given, and nobody heard about it.
+    // the airway went in and the epinephrine was given, and nobody heard about it.
     const askAboutCause = code.cycle === 2 && !code.causeAddressed;
     const detail = beats.length > 0 ? ` — ${beats.join(', ')}` : '';
     this.post(
@@ -970,7 +970,7 @@ export class ShiftEngine {
     };
 
     p.interventions.push(
-      { label: 'Post-arrest: noradrenaline', category: 'treatment', kind: 'infusion', target: 'svr', delta: 9, tauOn: 60, eliminationHalfLife: 150, startTime: t },
+      { label: 'Post-arrest: norepinephrine', category: 'treatment', kind: 'infusion', target: 'svr', delta: 9, tauOn: 60, eliminationHalfLife: 150, startTime: t },
       { label: 'Post-arrest: inotrope', category: 'treatment', kind: 'infusion', target: 'emax', delta: 0.7, tauOn: 60, eliminationHalfLife: 150, startTime: t },
     );
 
@@ -978,8 +978,8 @@ export class ShiftEngine {
       p,
       'system',
       'Code blue',
-      `ROSC at ${clockTime(this.time)}, after ${minutes} minutes of CPR and ${code.epiDoses} dose${code.epiDoses === 1 ? '' : 's'} of adrenaline. ` +
-        `${p.case.name} is intubated, on noradrenaline, and going to the unit. ` +
+      `ROSC at ${clockTime(this.time)}, after ${minutes} minutes of CPR and ${code.epiDoses} dose${code.epiDoses === 1 ? '' : 's'} of epinephrine. ` +
+        `${p.case.name} is intubated, on norepinephrine, and going to the unit. ` +
         `The arrest bought time — it did not treat whatever caused it.`,
       'event',
       true,
@@ -1148,8 +1148,8 @@ function createRuntime(c: PatientCase): PatientRuntime {
     firedEvents: [],
     pendingPages: [],
     lastPageAt: -Infinity,
-    // Seeded from how the patient looks at handover, so someone who arrives on
-    // the shift already unwell is not paged about for being what they were.
+    // Seeded from how the patient looks at sign-out, so someone who arrives on
+    // the shift already sick is not paged about for being what they were.
     reportedGrade: Math.max(handoverGestalt.wob, handoverGestalt.perf),
     lastConcern: null,
     heldMeds: [],
@@ -1200,7 +1200,7 @@ export function roscChance(code: CodeState, snap: Snapshot): number {
   // Treating the cause is what makes the arrest reversible rather than terminal.
   if (code.causeAddressed) p += 0.1;
 
-  // A profoundly acidotic myocardium does not respond to adrenaline.
+  // A profoundly acidotic myocardium does not respond to epinephrine.
   if (snap.pH < 7.0) p -= 0.06;
 
   p *= Math.pow(0.7, Math.max(0, code.cycle - 1));
@@ -1254,15 +1254,15 @@ function describeEndState(p: PatientRuntime, snap: Snapshot): string {
   if (p.location === 'icu') {
     return snap.cardiovascularStatus === 'compensated'
       ? 'Stabilised and handed over in the ICU.'
-      : 'Still critically unwell in the ICU at handover.';
+      : 'Still critically ill in the ICU at sign-out.';
   }
   switch (snap.cardiovascularStatus) {
     case 'compensated':
-      return 'Stable on the ward at handover.';
+      return 'Stable on the ward at sign-out.';
     case 'shock':
-      return 'Still in shock on a ward bed at handover — never escalated.';
+      return 'Still in shock on a ward bed at sign-out — never escalated.';
     default:
-      return 'Critically unwell on a ward bed at handover — never escalated.';
+      return 'Critically ill on a ward bed at sign-out — never escalated.';
   }
 }
 

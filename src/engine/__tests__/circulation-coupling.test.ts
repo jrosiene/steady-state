@@ -36,7 +36,7 @@ describe('series circulation: LV output cannot exceed RV output', () => {
     // The left ventricle must not out-pump the right.
     expect(d.sv).toBeLessThanOrEqual(d.rvSv + 1e-9);
     expect(d.co).toBeLessThan(2.0);
-    // And the patient must be recognised as circulatory failing, not "compensated".
+    // And the patient must be recognized as circulatory failing, not "compensated".
     expect(d.cardiovascularStatus).not.toBe('compensated');
   });
 
@@ -53,7 +53,7 @@ describe('series circulation: LV output cannot exceed RV output', () => {
   });
 });
 
-describe('hydrostatic pulmonary oedema drives shunt', () => {
+describe('hydrostatic pulmonary edema drives shunt', () => {
   it('does not create shunt at a normal wedge', () => {
     const snap = snapshot({ ...DEFAULT_STATE }, DEFAULT_PARAMS);
     expect(snap.pcwp).toBeLessThan(DEFAULT_PARAMS.edemaPcwpThreshold);
@@ -72,7 +72,7 @@ describe('hydrostatic pulmonary oedema drives shunt', () => {
   it('improves oxygenation when preload is reduced', () => {
     // The clinical claim under test: offloading a wet patient fixes their
     // saturation because it fixes their filling pressure. This is why nitrates
-    // and diuresis beat oxygen in cardiogenic pulmonary oedema.
+    // and diuresis beat oxygen in cardiogenic pulmonary edema.
     const wet = derive({ ...DEFAULT_STATE, edv: 175, emax: 1.2 }, DEFAULT_PARAMS);
     const offloaded = derive({ ...DEFAULT_STATE, edv: 140, emax: 1.2 }, DEFAULT_PARAMS);
 
@@ -96,10 +96,10 @@ describe('hydrostatic pulmonary oedema drives shunt', () => {
   });
 });
 
-describe('anaemia does not manufacture lactic acidosis', () => {
+describe('anemia does not manufacture lactic acidosis', () => {
   it('leaves resting lactate normal across the clinically common range', () => {
-    // Chronic anaemia with a normal cardiac output does not produce lactate.
-    // A threshold set at normal SvO2 used to make every anaemic patient acidotic
+    // Chronic anemia with a normal cardiac output does not produce lactate.
+    // A threshold set at normal SvO2 used to make every anemic patient acidotic
     // and seeded false death spirals in any case involving blood loss.
     for (const hgb of [15, 12, 10, 8]) {
       const params = { ...DEFAULT_PARAMS, hgb };
@@ -111,7 +111,7 @@ describe('anaemia does not manufacture lactic acidosis', () => {
   });
 
   it('still generates lactate at genuinely critical oxygen delivery', () => {
-    // Profound anaemia plus a low output must still cross the anaerobic threshold.
+    // Profound anemia plus a low output must still cross the anaerobic threshold.
     const params = { ...DEFAULT_PARAMS, hgb: 5 };
     const d = derive({ ...DEFAULT_STATE, edv: 70, emax: 1.0 }, params);
     const target =

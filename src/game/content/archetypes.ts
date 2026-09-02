@@ -203,9 +203,9 @@ export const ARCHETYPES: CaseArchetype[] = [
         {
           at: ctx.declareAt,
           // The fever is real at the moment it is charted, so this one goes out on
-          // schedule; what it must not do is claim a patient who looks unwell.
-          page: `Sorry to bother you — ${ctx.name} in ${ctx.room} has spiked a temperature. ` +
-            `Observations are otherwise not far off, but ${v.subj} ${v.verb('seem')} a bit flat to me.`,
+          // schedule; what it must not do is claim a patient who looks sick.
+          page: `Sorry to bother you — ${ctx.name} in ${ctx.room} has spiked a fever. ` +
+            `Vitals are otherwise not far off, but ${v.subj} ${v.verb('seem')} a bit flat to me.`,
           interventions: [
             insult(ctx, { label: 'Sepsis: inflammatory tone', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.25, tauOn: 900, eliminationHalfLife: 36000 }),
           ],
@@ -219,7 +219,7 @@ export const ARCHETYPES: CaseArchetype[] = [
             : g.perf >= 1
             ? `${v.Subj} ${v.verb('look')} washed out and ${v.subj} ${v.is} slower to answer than earlier. ` +
               `The pressure has drifted down a little. Nothing dramatic, but it is not the direction I want.`
-            : `${v.Subj} ${v.verb('seem')} a bit brighter than earlier and the observations are reasonable. ` +
+            : `${v.Subj} ${v.verb('seem')} a bit brighter than earlier and the vitals are reasonable. ` +
               `Still not eating, though.`,
           interventions: [
             insult(ctx, { label: 'Sepsis: vasoplegia', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.28, tauOn: 1200, eliminationHalfLife: 36000 }),
@@ -230,12 +230,12 @@ export const ARCHETYPES: CaseArchetype[] = [
           at: jitter(ctx, ctx.declareAt + 170 * MIN),
           pageWhen: { axis: 'perf', grade: 2 },
           page: (g) => g.perf >= 3
-            ? `${v.Subj} ${v.is} mottled up to the knees and barely rousable. I need someone up here.`
+            ? `${v.Subj} ${v.is} mottled up to the knees and barely arousable. I need someone up here.`
             : g.perf >= 2
-            ? `${v.Subj} ${v.is} cold to the elbows and I can barely get a pressure sitting ${v.obj} up. ` +
-              `Can you come and look at ${v.obj}?`
-            : `I'm still not happy with ${v.obj}. ${v.Subj} ${v.is} quiet in ${v.obj}self and the ` +
-              `pressure has not come back up. Nothing alarming on the numbers.`,
+            ? `${v.Subj} ${v.is} cool all the way up to the elbows and I can barely get a pressure sitting ${v.obj} up. ` +
+              `Can you come look at ${v.obj}?`
+            : `I'm still not happy with ${v.obj}. ${v.Subj} ${v.is} quiet and not ${v.obj}self, ` +
+              `and the pressure has not come back up. Nothing alarming in the numbers.`,
           interventions: [
             insult(ctx, { label: 'Sepsis: progression', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.3, tauOn: 1800, eliminationHalfLife: 36000 }),
           ],
@@ -245,7 +245,7 @@ export const ARCHETYPES: CaseArchetype[] = [
     handoff: (ctx) => ({
       severityCall: 'stable',
       summary: `Pyelonephritis, day 2 of ceftriaxone. Afebrile most of today, eating and drinking. Likely home tomorrow.`,
-      todo: ['Chase the urine culture in the morning.'],
+      todo: ['Follow up on the urine culture in the morning.'],
       contingencies: [
         `If ${ctx.voice.subj} ${ctx.voice.verb('spike')} again, send cultures and a lactate before the next antibiotic dose.`,
         `${ctx.voice.Subj} ${ctx.voice.has} CKD — be careful with the aminoglycosides, but do not let that delay fluids.`,
@@ -253,7 +253,7 @@ export const ARCHETYPES: CaseArchetype[] = [
     }),
     medications: (ctx) => [
       { name: 'Ceftriaxone', detail: '1 g IV daily', since: `day ${ctx.rng.int(2, 3)} of 7` },
-      { name: 'Paracetamol', detail: '1 g orally every 6 hours as needed', since: 'admission' },
+      { name: 'Acetaminophen', detail: '1 g orally every 6 hours as needed', since: 'admission' },
       { name: 'Enoxaparin', detail: '40 mg subcutaneously daily — VTE prophylaxis', since: 'admission' },
       { name: 'Maintenance fluids', detail: 'saline at 75 mL/h', since: 'admission' },
     ],
@@ -281,7 +281,7 @@ export const ARCHETYPES: CaseArchetype[] = [
     ageRange: [58, 84],
     span: 3 * HOUR,
     admissionDx: 'Community-acquired pneumonia',
-    hiddenDx: 'Progressive pneumonia with septic shock and worsening hypoxaemia',
+    hiddenDx: 'Progressive pneumonia with septic shock and worsening hypoxemia',
     teachingPoint:
       'Sepsis from the lung is two problems at once: vasodilatory shock and a widening shunt. ' +
       'Treating only the oxygenation leaves the perfusion failing, and treating only the perfusion ' +
@@ -296,7 +296,7 @@ export const ARCHETYPES: CaseArchetype[] = [
         svr: 15,
         edv: ctx.rng.int(100, 112),
         qsQt: bySeverity(ctx, 0.06, 0.14),
-        // Warm sepsis at handover, but a patient a day team would leave on a
+        // Warm sepsis at sign-out, but a patient a day team would leave on a
         // ward: the inflammatory tone the case adds is what takes them off it.
         noTone: bySeverity(ctx, 0.06, 0.18),
       },
@@ -310,13 +310,13 @@ export const ARCHETYPES: CaseArchetype[] = [
           at: ctx.declareAt,
           pageWhen: { axis: 'either', grade: 1 },
           page: (g) => g.wob >= 2 || g.perf >= 2
-            ? `${ctx.name} in ${ctx.room} is working harder to breathe and the saturations have come down. ` +
+            ? `${ctx.name} in ${ctx.room} is working harder to breathe and the sats have come down. ` +
               `${v.Subj} ${v.is} warm to touch and the pressure is softer than it was.`
             : g.wob >= 1 || g.perf >= 1
             ? `${ctx.name} in ${ctx.room} is breathing a bit faster than earlier and ${v.is} warm to touch. ` +
-              `Saturations are holding for now. Wanted you to know before it gets away from us.`
+              `Sats are holding for now. Wanted you to know before it gets away from us.`
             : `${ctx.name} in ${ctx.room} is warm to touch and hasn't eaten this evening. ` +
-              `Observations are unremarkable, but ${v.subj} ${v.verb('seem')} off to me.`,
+              `Vitals are unremarkable, but ${v.subj} ${v.verb('seem')} off to me.`,
           interventions: [
             insult(ctx, { label: 'Pneumonia: shunt↑', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.12, tauOn: 1800, eliminationHalfLife: 43200 }),
             insult(ctx, { label: 'Pneumonia: sepsis', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.3, tauOn: 1800, eliminationHalfLife: 43200 }),
@@ -357,8 +357,8 @@ export const ARCHETYPES: CaseArchetype[] = [
       return 'Right lower lobe consolidation with air bronchograms, unchanged from the admission film.';
     },
     medications: (ctx) => [
-      { name: ctx.rng.pick(['Ceftriaxone and azithromycin', 'Co-amoxiclav and clarithromycin']), detail: 'IV, community-acquired pneumonia cover', since: `day ${ctx.rng.int(1, 3)} of 5` },
-      { name: 'Paracetamol', detail: '1 g orally every 6 hours as needed', since: 'admission' },
+      { name: ctx.rng.pick(['Ceftriaxone and azithromycin', 'Amoxicillin-clavulanate and clarithromycin']), detail: 'IV, community-acquired pneumonia cover', since: `day ${ctx.rng.int(1, 3)} of 5` },
+      { name: 'Acetaminophen', detail: '1 g orally every 6 hours as needed', since: 'admission' },
       { name: 'Enoxaparin', detail: '40 mg subcutaneously daily', since: 'admission' },
     ],
     priorLabs: (ctx) => [
@@ -375,20 +375,20 @@ export const ARCHETYPES: CaseArchetype[] = [
   },
 
   {
-    id: 'adhf-mislabelled',
-    label: 'Decompensated heart failure, labelled COPD',
+    id: 'adhf-mislabeled',
+    label: 'Decompensated heart failure, labeled COPD',
     tier: 'critical',
     ageRange: [62, 86],
     span: 2 * HOUR,
     admissionDx: 'COPD exacerbation',
-    hiddenDx: 'Acute decompensated heart failure with flash pulmonary oedema — mislabelled as COPD',
+    hiddenDx: 'Acute decompensated heart failure with flash pulmonary edema — mislabeled as COPD',
     teachingPoint:
-      'The admission diagnosis is a hypothesis, not a fact. This is cardiogenic pulmonary oedema: a high wedge ' +
+      'The admission diagnosis is a hypothesis, not a fact. This is cardiogenic pulmonary edema: a high wedge ' +
       'floods alveoli and creates true shunt, which is why oxygen alone barely helps. Preload reduction — nitrates, ' +
       'diuresis, positive pressure — fixes the oxygenation because it fixes the pressure. A fluid bolus makes it worse.',
     history: (ctx) => [
       'COPD',
-      ctx.rng.pick(['Prior anterior MI (EF 30%)', 'Ischaemic cardiomyopathy (EF 25%)', 'Prior inferior MI (EF 35%)']),
+      ctx.rng.pick(['Prior anterior MI (EF 30%)', 'Ischemic cardiomyopathy (EF 25%)', 'Prior inferior MI (EF 35%)']),
       ...ctx.rng.sample(['Hypertension', 'Atrial fibrillation', 'Type 2 diabetes', 'Chronic kidney disease'], 2),
     ],
     baseline: (ctx) => ({
@@ -399,7 +399,7 @@ export const ARCHETYPES: CaseArchetype[] = [
         edv: bySeverityInt(ctx, 142, 158),
         qsQt: 0.05,
       },
-      // Eccentric remodelling: a chronically dilated ventricle lives at volumes
+      // Eccentric remodeling: a chronically dilated ventricle lives at volumes
       // that would flatten a normal one, so its overdistension threshold is raised.
       // It scales with severity because the more advanced the cardiomyopathy, the
       // more dilated and the more volume-tolerant the ventricle already is — without
@@ -414,19 +414,19 @@ export const ARCHETYPES: CaseArchetype[] = [
           at: ctx.declareAt,
           pageWhen: { axis: 'wob', grade: 1 },
           page: (g) => g.wob >= 2
-            ? `${ctx.name} in ${ctx.room} is short of breath. The saturations are down and ${v.subj} ${v.isnt} ` +
+            ? `${ctx.name} in ${ctx.room} is short of breath. The sats are down and ${v.subj} ${v.isnt} ` +
               `tolerating lying flat. Sounds junky in both bases to me.`
             : g.wob >= 1
-            ? `${ctx.name} in ${ctx.room} has asked for another pillow and ${v.isnt} settling. ` +
+            ? `${ctx.name} in ${ctx.room} has asked for another pillow and ${v.isnt} settling down. ` +
               `Breathing faster than earlier, and it sounds junky at both bases.`
-            : `${ctx.name} in ${ctx.room} has asked for another pillow and ${v.isnt} settling. ` +
-              `Observations are fine. It sounds a little junky at the bases to me.`,
+            : `${ctx.name} in ${ctx.room} has asked for another pillow and ${v.isnt} settling down. ` +
+              `Vitals are fine. It sounds a little junky at the bases to me.`,
           interventions: [
             // Severity is deliberately NOT applied to the contractility hit.
             // Filling pressure goes as EDV/emax, so scaling both compounds into a
             // squared effect: a severe case reached a wedge of 50 against 35 for a
             // moderate one and became unsurvivable however fast it was treated.
-            // Scaling volume alone is also the truer mechanism — flash oedema is a
+            // Scaling volume alone is also the truer mechanism — flash edema is a
             // preload and afterload redistribution event, not an acute loss of
             // contractility.
             { label: 'ADHF: contractility↓', category: 'scenario', kind: 'scenario', target: 'emax', delta: -0.3, tauOn: 1800 * onsetScale(ctx.severity), eliminationHalfLife: 36000 },
@@ -444,7 +444,7 @@ export const ARCHETYPES: CaseArchetype[] = [
             : `${v.Subj} ${v.is} propped right up on four pillows now and ${v.subj} ${v.verb('say')} ${v.subj} ` +
               `${v.verb('breathe')} easier that way. The numbers are much the same.`,
           interventions: [
-            insult(ctx, { label: 'Flash oedema', category: 'scenario', kind: 'scenario', target: 'edv', delta: 26, tauOn: 900, eliminationHalfLife: 36000 }),
+            insult(ctx, { label: 'Flash edema', category: 'scenario', kind: 'scenario', target: 'edv', delta: 26, tauOn: 900, eliminationHalfLife: 36000 }),
           ],
         },
       ];
@@ -452,13 +452,13 @@ export const ARCHETYPES: CaseArchetype[] = [
     handoff: (ctx) => ({
       severityCall: 'watcher',
       summary:
-        `COPD exacerbation, day 1 of prednisone and scheduled nebulisers. Now needing 2L, which is new for ${ctx.voice.obj} — ` +
-        `normally on room air at home. Net positive ${ctx.rng.real(1.8, 3.1).toFixed(1)} litres since admission.`,
-      todo: ['Scheduled nebulisers are due at 22:00 and 04:00.', 'Morning chest film if no better.'],
+        `COPD exacerbation, day 1 of prednisone and scheduled nebulizers. Now needing 2L, which is new for ${ctx.voice.obj} — ` +
+        `normally on room air at home. Net positive ${ctx.rng.real(1.8, 3.1).toFixed(1)} liters since admission.`,
+      todo: ['Scheduled nebulizers are due at 22:00 and 04:00.', 'Morning chest film if no better.'],
       contingencies: [
         'The weight is up and the oxygen requirement is new — if the chest film looks wet, treat the heart rather than the airways.',
       ],
-      misleading: 'If the saturations drop, turn the oxygen up and give a PRN nebuliser.',
+      misleading: 'If the sats drop, turn the oxygen up and give a PRN nebulizer.',
     }),
     findings: () => (panel) =>
       panel === 'CXR' ? 'Cardiomegaly with an enlarged cardiac silhouette.' : null,
@@ -491,7 +491,7 @@ export const ARCHETYPES: CaseArchetype[] = [
     admissionDx: 'Post-operative, day 2 — pain control',
     hiddenDx: 'Massive pulmonary embolism with right ventricular failure',
     teachingPoint:
-      'Sudden hypoxaemia with hypotension and a clear chest is obstructive shock until proven otherwise. ' +
+      'Sudden hypoxemia with hypotension and a clear chest is obstructive shock until proven otherwise. ' +
       'The failing ventricle is the right one: pressure-overloaded, dilating, bowing the septum into the LV. ' +
       'Volume makes RV failure worse. The treatment is to unload it — anticoagulation, and lysis if unstable.',
     history: (ctx) => [
@@ -511,9 +511,9 @@ export const ARCHETYPES: CaseArchetype[] = [
           // but it still waits for the patient rather than for the clock.
           pageWhen: { axis: 'either', grade: 1, by: 10 * MIN },
           page: (g) => g.wob >= 2 || g.perf >= 2
-            ? `Rapid one — ${ctx.room} just got back from the bathroom and ${v.subj} can't catch ${v.poss} breath. ` +
-              `Saturations have dropped right off and the heart rate is up. ${v.Subj} ${v.verb('say')} it hurts to breathe in.`
-            : `${ctx.room} came back from the bathroom short of breath and ${v.subj} ${v.is} not settling. ` +
+            ? `Rapid response — ${ctx.room} just got back from the bathroom and ${v.subj} can't catch ${v.poss} breath. ` +
+              `Her sats have dropped off and the heart rate is up. ${v.Subj} ${v.verb('say')} it hurts to breathe in.`
+            : `${ctx.room} came back from the bathroom short of breath and ${v.subj} ${v.is} not settling down. ` +
               `Breathing faster than ${v.poss} usual, and ${v.subj} ${v.verb('say')} it hurts to breathe in.`,
           interventions: [
             insult(ctx, { label: 'PE: PVR↑', category: 'scenario', kind: 'scenario', target: 'pvr', delta: 5.5, tauOn: 240, eliminationHalfLife: 86400 }),
@@ -524,12 +524,12 @@ export const ARCHETYPES: CaseArchetype[] = [
           at: jitter(ctx, ctx.declareAt + 45 * MIN, 5 * MIN),
           pageWhen: { axis: 'either', grade: 2 },
           page: (g) => g.perf >= 2
-            ? `The pressure is dropping. ${v.Subj} ${v.is} grey, and ${v.subj} ${v.verb('keep')} telling me ${v.subj} ${v.is} going to die.`
+            ? `The pressure is dropping. ${v.Subj} ${v.is} gray, and ${v.subj} ${v.verb('keep')} telling me ${v.subj} ${v.is} going to die.`
             : g.wob >= 2
             ? `${v.Subj} ${v.is} working much harder now and the oxygen is not touching it. ` +
               `${v.Subj} ${v.verb('keep')} telling me ${v.subj} ${v.is} going to die.`
             : `${v.Subj} ${v.is} no better and ${v.subj} ${v.verb('keep')} telling me ${v.subj} ${v.is} going to die. ` +
-              `I can't put my finger on it from the observations, but ${v.subj} ${v.is} frightened.`,
+              `I can't put my finger on it from the vitals, but ${v.subj} ${v.is} frightened.`,
           interventions: [
             insult(ctx, { label: 'PE: clot propagation', category: 'scenario', kind: 'scenario', target: 'pvr', delta: 2.2, tauOn: 2400, eliminationHalfLife: 86400 }),
             insult(ctx, { label: 'PE: RV failure', category: 'scenario', kind: 'scenario', target: 'rvEmax', delta: -0.1, tauOn: 2400, eliminationHalfLife: 86400 }),
@@ -541,8 +541,8 @@ export const ARCHETYPES: CaseArchetype[] = [
       severityCall: 'stable',
       summary: `Day 2 after surgery. Routine recovery. Was for discharge today, held back for pain control.`,
       todo: [
-        'Oxycodone is written as required — nothing else outstanding.',
-        `Enoxaparin has been held since yesterday because of the wound haematoma. Surgery to review in the morning.`,
+        'Oxycodone is written PRN — nothing else outstanding.',
+        `Enoxaparin has been held since yesterday because of the wound hematoma. Surgery will see her in the morning.`,
       ],
       contingencies: [
         'Prophylaxis has been off for 24 hours. If anything acute happens to the chest overnight, think embolus first.',
@@ -558,7 +558,7 @@ export const ARCHETYPES: CaseArchetype[] = [
     },
     medications: () => [
       { name: 'Enoxaparin', detail: '40 mg subcutaneously daily — prophylactic dose only', since: 'admission' },
-      { name: 'Paracetamol', detail: '1 g orally every 6 hours as needed', since: 'admission' },
+      { name: 'Acetaminophen', detail: '1 g orally every 6 hours as needed', since: 'admission' },
       { name: 'Oxycodone', detail: '5 mg orally every 4 hours as needed', since: 'admission' },
     ],
     priorLabs: () => [
@@ -582,10 +582,10 @@ export const ARCHETYPES: CaseArchetype[] = [
     tier: 'critical',
     ageRange: [45, 82],
     span: 3 * HOUR,
-    admissionDx: 'Upper GI bleed — melaena',
-    hiddenDx: 'Rebleeding peptic ulcer causing haemorrhagic shock',
+    admissionDx: 'Upper GI bleed — melena',
+    hiddenDx: 'Rebleeding peptic ulcer causing hemorrhagic shock',
     teachingPoint:
-      'Haemorrhagic shock is a volume problem, and the only definitive treatments are blood and haemostasis. ' +
+      'Hemorrhagic shock is a volume problem, and the only definitive treatments are blood and hemostasis. ' +
       'A vasopressor raises the pressure by squeezing an empty tank — the number improves while the tissue perfusion ' +
       'does not. Tachycardia and a narrowing pulse pressure precede hypotension by a long way.',
     history: (ctx) => [
@@ -602,7 +602,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       return [
         {
           at: ctx.declareAt,
-          page: `${ctx.room} has had another melaenic stool, a big one. ${v.Subj} ${v.is} a bit tachycardic but the pressure is holding.`,
+          page: `${ctx.room} has had more melena, and a lot of it. ${v.Subj} ${v.is} a bit tachycardic but the pressure is holding.`,
           interventions: [
             insult(ctx, { label: 'GI bleed: volume loss', category: 'scenario', kind: 'scenario', target: 'edv', delta: -20, tauOn: 900, eliminationHalfLife: 86400 }),
           ],
@@ -614,7 +614,7 @@ export const ARCHETYPES: CaseArchetype[] = [
           page: (g) => `${v.Subj} ${v.is} bleeding again — the bed is soaked and it's frank blood this time. ` +
             (g.perf >= 2 ? `${v.Subj} ${v.is} pale and clammy.`
               : g.perf >= 1 ? `${v.Subj} ${v.verb('look')} washed out and the heart rate is up.`
-              : `${v.Subj} ${v.verb('look')} well enough in ${v.obj}self, but that was a lot of blood.`),
+              : `${v.Subj} ${v.verb('look')} okay otherwise, but that was a lot of blood.`),
           interventions: [
             // A rebleeding ulcer oozes over hours. Blood takes half an hour to
             // arrive from the bank, and the player needs a patient when it does.
@@ -627,16 +627,16 @@ export const ARCHETYPES: CaseArchetype[] = [
     handoff: (ctx) => ({
       severityCall: 'watcher',
       summary:
-        `Upper GI bleed, presumed peptic ulcer. Two units in the emergency department, haemoglobin came up and has held all afternoon. ` +
-        `Pantoprazole infusion running. GI plan to scope in the morning.`,
+        `Upper GI bleed, presumed peptic ulcer. Two units in the emergency department, hemoglobin came up and has held all afternoon. ` +
+        `Pantoprazole infusion running. GI plans to scope in the morning.`,
       todo: [
-        'Repeat haemoglobin at 06:00.',
-        'Nil by mouth from midnight for the endoscopy.',
-        `${ctx.voice.Subj} ${ctx.voice.has} two large-bore cannulae — please keep them patent.`,
+        'Repeat hemoglobin at 06:00.',
+        'NPO from midnight for the endoscopy.',
+        `${ctx.voice.Subj} ${ctx.voice.has} two large-bore IVs — please keep them patent.`,
       ],
       contingencies: [
-        'If there is another large melaena or frank blood, send a crossmatch and transfuse to a haemoglobin of 7.',
-        'If the heart rate climbs or the pressure drops, call the GI fellow overnight rather than waiting for the morning list — do not sit on it.',
+        'If there is more melena or frank blood, send a type and cross and transfuse to a hemoglobin of 7.',
+        'If the heart rate climbs or the pressure drops, call the GI fellow overnight rather than waiting for the morning — do not sit on it.',
         `${ctx.voice.Subj} will not tolerate being scoped on the ward. If bleeding actively, ${ctx.voice.subj} ${ctx.voice.verb('need')} a monitored bed first.`,
       ],
     }),
@@ -644,7 +644,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       { name: 'Pantoprazole', detail: '8 mg/h continuous infusion', since: 'admission' },
       { name: 'Ondansetron', detail: '4 mg IV every 8 hours as needed', since: 'admission' },
       { name: 'Maintenance fluids', detail: 'saline at 100 mL/h', since: 'admission' },
-      { name: 'Nil by mouth', detail: 'from midnight, for endoscopy', since: 'day team instruction' },
+      { name: 'NPO', detail: 'from midnight, for endoscopy', since: 'day team instruction' },
     ],
     priorLabs: (ctx) => [
       prior('CBC', 300, [
@@ -657,7 +657,7 @@ export const ARCHETYPES: CaseArchetype[] = [
         pv('Hgb', bySeverity(ctx, 11.4, 9.6), 'g/dL', 1, { low: 12 }),
         pv('Platelets', 204, 'K/µL', 0, { low: 150, high: 400 }),
       ]),
-      prior('Type and screen', 900, [], 'Group O positive. Antibody screen negative. Two units crossmatched and held.'),
+      prior('Type and screen', 900, [], 'Type O positive. Antibody screen negative. Two units crossmatched and held.'),
     ],
     expectedOrders: ['lab-cbc', 'prbc', 'consult-gi', 'ns-1000', 'transfer-icu'],
     contraindicatedOrders: ['norepi', 'furosemide'],
@@ -672,11 +672,11 @@ export const ARCHETYPES: CaseArchetype[] = [
     admissionDx: 'Chest pain — rule out acute coronary syndrome',
     hiddenDx: 'Anterior STEMI with cardiogenic shock',
     teachingPoint:
-      'Cardiogenic shock is a pump problem: low output, high filling pressures, and pulmonary oedema together. ' +
+      'Cardiogenic shock is a pump problem: low output, high filling pressures, and pulmonary edema together. ' +
       'The distinguishing feature from sepsis is that the patient is cold and congested rather than warm and dry. ' +
       'Fluid worsens it; the definitive treatment is reperfusion, and every minute of delay costs myocardium.',
     history: (ctx) => ctx.rng.sample(
-      ['Hyperlipidaemia', 'Hypertension', 'Family history of premature CAD', 'Type 2 diabetes', 'Ex-smoker', 'Peripheral vascular disease'],
+      ['Hyperlipidemia', 'Hypertension', 'Family history of premature CAD', 'Type 2 diabetes', 'Ex-smoker', 'Peripheral vascular disease'],
       3,
     ),
     baseline: (ctx) => ({
@@ -690,8 +690,8 @@ export const ARCHETYPES: CaseArchetype[] = [
           at: ctx.declareAt,
           urgent: true,
           page: (g) => `${ctx.room} woke up with crushing chest pain — ${v.subj} ${v.verb('say')} it's worse than what brought ${v.obj} in. ` +
-            (g.perf >= 1 ? `${v.Subj} ${v.is} diaphoretic and grey.`
-              : `${v.Subj} ${v.is} sweaty with it. Observations are holding so far.`),
+            (g.perf >= 1 ? `${v.Subj} ${v.is} diaphoretic and gray.`
+              : `${v.Subj} ${v.is} sweaty with it. Vitals are holding so far.`),
           interventions: [
             insult(ctx, { label: 'STEMI: contractility↓', category: 'scenario', kind: 'scenario', target: 'emax', delta: -0.95, tauOn: 600, eliminationHalfLife: 86400 }),
           ],
@@ -702,8 +702,8 @@ export const ARCHETYPES: CaseArchetype[] = [
           page: (g) => g.perf >= 2
             ? `The pressure is down and ${v.subj} ${v.is} short of breath on top of the pain now.`
             : g.wob >= 1 || g.perf >= 1
-            ? `The pain is not settling and ${v.subj} ${v.is} short of breath on top of it now.`
-            : `The pain is still there and the morphine has not touched it. Observations unchanged.`,
+            ? `The pain is not letting up and ${v.subj} ${v.is} short of breath on top of it now.`
+            : `The pain is still there and the morphine has not touched it. Vitals unchanged.`,
           interventions: [
             insult(ctx, { label: 'STEMI: infarct extension', category: 'scenario', kind: 'scenario', target: 'emax', delta: -0.45, tauOn: 900, eliminationHalfLife: 86400 }),
           ],
@@ -713,7 +713,7 @@ export const ARCHETYPES: CaseArchetype[] = [
     handoff: () => ({
       severityCall: 'stable',
       summary: `Chest pain, two negative troponins, unremarkable EKG on arrival. Pain free since the emergency department. Stress test booked for the morning.`,
-      todo: ['Nil by mouth from midnight for the stress test.'],
+      todo: ['NPO from midnight for the stress test.'],
       contingencies: [
         'Two negative troponins rule out very little at this stage. If the pain returns, repeat the EKG immediately and cycle the troponin — do not wait for the stress test.',
       ],
@@ -738,12 +738,12 @@ export const ARCHETYPES: CaseArchetype[] = [
       { name: 'Atorvastatin', detail: '80 mg orally at night', since: 'admission' },
       { name: 'Metoprolol', detail: '25 mg orally twice daily', since: 'admission' },
       { name: 'Enoxaparin', detail: '40 mg subcutaneously daily — prophylactic dose', since: 'admission' },
-      { name: 'Glyceryl trinitrate', detail: '0.4 mg sublingual as needed for chest pain', since: 'admission' },
+      { name: 'Nitroglycerin', detail: '0.4 mg sublingual as needed for chest pain', since: 'admission' },
     ],
     priorLabs: () => [
       prior('Troponin', 720, [pv('Troponin I', 0.03, 'ng/mL', 2, { high: 0.04 })]),
       prior('Troponin', 360, [pv('Troponin I', 0.04, 'ng/mL', 2, { high: 0.04 })]),
-      prior('EKG', 720, [], 'Normal sinus rhythm at 78. No acute ischaemic changes. No comparison available.'),
+      prior('EKG', 720, [], 'Normal sinus rhythm at 78. No acute ischemic changes. No comparison available.'),
       prior('Lipid panel', 720, [
         pv('LDL', 168, 'mg/dL', 0, { high: 100 }),
         pv('HDL', 34, 'mg/dL', 0, { low: 40 }),
@@ -763,7 +763,7 @@ export const ARCHETYPES: CaseArchetype[] = [
     hiddenDx: 'COPD exacerbation with acute bronchospasm — the admission diagnosis is correct',
     teachingPoint:
       'Not every deterioration is a hidden diagnosis. This is bronchospasm, the obvious treatment is the right one, ' +
-      'and the skill being tested is recognising that quickly and not spending the night working it up. ' +
+      'and the skill being tested is recognizing that quickly and not spending the night working it up. ' +
       'Note the baseline saturation: chasing a normal number in someone who lives at 90% causes harm.',
     history: (ctx) => [
       ctx.rng.pick(['Severe COPD (FEV1 34%)', 'Severe COPD (FEV1 28%)', 'COPD with chronic bronchitis']),
@@ -791,10 +791,10 @@ export const ARCHETYPES: CaseArchetype[] = [
             ? `${ctx.name} is wheezing all over and using ${v.poss} accessory muscles. ` +
               `${v.Subj} can only get out a few words at a time.`
             : g.wob >= 1
-            ? `${ctx.name} is more wheezy than earlier and ${v.subj} ${v.verb('want')} ${v.poss} neb brought forward. ` +
+            ? `${ctx.name} is more wheezy than earlier and ${v.subj} ${v.verb('want')} ${v.poss} neb moved up. ` +
               `${v.Subj} ${v.is} still talking in sentences.`
             : `${ctx.name} is a bit wheezy and ${v.verb('want')} to know whether ${v.subj} can have ` +
-              `${v.poss} neb early. Observations are at ${v.poss} usual.`,
+              `${v.poss} neb early. Vitals are at ${v.poss} usual.`,
           interventions: [
             // Bronchospasm does not self-resolve overnight; nebs and steroids reverse it.
             insult(ctx, { label: 'Bronchospasm: V/Q', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.17, tauOn: 600, eliminationHalfLife: 86400 }),
@@ -805,10 +805,10 @@ export const ARCHETYPES: CaseArchetype[] = [
     },
     handoff: (ctx) => ({
       severityCall: 'watcher',
-      summary: 'COPD exacerbation, day 2. Slowly improving on prednisone and scheduled nebulisers.',
-      todo: ['Scheduled nebulisers at 22:00 and 04:00.'],
+      summary: 'COPD exacerbation, day 2. Slowly improving on prednisone and scheduled nebulizers.',
+      todo: ['Scheduled nebulizers at 22:00 and 04:00.'],
       contingencies: [
-        `Saturation at home is 89–91% on 2L. Please do not chase a normal number — target ${ctx.voice.poss} baseline.`,
+        `Baseline sats at home are 89–91% on 2L. Please do not chase a normal number — target ${ctx.voice.poss} baseline, not yours.`,
         'If tiring, think about non-invasive ventilation before a tube.',
       ],
     }),
@@ -819,8 +819,8 @@ export const ARCHETYPES: CaseArchetype[] = [
         : null,
     medications: (ctx) => [
       { name: 'Prednisolone', detail: '40 mg orally daily', since: `day ${ctx.rng.int(1, 3)} of 5` },
-      { name: 'Salbutamol/ipratropium nebulisers', detail: 'scheduled every 6 hours, plus as needed', since: 'admission' },
-      { name: ctx.rng.pick(['Doxycycline', 'Co-amoxiclav']), detail: 'oral', since: `day ${ctx.rng.int(1, 3)} of 5` },
+      { name: 'Albuterol/ipratropium nebulizers', detail: 'scheduled every 6 hours, plus as needed', since: 'admission' },
+      { name: ctx.rng.pick(['Doxycycline', 'Amoxicillin-clavulanate']), detail: 'oral', since: `day ${ctx.rng.int(1, 3)} of 5` },
       { name: 'Home oxygen', detail: '2 L via nasal cannula — target saturation 88–92%', since: 'home therapy' },
       { name: 'Enoxaparin', detail: '40 mg subcutaneously daily', since: 'admission' },
     ],
@@ -844,16 +844,16 @@ export const ARCHETYPES: CaseArchetype[] = [
   },
 
   {
-    id: 'hypovolaemia',
+    id: 'hypovolemia',
     label: 'Dehydration and poor intake',
     tier: 'ward',
     ageRange: [70, 92],
     span: 2 * HOUR,
     admissionDx: 'Poor oral intake, acute kidney injury',
-    hiddenDx: 'Hypovolaemia from poor intake and diuretics — corrects readily with fluid',
+    hiddenDx: 'Hypovolemia from poor intake and diuretics — corrects readily with fluid',
     teachingPoint:
       'Not everything that drops a blood pressure is shock. An empty, well-perfused patient who responds to a ' +
-      'fluid bolus is the commonest overnight call there is, and recognising it saves both an unnecessary ' +
+      'fluid bolus is the commonest overnight call there is, and recognizing it saves both an unnecessary ' +
       'escalation and the harm of treating a full patient as if they were empty.',
     history: (ctx) => ctx.rng.sample(
       ['Chronic kidney disease', 'On furosemide at home', 'Frailty', 'Dementia', 'Recurrent falls', 'Hypertension'],
@@ -875,7 +875,7 @@ export const ARCHETYPES: CaseArchetype[] = [
           page: `${ctx.room}'s blood pressure is lower than it has been — ${v.subj} ${v.verb('feel')} fine and ${v.is} talking to me, ` +
             `but ${v.subj} ${v.has} not really drunk anything today and the urine output is down.`,
           interventions: [
-            insult(ctx, { label: 'Hypovolaemia', category: 'scenario', kind: 'scenario', target: 'edv', delta: -18, tauOn: 2400, eliminationHalfLife: 43200 }),
+            insult(ctx, { label: 'Hypovolemia', category: 'scenario', kind: 'scenario', target: 'edv', delta: -18, tauOn: 2400, eliminationHalfLife: 43200 }),
           ],
         },
       ];
@@ -883,7 +883,7 @@ export const ARCHETYPES: CaseArchetype[] = [
     handoff: (ctx) => ({
       severityCall: 'stable',
       summary: `Admitted with poor oral intake and an acute kidney injury. Creatinine improving with gentle fluids. Home diuretics held.`,
-      todo: ['Strict fluid balance.', 'Repeat renal function in the morning.'],
+      todo: ['Strict intake and output.', 'Repeat renal function in the morning.'],
       contingencies: [
         `If the pressure drifts down, ${ctx.voice.subj} ${ctx.voice.is} more likely to be dry than septic — ` +
           'a bolus and a reassessment is reasonable before anything else.',
@@ -920,8 +920,8 @@ export const ARCHETYPES: CaseArchetype[] = [
     hiddenDx: 'Progressive aspiration pneumonia in advanced dementia — the dying process',
     teachingPoint:
       'Escalation is not always the intervention. This patient is at the end of a long trajectory, and the ' +
-      'meaningful clinical act overnight is a goals-of-care conversation, not another litre of fluid. ' +
-      'Recognising who cannot be rescued is as much a clinical skill as recognising who can.',
+      'meaningful clinical act overnight is a goals-of-care conversation, not another liter of fluid. ' +
+      'Recognizing who cannot be rescued is as much a clinical skill as recognizing who can.',
     history: () => [
       'Advanced dementia — non-verbal, fully dependent',
       'Third aspiration pneumonia in six months',
@@ -946,13 +946,13 @@ export const ARCHETYPES: CaseArchetype[] = [
           at: ctx.declareAt,
           pageWhen: { axis: 'wob', grade: 1 },
           page: (g) => g.wob >= 2
-            ? `${ctx.name} in ${ctx.room} is satting in the high eighties and the breathing looks laboured. ` +
+            ? `${ctx.name} in ${ctx.room} is satting in the high eighties and the breathing looks labored. ` +
               `${v.Subj} ${v.isnt} distressed exactly, but ${v.subj} ${v.verb('look')} uncomfortable.`
             : g.wob >= 1
-            ? `${ctx.name} in ${ctx.room} is breathing faster than earlier and the saturations have slipped. ` +
+            ? `${ctx.name} in ${ctx.room} is breathing faster than earlier and the sats have slipped. ` +
               `${v.Subj} ${v.isnt} distressed, but ${v.subj} ${v.verb('look')} tired.`
             : `${ctx.name} in ${ctx.room} is very tired and not taking much. ` +
-              `Observations are unchanged, but ${v.subj} ${v.verb('look')} like ${v.subj} ${v.is} fading to me.`,
+              `Vitals are unchanged, but ${v.subj} ${v.verb('look')} like ${v.subj} ${v.is} fading to me.`,
           interventions: [
             insult(ctx, { label: 'Pneumonia: shunt↑', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.1, tauOn: 3600, eliminationHalfLife: 86400 }),
             insult(ctx, { label: 'Pneumonia: sepsis', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.22, tauOn: 3600, eliminationHalfLife: 86400 }),
@@ -963,7 +963,7 @@ export const ARCHETYPES: CaseArchetype[] = [
           pageWhen: { axis: 'either', grade: 1 },
           page: (g) => (g.wob >= 1 || g.perf >= 1
             ? `${v.Subj} ${v.is} working harder and the pressure is drifting down. `
-            : `${v.Subj} ${v.is} no better than ${v.subj} ${v.was} at handover. `) +
+            : `${v.Subj} ${v.is} no better than ${v.subj} ${v.was} at sign-out. `) +
             `I don't think ${v.subj} ${v.is} going to turn around. Do you want to talk to the family?`,
           interventions: [
             insult(ctx, { label: 'Progressive decline', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.25, tauOn: 3600, eliminationHalfLife: 86400 }),
@@ -976,7 +976,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       severityCall: 'stable',
       summary: `Aspiration pneumonia, day 4 of antibiotics. Advanced dementia, admitted from a nursing home. Third admission in six months.`,
       todo: [
-        `No goals-of-care discussion documented this admission. The family have not returned our calls — someone should try again.`,
+        `No goals-of-care discussion documented this admission. The family has not returned our calls — someone should try again.`,
       ],
       contingencies: [
         `${ctx.voice.Subj} ${ctx.voice.is} DNR/DNI. If ${ctx.voice.subj} ${ctx.voice.verb('deteriorate')}, the conversation to have is with the family, not the intensivist.`,
@@ -991,7 +991,7 @@ export const ARCHETYPES: CaseArchetype[] = [
     medications: () => [
       { name: 'Piperacillin–tazobactam', detail: '4.5 g IV every 6 hours', since: 'day 4 of admission' },
       { name: 'Morphine', detail: '2 mg subcutaneously every 4 hours as needed for breathlessness', since: 'day 3' },
-      { name: 'Hyoscine butylbromide', detail: '20 mg subcutaneously as needed for secretions', since: 'day 4' },
+      { name: 'Glycopyrrolate', detail: '20 mg subcutaneously as needed for secretions', since: 'day 4' },
       { name: 'Oxygen', detail: '2 L via nasal cannula, for comfort', since: 'admission' },
     ],
     priorLabs: (ctx) => [
@@ -1042,10 +1042,10 @@ export const ARCHETYPES: CaseArchetype[] = [
           at: ctx.declareAt,
           pageWhen: { axis: 'wob', grade: 1 },
           page: (g) => g.wob >= 2
-            ? `${ctx.name} in ${ctx.room} is much more breathless since the drain came out, and the saturations ` +
-              `have come down. Air entry sounds much quieter on one side to me.`
+            ? `${ctx.name} in ${ctx.room} is much more breathless since the drain came out, and the sats ` +
+              `have come down. Breath sounds are a lot quieter on that side.`
             : `${ctx.name} in ${ctx.room} is a bit more breathless since the drain came out. ` +
-              `Air entry sounds quieter on one side to me — I wanted you to hear it too.`,
+              `Breath sounds seem quieter on one side to me — I wanted you to hear it too.`,
           interventions: [
             insult(ctx, { label: 'Pneumothorax: shunt↑', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.13, tauOn: 1500, eliminationHalfLife: 86400 }),
             insult(ctx, { label: 'Pneumothorax: intrathoracic pressure', category: 'scenario', kind: 'scenario', target: 'cvp', delta: 8, tauOn: 1800, eliminationHalfLife: 86400 }),
@@ -1070,7 +1070,7 @@ export const ARCHETYPES: CaseArchetype[] = [
     },
     handoff: (ctx) => ({
       severityCall: 'watcher',
-      summary: `Pleural effusion drained this afternoon — 1.2 litres off, ${ctx.voice.subj} felt much better afterwards. Post-procedure film was reported as satisfactory.`,
+      summary: `Pleural effusion drained this afternoon — 1.2 liters off, ${ctx.voice.subj} felt much better afterward. Post-procedure film was reported as satisfactory.`,
       todo: ['Repeat chest film in the morning.'],
       contingencies: [
         'If the breathlessness comes back after a drain, get a film before anything else — a post-procedural pneumothorax can declare hours later.',
@@ -1092,7 +1092,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       return 'Small apical pneumothorax at the site of the removed drain, unchanged from the comparison film. Lung otherwise expanded.';
     },
     medications: () => [
-      { name: 'Paracetamol', detail: '1 g orally every 6 hours', since: 'admission' },
+      { name: 'Acetaminophen', detail: '1 g orally every 6 hours', since: 'admission' },
       { name: 'Oxycodone', detail: '5 mg orally every 4 hours as needed', since: 'admission' },
       { name: 'Enoxaparin', detail: '40 mg subcutaneously daily', since: 'admission' },
     ],
@@ -1133,7 +1133,7 @@ export const ARCHETYPES: CaseArchetype[] = [
           page: (g) => `${ctx.name} coughed and choked during the evening meal. I've sat ${v.obj} up and suctioned. ` +
             (g.wob >= 2 ? `${v.Subj} ${v.verb('sound')} wet and ${v.subj} ${v.is} desaturating.`
               : g.wob >= 1 ? `${v.Subj} ${v.verb('sound')} rattly and ${v.subj} ${v.is} breathing faster than earlier.`
-              : `${v.Subj} ${v.verb('sound')} a bit rattly but the observations are unchanged so far.`),
+              : `${v.Subj} ${v.verb('sound')} a bit rattly but the vitals are unchanged so far.`),
           interventions: [
             insult(ctx, { label: 'Aspiration: shunt↑', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.15, tauOn: 900, eliminationHalfLife: 43200 }),
             insult(ctx, { label: 'Aspiration: inflammation', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.14, tauOn: 3600, eliminationHalfLife: 43200 }),
@@ -1154,7 +1154,7 @@ export const ARCHETYPES: CaseArchetype[] = [
     },
     handoff: (ctx) => ({
       severityCall: 'watcher',
-      summary: `Stroke with dysphagia. Speech and language have ${ctx.voice.obj} on a modified diet with thickened fluids; ${ctx.voice.subj} ${ctx.voice.verb('cough')} on thin fluids.`,
+      summary: `Stroke with dysphagia. Speech therapy have ${ctx.voice.obj} on a modified diet with thickened fluids; ${ctx.voice.subj} ${ctx.voice.verb('cough')} on thin fluids.`,
       todo: ['Modified diet only — nothing thin by mouth.', 'Sit fully upright for meals.'],
       contingencies: [
         `If ${ctx.voice.subj} ${ctx.voice.verb('aspirate')}, sit ${ctx.voice.obj} up, suction, and give oxygen. Antibiotics only if a fever or infiltrate develops — the first few hours are chemical, not infective.`,
@@ -1167,13 +1167,13 @@ export const ARCHETYPES: CaseArchetype[] = [
         : null;
     },
     medications: () => [
-      { name: 'Modified diet', detail: 'level 5 minced and moist, thickened fluids — speech and language assessment', since: 'day 2' },
+      { name: 'Modified diet', detail: 'level 5 minced and moist, thickened fluids — speech therapy assessment', since: 'day 2' },
       { name: 'Aspirin', detail: '300 mg orally daily', since: 'admission' },
       { name: 'Atorvastatin', detail: '40 mg orally at night', since: 'admission' },
       { name: 'Enoxaparin', detail: '40 mg subcutaneously daily', since: 'admission' },
     ],
     priorLabs: () => [
-      prior('Swallow assessment', 1440, [], 'Speech and language: unsafe with thin fluids, overt cough. Level 5 diet with thickened fluids. Reassess in 48 hours.'),
+      prior('Swallow assessment', 1440, [], 'Speech therapy: unsafe with thin fluids, overt cough. Level 5 diet with thickened fluids. Reassess in 48 hours.'),
       prior('CBC', 720, [
         pv('WBC', 9.4, 'K/µL', 1, { low: 4, high: 11 }),
         pv('Hgb', 12.9, 'g/dL', 1, { low: 12 }),
@@ -1194,7 +1194,7 @@ export const ARCHETYPES: CaseArchetype[] = [
     teachingPoint:
       'Confusion at night in an elderly inpatient is common, and the answer is almost never a sedative. ' +
       'The hard part is that it looks exactly like the early presentation of something serious, so the right ' +
-      'move is a quick set of observations to exclude the dangerous causes and then a non-pharmacologic bundle — ' +
+      'move is a quick set of vitals to exclude the dangerous causes and then a non-pharmacologic bundle — ' +
       'not a workup, and not haloperidol.',
     history: (ctx) => ctx.rng.sample(
       ['Mild cognitive impairment', 'Hearing loss', 'Poor vision', 'Lives alone', 'Previous delirium in hospital'],
@@ -1210,30 +1210,30 @@ export const ARCHETYPES: CaseArchetype[] = [
         {
           at: ctx.declareAt,
           page: `${ctx.name} in ${ctx.room} is agitated and trying to get out of bed — ${v.subj} ${v.verb('think')} ` +
-            `${v.subj} ${v.is} at home and ${v.verb('want')} to leave. Observations are all normal. Do you want anything for it?`,
+            `${v.subj} ${v.is} at home and ${v.verb('want')} to leave. Vitals are all normal. Do you want anything for it?`,
         },
         {
           at: jitter(ctx, ctx.declareAt + 130 * MIN),
-          page: `Still unsettled and calling out. ${v.Subj} ${v.verb('settle')} when I sit with ${v.obj}, but I can't stay.`,
+          page: `Still agitated and calling out. ${v.Subj} ${v.verb('settle')} when I sit with ${v.obj}, but I can't stay.`,
         },
         {
           at: jitter(ctx, ctx.declareAt + 300 * MIN),
-          page: `${ctx.room} has finally gone off to sleep. Nothing else needed overnight.`,
+          page: `${ctx.room} has finally fallen asleep. Nothing else needed overnight.`,
         },
       ];
     },
     handoff: (ctx) => ({
       severityCall: 'stable',
-      summary: `Community-acquired pneumonia, day 4 and much improved. Afebrile, off oxygen, eating. For discharge home once the family can collect ${ctx.voice.obj}.`,
-      todo: [`${ctx.voice.Subj} ${ctx.voice.verb('get')} muddled in the evenings — the family say this happens in hospital and settles at home.`],
+      summary: `Community-acquired pneumonia, day 4 and much improved. Afebrile, off oxygen, eating. For discharge home once the family can pick up ${ctx.voice.obj}.`,
+      todo: [`${ctx.voice.Subj} ${ctx.voice.verb('get')} muddled in the evenings — the family says this happens in hospital and settles at home.`],
       contingencies: [
-        'If confused overnight, please check a set of observations and a glucose before assuming it is just the hospital — but this is almost certainly sundowning, and sedation will make it worse.',
+        'If confused overnight, please check a set of vitals and a glucose before assuming it is just the hospital — but this is almost certainly sundowning, and sedation will make it worse.',
       ],
     }),
     medications: () => [
       { name: 'Oxybutynin', detail: '5 mg orally twice daily', since: 'home medication' },
       { name: 'Donepezil', detail: '10 mg orally at night', since: 'home medication' },
-      { name: 'Co-amoxiclav', detail: '625 mg orally three times daily', since: 'day 3 of 5' },
+      { name: 'Amoxicillin-clavulanate', detail: '625 mg orally three times daily', since: 'day 3 of 5' },
       { name: 'Enoxaparin', detail: '40 mg subcutaneously daily', since: 'admission' },
     ],
     priorLabs: () => [
@@ -1281,16 +1281,16 @@ export const ARCHETYPES: CaseArchetype[] = [
         },
         {
           at: jitter(ctx, ctx.declareAt + 290 * MIN),
-          page: `Settled now after a chat. ${v.Subj} ${v.verb('say')} the tightness has gone.`,
+          page: `Settled down now after talking with her. ${v.Subj} ${v.verb('say')} the tightness has gone.`,
         },
       ];
     },
     handoff: (ctx) => ({
       severityCall: 'stable',
       summary:
-        `Atypical chest pain. Serial troponins negative, EKGs normal, CT coronary angiogram clean. Cardiology have signed off. ` +
+        `Atypical chest pain. Serial troponins negative, EKGs normal, CT coronary angiogram clean. Cardiology has signed off. ` +
         `The pain is genuine but it is not the heart, and ${ctx.voice.subj} ${ctx.voice.has} been told so.`,
-      todo: ['Discharge in the morning once the anxiety team have reviewed.'],
+      todo: ['Discharge in the morning once psychiatry has seen her.'],
       contingencies: [
         'The tightness will very likely recur overnight. It has been fully investigated — please do not repeat the workup; reassurance is the treatment.',
       ],
@@ -1298,12 +1298,12 @@ export const ARCHETYPES: CaseArchetype[] = [
     medications: () => [
       { name: 'Sertraline', detail: '50 mg orally daily', since: 'home medication' },
       { name: 'Aspirin', detail: '81 mg orally daily', since: 'admission' },
-      { name: 'Paracetamol', detail: '1 g orally every 6 hours as needed', since: 'admission' },
+      { name: 'Acetaminophen', detail: '1 g orally every 6 hours as needed', since: 'admission' },
     ],
     priorLabs: () => [
       prior('Troponin', 780, [pv('Troponin I', 0.01, 'ng/mL', 2, { high: 0.04 })]),
       prior('Troponin', 420, [pv('Troponin I', 0.01, 'ng/mL', 2, { high: 0.04 })]),
-      prior('EKG', 780, [], 'Normal sinus rhythm at 74. No ischaemic changes.'),
+      prior('EKG', 780, [], 'Normal sinus rhythm at 74. No ischemic changes.'),
       prior('CT PE protocol', 900, [], 'No pulmonary embolism. No other acute finding.'),
     ],
     expectedOrders: ['vitals-now', 'img-ekg'],
@@ -1323,7 +1323,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       'The cost of treating every page as a crisis is paid by the patient down the hall who is actually ' +
       'deteriorating. Triage is the skill: answer this one quickly and move on.',
     history: (ctx) => ctx.rng.sample(
-      ['Obesity', 'Chronic venous stasis', 'Type 2 diabetes', 'Lymphoedema', 'Previous cellulitis'],
+      ['Obesity', 'Chronic venous stasis', 'Type 2 diabetes', 'Lymphedema', 'Previous cellulitis'],
       2,
     ),
     baseline: (ctx) => ({
@@ -1340,8 +1340,8 @@ export const ARCHETYPES: CaseArchetype[] = [
         },
         {
           at: jitter(ctx, ctx.declareAt + 145 * MIN),
-          page: `Sorry, ${ctx.room} again — the cannula in the left hand is puffy and running slow. ` +
-            `The leg still looks better. Want me to just resite it?`,
+          page: `Sorry, ${ctx.room} again — the IV in the left hand is puffy and running slow. ` +
+            `The leg still looks better. Want me to just replace it?`,
         },
         {
           at: jitter(ctx, ctx.declareAt + 365 * MIN),
@@ -1355,17 +1355,17 @@ export const ARCHETYPES: CaseArchetype[] = [
         `Lower limb cellulitis, day 3 of IV antibiotics. Erythema is receding and the margin is marked; afebrile for 48 hours. ` +
         `For a switch to oral antibiotics and discharge tomorrow.`,
       todo: [
-        'Cannula in the left hand is three days old — resite it if it stops running.',
+        'IV in the left hand is three days old — replace it if it stops running.',
         `${ctx.voice.Subj} ${ctx.voice.has} not slept well in hospital and ${ctx.voice.has} asked about something to help.`,
-        'Simple analgesia is written as required.',
+        'Simple analgesia is written PRN.',
       ],
       contingencies: [
         'If the erythema extends beyond the marked line, let the day team know and we will re-image.',
       ],
     }),
     medications: () => [
-      { name: 'Flucloxacillin', detail: '1 g IV every 6 hours', since: 'day 2 of 7' },
-      { name: 'Paracetamol', detail: '1 g orally every 6 hours as needed', since: 'admission' },
+      { name: 'Cefazolin', detail: '1 g IV every 6 hours', since: 'day 2 of 7' },
+      { name: 'Acetaminophen', detail: '1 g orally every 6 hours as needed', since: 'admission' },
       { name: 'Enoxaparin', detail: '40 mg subcutaneously daily', since: 'admission' },
     ],
     priorLabs: () => [
@@ -1375,7 +1375,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       ]),
       prior('CRP', 720, [pv('CRP', 84, 'mg/L', 0, { high: 5 })]),
     ],
-    expectedOrders: ['melatonin', 'iv-resite', 'acetaminophen'],
+    expectedOrders: ['melatonin', 'iv-restart', 'acetaminophen'],
     contraindicatedOrders: ['img-ctpe', 'transfer-icu'],
   },
 
@@ -1404,24 +1404,24 @@ export const ARCHETYPES: CaseArchetype[] = [
       return [
         {
           at: ctx.declareAt,
-          page: `${ctx.room} is feeling sick after the oxycodone. Not vomiting, but ${v.subj} ${v.verb('want')} something for it. Obs are fine.`,
+          page: `${ctx.room} is feeling sick after the oxycodone. Not vomiting, but ${v.subj} ${v.verb('want')} something for it. Vitals are fine.`,
         },
         {
           at: jitter(ctx, ctx.declareAt + 120 * MIN),
           page: `${ctx.room} is uncomfortable — shoulder tip pain from the gas, which I've told ${v.obj} is normal. ` +
-            `Anything written up beyond the oxycodone?`,
+            `Anything else ordered besides the oxycodone?`,
         },
         {
           at: jitter(ctx, ctx.declareAt + 300 * MIN),
-          page: `${ctx.room} hasn't opened ${v.poss} bowels since the operation and is getting uncomfortable about it.`,
+          page: `${ctx.room} hasn't had a bowel movement since surgery and is getting uncomfortable about it.`,
         },
       ];
     },
     handoff: (ctx) => ({
       severityCall: 'stable',
-      summary: `Day 1 after a laparoscopic cholecystectomy. Uncomplicated. Eating and drinking, mobilising with the physiotherapists. Home tomorrow.`,
+      summary: `Day 1 after a laparoscopic cholecystectomy. Uncomplicated. Eating and drinking, ambulating with physical therapy. Home tomorrow.`,
       todo: [
-        `Oxycodone as required — ${ctx.voice.subj} ${ctx.voice.has} been using it.`,
+        `Oxycodone PRN — ${ctx.voice.subj} ${ctx.voice.has} been using it.`,
         'Remove the drain in the morning.',
       ],
       contingencies: [
@@ -1430,7 +1430,7 @@ export const ARCHETYPES: CaseArchetype[] = [
     }),
     medications: () => [
       { name: 'Oxycodone', detail: '5 mg orally every 4 hours as needed', since: 'day 1 post-op' },
-      { name: 'Paracetamol', detail: '1 g orally every 6 hours, regular', since: 'day 1 post-op' },
+      { name: 'Acetaminophen', detail: '1 g orally every 6 hours, regular', since: 'day 1 post-op' },
       { name: 'Enoxaparin', detail: '40 mg subcutaneously daily', since: 'day 1 post-op' },
       { name: 'Ondansetron', detail: '4 mg IV every 8 hours as needed', since: 'day 1 post-op' },
     ],
@@ -1469,9 +1469,9 @@ export const ARCHETYPES: CaseArchetype[] = [
       'Never interrupt a prostacyclin infusion — the half-life is minutes and rebound is lethal.',
     history: (ctx) => [
       ctx.rng.pick(['Idiopathic PAH, WHO functional class III', 'PAH from systemic sclerosis', 'Heritable PAH, BMPR2 mutation']),
-      ctx.rng.pick(['Epoprostenol infusion via Hickman line', 'Treprostinil infusion, subcutaneous', 'Epoprostenol via tunnelled line']),
+      ctx.rng.pick(['Epoprostenol infusion via Hickman line', 'Treprostinil infusion, subcutaneous', 'Epoprostenol via tunneled line']),
       'Ambrisentan and tadalafil',
-      ctx.rng.pick(['Right heart catheterisation: mPAP 58, PVR 11 WU', 'Right heart catheterisation: mPAP 49, PVR 8 WU']),
+      ctx.rng.pick(['Right heart catheterization: mPAP 58, PVR 11 WU', 'Right heart catheterization: mPAP 49, PVR 8 WU']),
     ],
     baseline: (ctx) => ({
       stateOverrides: {
@@ -1497,7 +1497,7 @@ export const ARCHETYPES: CaseArchetype[] = [
           at: ctx.declareAt,
           pageWhen: { axis: 'either', grade: 1 },
           page: (g) => g.perf >= 2 || g.wob >= 2
-            ? `${ctx.name} in ${ctx.room} is much worse — grey, cold hands, and ${v.subj} ${v.verb('say')} ` +
+            ? `${ctx.name} in ${ctx.room} is much worse — gray, cold hands, and ${v.subj} ${v.verb('say')} ` +
               `${v.subj} ${v.verb('feel')} like ${v.subj} ${v.is} going to pass out. The line site looks fine to me.`
             : `${ctx.name} in ${ctx.room} is more short of breath than earlier and the belly looks fuller. ` +
               `${v.Subj} ${v.verb('say')} this is how it feels before ${v.subj} ${v.verb('get')} admitted.`,
@@ -1517,7 +1517,7 @@ export const ARCHETYPES: CaseArchetype[] = [
             : `${v.Subj} ${v.is} no better and ${v.subj} ${v.verb('say')} the breathlessness is the same as ` +
               `the last time ${v.subj} ${v.verb('end')} up in the unit. The numbers are not telling me much.`,
           interventions: [
-            insult(ctx, { label: 'PAH: RV ischaemia', category: 'scenario', kind: 'scenario', target: 'rvEmax', delta: -0.12, tauOn: 1500, eliminationHalfLife: 86400 }),
+            insult(ctx, { label: 'PAH: RV ischemia', category: 'scenario', kind: 'scenario', target: 'rvEmax', delta: -0.12, tauOn: 1500, eliminationHalfLife: 86400 }),
           ],
         },
       ];
@@ -1536,7 +1536,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       return null;
     },
     medications: (ctx) => [
-      { name: ctx.rng.pick(['Epoprostenol', 'Treprostinil']), detail: 'continuous infusion via tunnelled line — DO NOT INTERRUPT', since: 'home medication, running' },
+      { name: ctx.rng.pick(['Epoprostenol', 'Treprostinil']), detail: 'continuous infusion via tunneled line — DO NOT INTERRUPT', since: 'home medication, running' },
       { name: 'Ambrisentan', detail: '10 mg orally daily', since: 'home medication' },
       { name: 'Tadalafil', detail: '40 mg orally daily', since: 'home medication' },
       { name: 'Furosemide', detail: '80 mg IV twice daily', since: 'day 2 of admission' },
@@ -1556,12 +1556,12 @@ export const ARCHETYPES: CaseArchetype[] = [
       severityCall: 'watcher',
       summary:
         `Group 1 PAH admitted with volume overload, day 3. Diuresing slowly. Prostacyclin infusion running through ` +
-        `${ctx.voice.poss} tunnelled line — pulmonary hypertension service are following.`,
-      todo: ['Daily weights, strict input and output.', 'Repeat the BMP in the morning.'],
+        `${ctx.voice.poss} tunneled line — pulmonary hypertension service is following.`,
+      todo: ['Daily weights, strict intake and output.', 'Repeat the BMP in the morning.'],
       contingencies: [
         'The prostacyclin line is life-sustaining. If it comes out or the pump alarms, restart it immediately and call the PH service — the half-life is minutes.',
         'Do not give fluid. A failing right ventricle does not respond to preload, it dilates.',
-        'If the pressure drops, the pressor is noradrenaline or vasopressin — not phenylephrine, which raises the pulmonary resistance too.',
+        'If the pressure drops, the pressor is norepinephrine or vasopressin — not phenylephrine, which raises the pulmonary resistance too.',
       ],
       misleading: 'Blood pressure has been soft all day. If it drops further, try a 500 mL bolus before calling anyone.',
     }),
@@ -1573,11 +1573,11 @@ export const ARCHETYPES: CaseArchetype[] = [
     id: 'cirrhosis-sbp',
     label: 'Decompensated cirrhosis with spontaneous bacterial peritonitis',
     // Ward tier, not critical. SBP is usually a subacute presentation — the
-    // patient has been quietly unwell for a day or two and is picked up by
+    // patient has been quietly sick for a day or two and is picked up by
     // someone paying attention, not by a crash call. It is dangerous over days
     // through the renal failure it causes, which is a different shape of danger
     // from bleeding out on your shift, and pretending otherwise made it a
-    // haemodynamic emergency that it is not.
+    // hemodynamic emergency that it is not.
     tier: 'ward',
     setting: 'academic',
     ageRange: [38, 68],
@@ -1594,7 +1594,7 @@ export const ARCHETYPES: CaseArchetype[] = [
     history: (ctx) => [
       ctx.rng.pick(['Alcohol-related cirrhosis, Child-Pugh C', 'NASH cirrhosis, Child-Pugh C', 'Cirrhosis from hepatitis C, treated']),
       `MELD-Na ${bySeverityInt(ctx, 22, 33)}`,
-      ctx.rng.pick(['Two previous admissions with ascites this year', 'Previous hepatic encephalopathy', 'Oesophageal varices, banded twice']),
+      ctx.rng.pick(['Two previous admissions with ascites this year', 'Previous hepatic encephalopathy', 'Esophageal varices, banded twice']),
       'Listed for transplant assessment',
     ],
     baseline: (ctx) => ({
@@ -1620,7 +1620,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       return [
         {
           at: ctx.declareAt,
-          page: `${ctx.name} in ${ctx.room} has a temperature and ${v.verb('say')} ${v.poss} belly is more sore than it was. ` +
+          page: `${ctx.name} in ${ctx.room} has a fever and ${v.verb('say')} ${v.poss} belly is more sore than it was. ` +
             `${v.Subj} ${v.is} a bit vague with me but ${v.subj} ${v.verb('know')} where ${v.subj} ${v.is}.`,
           interventions: [
             insult(ctx, { label: 'SBP: inflammatory tone', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.10, tauOn: 3600, eliminationHalfLife: 43200 }),
@@ -1636,7 +1636,7 @@ export const ARCHETYPES: CaseArchetype[] = [
             ? `${v.Subj} ${v.verb('seem')} more muddled than earlier and the pressure has drifted down. ` +
               `Urine output is poor — maybe 15 mL an hour.`
             : `Still febrile and the belly is no more comfortable. Urine output has dropped off — ` +
-              `about 25 mL an hour. Nothing dramatic on the observations.`,
+              `about 25 mL an hour. Nothing dramatic in the vitals.`,
           interventions: [
             // Deliberately kept below the level that can kill overnight even in a
             // patient who cannot mount a tachycardia — and every cirrhotic here is
@@ -1682,8 +1682,8 @@ export const ARCHETYPES: CaseArchetype[] = [
     handoff: (ctx) => ({
       severityCall: 'watcher',
       summary:
-        `Decompensated cirrhosis, admitted with tense ascites and an acute kidney injury. Five litres drained ` +
-        `yesterday with albumin cover. Diuretics held. Hepatology reviewing for transplant workup.`,
+        `Decompensated cirrhosis, admitted with tense ascites and an acute kidney injury. Five liters drained ` +
+        `yesterday with albumin cover. Diuretics held. Hepatology following for transplant workup.`,
       todo: ['Daily weights.', 'Repeat the creatinine in the morning.'],
       contingencies: [
         `If ${ctx.voice.subj} ${ctx.voice.verb('spike')} a temperature or the abdomen becomes more tender, start antibiotics. A tap confirms it and can wait for the day team if getting one overnight would delay treatment.`,
@@ -1704,7 +1704,7 @@ export const ARCHETYPES: CaseArchetype[] = [
     ageRange: [24, 66],
     span: 3 * HOUR,
     admissionDx: 'Day +8 allogeneic stem cell transplant — neutropenic fever',
-    hiddenDx: 'Gram-negative bacteraemia in profound neutropenia, progressing to septic shock',
+    hiddenDx: 'Gram-negative bacteremia in profound neutropenia, progressing to septic shock',
     teachingPoint:
       'Neutropenic sepsis is a time-to-antibiotic disease and nothing else comes close: every hour of delay costs ' +
       'survival, and there is no examination finding to wait for because the patient has no neutrophils to make ' +
@@ -1735,10 +1735,10 @@ export const ARCHETYPES: CaseArchetype[] = [
           urgent: true,
           page: (g) => `${ctx.name} in ${ctx.room} has spiked to ${bySeverity(ctx, 38.6, 39.4).toFixed(1)}. ` +
             `${v.Subj} ${v.is} neutropenic — the count this morning was ${bySeverity(ctx, 0.2, 0.05).toFixed(2)}. ` +
-            (g.perf >= 1 ? `${v.Subj} ${v.verb('look')} unwell with it and the pressure is soft.`
-              : `Observations are otherwise reasonable but I wanted you straight away.`),
+            (g.perf >= 1 ? `${v.Subj} ${v.verb('look')} sick with it and the pressure is soft.`
+              : `Vitals are otherwise reasonable but I wanted you straight away.`),
           interventions: [
-            insult(ctx, { label: 'Bacteraemia: inflammatory tone', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.24, tauOn: 1500, eliminationHalfLife: 36000 }),
+            insult(ctx, { label: 'Bacteremia: inflammatory tone', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.24, tauOn: 1500, eliminationHalfLife: 36000 }),
           ],
         },
         {
@@ -1746,7 +1746,7 @@ export const ARCHETYPES: CaseArchetype[] = [
           pageWhen: { axis: 'perf', grade: 1 },
           page: (g) => g.perf >= 2
             ? `${v.Subj} ${v.is} shut down — cold, mottled, and I can barely get a pressure. ${v.Subj} ${v.is} rigoring.`
-            : `Still febrile and the pressure has come down since I rang. ${v.Subj} ${v.verb('look')} washed out.`,
+            : `Still febrile and the pressure has come down since I called. ${v.Subj} ${v.verb('look')} washed out.`,
           interventions: [
             insult(ctx, { label: 'Septic vasoplegia', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.26, tauOn: 1800, eliminationHalfLife: 36000 }),
             insult(ctx, { label: 'Capillary leak', category: 'scenario', kind: 'scenario', target: 'edv', delta: -20, tauOn: 2400, eliminationHalfLife: 36000 }),
@@ -1767,7 +1767,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       { name: 'Aciclovir', detail: '400 mg orally twice daily', since: 'day −1' },
       { name: 'Levofloxacin', detail: '500 mg orally daily — antibacterial prophylaxis', since: 'day −1' },
       { name: 'Filgrastim', detail: '300 mcg subcutaneously daily', since: 'day +5' },
-      { name: 'Ursodeoxycholic acid', detail: '300 mg orally twice daily', since: 'day −7' },
+      { name: 'Ursodiol', detail: '300 mg orally twice daily', since: 'day −7' },
     ],
     priorLabs: (ctx) => [
       prior('CBC', 480, [
@@ -1788,14 +1788,14 @@ export const ARCHETYPES: CaseArchetype[] = [
       severityCall: 'watcher',
       summary:
         `Day +8 allogeneic transplant, engraftment awaited. Counts at the nadir. Afebrile until this evening. ` +
-        `Transplant team round at 08:00.`,
-      todo: ['Daily counts.', 'Tacrolimus level with the morning bloods.'],
+        `Transplant team rounds at 08:00.`,
+      todo: ['Daily counts.', 'Tacrolimus level with the morning labs.'],
       contingencies: [
         `Any fever is neutropenic sepsis until proven otherwise. Cultures — peripheral and from each lumen — and broad-spectrum antibiotics within the hour. Do not wait for the cultures.`,
         `${ctx.voice.Subj} ${ctx.voice.has} no neutrophils, so there will be no pus, no infiltrate and no peritonism. The absence of findings means nothing.`,
         'Platelets are low. Avoid intramuscular injections and check before any procedure.',
       ],
-      misleading: 'Temperature spiked once this afternoon and settled with paracetamol. Reasonable to give another dose and review in the morning.',
+      misleading: 'Temperature spiked once this afternoon and settled with acetaminophen. Reasonable to give another dose and review in the morning.',
     }),
     expectedOrders: ['lab-cultures', 'pip-tazo', 'ns-1000', 'lab-lactate', 'transfer-icu', 'norepi'],
     contraindicatedOrders: ['acetaminophen', 'ceftriaxone'],
@@ -1819,7 +1819,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       'Sickle cell disease, HbSS',
       ctx.rng.pick(['Three admissions with crisis this year', 'Previous acute chest syndrome, needed exchange', 'Previous ICU admission with acute chest']),
       ctx.rng.pick(['On hydroxyurea', 'On hydroxyurea and voxelotor', 'Hydroxyurea, poorly adherent']),
-      'Baseline haemoglobin 8.5',
+      'Baseline hemoglobin 8.5',
     ],
     baseline: (ctx) => ({
       stateOverrides: {
@@ -1839,7 +1839,7 @@ export const ARCHETYPES: CaseArchetype[] = [
           at: ctx.declareAt,
           pageWhen: { axis: 'wob', grade: 1 },
           page: (g) => g.wob >= 2
-            ? `${ctx.name} in ${ctx.room} is working hard to breathe and the saturations have dropped. ` +
+            ? `${ctx.name} in ${ctx.room} is working hard to breathe and the sats have dropped. ` +
               `${v.Subj} ${v.verb('say')} the pain has moved into ${v.poss} chest and it hurts to take a breath.`
             : `${ctx.name} in ${ctx.room} is still in a lot of pain and now ${v.subj} ${v.verb('say')} it is in ` +
               `${v.poss} chest as well. ${v.Subj} ${v.is} not taking deep breaths because of it.`,
@@ -1852,7 +1852,7 @@ export const ARCHETYPES: CaseArchetype[] = [
           at: jitter(ctx, ctx.declareAt + 100 * MIN),
           pageWhen: { axis: 'wob', grade: 2 },
           page: (g) => g.wob >= 3
-            ? `${v.Subj} ${v.is} exhausted and the saturations are in the low eighties on the mask. I need help in here.`
+            ? `${v.Subj} ${v.is} exhausted and the sats are in the low eighties on the mask. I need help in here.`
             : `Worse — ${v.subj} ${v.verb('need')} more oxygen than an hour ago and ${v.subj} can only manage short sentences.`,
           interventions: [
             insult(ctx, { label: 'Acute chest: progression', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.09, tauOn: 3000, eliminationHalfLife: 86400 }),
@@ -1888,11 +1888,11 @@ export const ARCHETYPES: CaseArchetype[] = [
     handoff: (ctx) => ({
       severityCall: 'watcher',
       summary:
-        `Sickle cell crisis, day 2. Pain improving on the PCA. Haemoglobin at ${ctx.voice.poss} baseline. ` +
-        `Haematology aware, plan is discharge when the pain is oral-manageable.`,
+        `Sickle cell crisis, day 2. Pain improving on the PCA. Hemoglobin at ${ctx.voice.poss} baseline. ` +
+        `Hematology aware, plan is discharge when the pain is oral-manageable.`,
       todo: ['Continue the PCA.', 'Repeat count in the morning.'],
       contingencies: [
-        'If the pain moves to the chest, or the oxygen requirement rises, treat it as acute chest syndrome: antibiotics, oxygen and call haematology.',
+        'If the pain moves to the chest, or the oxygen requirement rises, treat it as acute chest syndrome: antibiotics, oxygen and call hematology.',
         'Do not cut the analgesia. Under-treated pain causes splinting, and splinting is how a crisis becomes an acute chest.',
         'If it progresses, the treatment is exchange transfusion, not a simple top-up.',
       ],
@@ -1943,7 +1943,7 @@ export const ARCHETYPES: CaseArchetype[] = [
             ? `${ctx.name} in ${ctx.room} is working much harder and coughing constantly without clearing anything. ` +
               `${v.Subj} ${v.verb('say')} this is worse than when ${v.subj} came in.`
             : `${ctx.name} in ${ctx.room} says ${v.subj} ${v.is} more chesty this evening and ${v.subj} ${v.verb('want')} ` +
-              `to know whether ${v.subj} can have ${v.poss} physiotherapy again — ${v.subj} ${v.verb('feel')} full of it.`,
+              `to know whether ${v.subj} can have ${v.poss} chest PT again — ${v.subj} ${v.verb('feel')} full of it.`,
           interventions: [
             insult(ctx, { label: 'CF: mucus plugging', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.11, tauOn: 2700, eliminationHalfLife: 86400 }),
           ],
@@ -1959,10 +1959,10 @@ export const ARCHETYPES: CaseArchetype[] = [
       { name: ctx.rng.pick(['Piperacillin–tazobactam', 'Meropenem', 'Ceftazidime']), detail: 'IV, dosed for CF clearance', since: `day ${ctx.rng.int(3, 8)} of 14` },
       { name: 'Tobramycin', detail: 'IV once daily, levels monitored', since: `day ${ctx.rng.int(3, 8)} of 14` },
       { name: 'Elexacaftor–tezacaftor–ivacaftor', detail: 'two tablets in the morning, one in the evening', since: 'home medication' },
-      { name: 'Dornase alfa', detail: '2.5 mg nebulised daily', since: 'home medication' },
-      { name: 'Hypertonic saline 7%', detail: 'nebulised twice daily, before physiotherapy', since: 'home medication' },
+      { name: 'Dornase alfa', detail: '2.5 mg nebulized daily', since: 'home medication' },
+      { name: 'Hypertonic saline 7%', detail: 'nebulized twice daily, before chest PT', since: 'home medication' },
       { name: 'Creon', detail: 'with all meals and snacks', since: 'home medication' },
-      { name: 'Airway clearance', detail: 'physiotherapy three times daily — only once today', since: 'admission' },
+      { name: 'Airway clearance', detail: 'chest PT three times daily — only once today', since: 'admission' },
     ],
     priorLabs: (ctx) => [
       prior('Sputum culture', 2880, [], `Pseudomonas aeruginosa, mucoid. Sensitive to ceftazidime, meropenem and tobramycin; resistant to ciprofloxacin.`),
@@ -1982,35 +1982,35 @@ export const ARCHETYPES: CaseArchetype[] = [
       severityCall: 'stable',
       summary:
         `CF exacerbation, midway through a two-week course of IV antibiotics chosen from ${ctx.voice.poss} sputum ` +
-        `sensitivities. Slowly improving. CF team review each morning.`,
-      todo: ['Tobramycin level before the morning dose.', 'Physiotherapy three times daily.'],
+        `sensitivities. Slowly improving. The CF team rounds each morning.`,
+      todo: ['Tobramycin level before the morning dose.', 'Chest PT three times daily.'],
       contingencies: [
         `${ctx.voice.Subj} ${ctx.voice.verb('sit')} at 90–92% on air. That is ${ctx.voice.poss} baseline — do not chase a normal number and do not put ${ctx.voice.obj} on high-flow oxygen for it.`,
         `${ctx.voice.Subj} ${ctx.voice.verb('know')} ${ctx.voice.poss} own regimen and will tell you if something has been missed. Listen to ${ctx.voice.obj}.`,
         'If more breathless, the first thing to check is whether airway clearance has actually been done.',
       ],
-      misleading: 'Saturations have been in the low nineties. Consider oxygen if they drop further.',
+      misleading: 'Sats have been in the low nineties. Consider oxygen if they drop further.',
     }),
     expectedOrders: ['physio-airway', 'duoneb', 'pip-tazo', 'img-cxr', 'sit-up'],
     contraindicatedOrders: ['morphine-comfort', 'ceftriaxone'],
   },
 
   {
-    id: 'necrotising-pancreatitis',
-    label: 'Necrotising pancreatitis',
+    id: 'necrotizing-pancreatitis',
+    label: 'Necrotizing pancreatitis',
     tier: 'critical',
     setting: 'academic',
     ageRange: [34, 68],
     span: 4 * HOUR,
     admissionDx: 'Severe acute pancreatitis',
-    hiddenDx: 'Necrotising pancreatitis with SIRS, massive third-spacing and evolving ARDS',
+    hiddenDx: 'Necrotizing pancreatitis with SIRS, massive third-spacing and evolving ARDS',
     teachingPoint:
       'Severe pancreatitis is a capillary leak, not an infection, for the first several days — antibiotics do ' +
       'nothing and fluid does almost everything, in volumes that feel wrong until you see the urine output. ' +
       'The two organs that fail are the kidneys, from under-resuscitation, and the lungs, from the leak itself. ' +
       'A rising oxygen requirement in the first 48 hours is ARDS, not pneumonia.',
     history: (ctx) => [
-      ctx.rng.pick(['Gallstone pancreatitis', 'Alcohol-related pancreatitis', 'Hypertriglyceridaemic pancreatitis']),
+      ctx.rng.pick(['Gallstone pancreatitis', 'Alcohol-related pancreatitis', 'Hypertriglyceridemic pancreatitis']),
       ctx.rng.pick(['CT: 40% pancreatic necrosis', 'CT: 50% necrosis with peripancreatic collections', 'CT: extensive necrosis, no gas']),
       `BISAP ${bySeverityInt(ctx, 2, 4)} on admission`,
       ctx.rng.pick(['Type 2 diabetes', 'Obesity', 'Previous cholecystectomy declined']),
@@ -2036,7 +2036,7 @@ export const ARCHETYPES: CaseArchetype[] = [
             ? `${ctx.name} in ${ctx.room} has almost no urine in the bag and the pressure is down. ` +
               `${v.Subj} ${v.is} clammy and the belly is very distended.`
             : `${ctx.name} in ${ctx.room} has only put out about 20 mL an hour since I came on, and the heart rate ` +
-              `is up. The belly looks more distended to me than it did at handover.`,
+              `is up. The belly looks more distended to me than it did at sign-out.`,
           interventions: [
             insult(ctx, { label: 'Pancreatitis: third-spacing', category: 'scenario', kind: 'scenario', target: 'edv', delta: -34, tauOn: 3000, eliminationHalfLife: 43200 }),
             insult(ctx, { label: 'SIRS: vasoplegia', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.34, tauOn: 2700, eliminationHalfLife: 43200 }),
@@ -2080,7 +2080,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       prior('CBC', 300, [
         pv('WBC', bySeverity(ctx, 16.4, 23.8), 'K/µL', 1, { low: 4, high: 11 }),
         pv('Hgb', 13.8, 'g/dL', 1, { low: 12 }),
-        pv('Haematocrit', bySeverity(ctx, 44, 51), '%', 0, { high: 45 }),
+        pv('Hematocrit', bySeverity(ctx, 44, 51), '%', 0, { high: 45 }),
       ]),
       prior('Lactate', 240, [pv('Lactate', bySeverity(ctx, 2.2, 3.6), 'mmol/L', 1, { high: 2.0 })]),
       prior('CRP', 300, [pv('CRP', bySeverityInt(ctx, 210, 380), 'mg/L', 0, { high: 5, critical: true })]),
@@ -2088,8 +2088,8 @@ export const ARCHETYPES: CaseArchetype[] = [
     handoff: (ctx) => ({
       severityCall: 'watcher',
       summary:
-        `Severe necrotising pancreatitis, day 3. Aggressive fluid resuscitation for the first 48 hours, rate cut ` +
-        `back this afternoon. Nasojejunal feed running. Surgery are following but nothing operative planned.`,
+        `Severe necrotizing pancreatitis, day 3. Aggressive fluid resuscitation for the first 48 hours, rate cut ` +
+        `back this afternoon. Nasojejunal feed running. Surgery is following but nothing operative planned.`,
       todo: ['Hourly urine output.', 'Repeat the creatinine and calcium in the morning.'],
       contingencies: [
         'If the urine output drops below 0.5 mL/kg/h, give fluid. This is a leak — they need far more than feels reasonable, and the kidneys are what pay for under-resuscitation.',
@@ -2120,7 +2120,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       'Sickle cell disease, HbSS',
       ctx.rng.pick(['Two admissions with crisis this year', 'Four admissions with crisis this year', 'Usually managed at home']),
       ctx.rng.pick(['On hydroxyurea', 'On hydroxyurea and voxelotor', 'Declined hydroxyurea']),
-      `Baseline haemoglobin ${bySeverity(ctx, 9.0, 8.0).toFixed(1)}`,
+      `Baseline hemoglobin ${bySeverity(ctx, 9.0, 8.0).toFixed(1)}`,
     ],
     baseline: (ctx) => ({
       stateOverrides: {
@@ -2139,7 +2139,7 @@ export const ARCHETYPES: CaseArchetype[] = [
         {
           at: ctx.declareAt,
           page: `${ctx.name} in ${ctx.room} is asking for something more for the pain — ${v.subj} ${v.verb('say')} ` +
-            `the PCA is not holding ${v.obj} and it is in ${v.poss} back and hips. Observations are unremarkable.`,
+            `the PCA is not holding ${v.obj} and it is in ${v.poss} back and hips. Vitals are unremarkable.`,
           interventions: [
             insult(ctx, { label: 'Crisis: splinting', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.05, tauOn: 3600, eliminationHalfLife: 43200 }),
           ],
@@ -2148,7 +2148,7 @@ export const ARCHETYPES: CaseArchetype[] = [
           at: jitter(ctx, ctx.declareAt + 140 * MIN),
           page: (g) => g.wob >= 1
             ? `${v.Subj} ${v.is} still uncomfortable and not taking deep breaths. ${v.Subj} ${v.verb('sound')} ` +
-              `a bit shallow to me, though the saturations are holding.`
+              `a bit shallow to me, though the sats are holding.`
             : `The pain is better since the last dose. ${v.Subj} ${v.is} managing the spirometer now and ` +
               `${v.verb('want')} to know when ${v.subj} can go home.`,
         },
@@ -2178,8 +2178,8 @@ export const ARCHETYPES: CaseArchetype[] = [
     handoff: (ctx) => ({
       severityCall: 'stable',
       summary:
-        `Painful crisis, day 2. Pain slowly improving on the PCA. Haemoglobin at ${ctx.voice.poss} baseline, ` +
-        `no chest symptoms. Haematology aware; plan is home once the pain is manageable orally.`,
+        `Painful crisis, day 2. Pain slowly improving on the PCA. Hemoglobin at ${ctx.voice.poss} baseline, ` +
+        `no chest symptoms. Hematology aware; plan is home once the pain is manageable orally.`,
       todo: ['Continue the PCA and the regular ketorolac.', 'Incentive spirometry hourly while awake.'],
       contingencies: [
         `${ctx.voice.Subj} ${ctx.voice.verb('know')} ${ctx.voice.poss} own doses. If ${ctx.voice.subj} ${ctx.voice.verb('ask')} for more, ${ctx.voice.subj} ${ctx.voice.is} in pain — treat it.`,
@@ -2210,12 +2210,12 @@ export const ARCHETYPES: CaseArchetype[] = [
       ctx.rng.pick(['Alcohol-related cirrhosis, Child-Pugh B', 'NASH cirrhosis, Child-Pugh B', 'Cirrhosis from hepatitis C']),
       `MELD-Na ${bySeverityInt(ctx, 15, 24)}`,
       ctx.rng.pick(['Three previous admissions with encephalopathy', 'Previous encephalopathy, precipitated by constipation', 'First episode was six months ago']),
-      ctx.rng.pick(['Oesophageal varices, banded', 'Ascites, controlled on diuretics', 'Portal hypertensive gastropathy']),
+      ctx.rng.pick(['Esophageal varices, banded', 'Ascites, controlled on diuretics', 'Portal hypertensive gastropathy']),
     ],
     baseline: (ctx) => ({
       stateOverrides: {
         hr: ctx.rng.int(80, 92),
-        // Splanchnic vasodilation, but a haemodynamically well patient. The
+        // Splanchnic vasodilation, but a hemodynamically well patient. The
         // disease here is neurological, not circulatory, and the model should not
         // pretend otherwise.
         svr: bySeverity(ctx, 14.2, 13.4),
@@ -2233,14 +2233,14 @@ export const ARCHETYPES: CaseArchetype[] = [
       return [
         {
           at: ctx.declareAt,
-          page: `${ctx.name} in ${ctx.room} is more confused than at handover — ${v.subj} ${v.verb('think')} ` +
+          page: `${ctx.name} in ${ctx.room} is more confused than at sign-out — ${v.subj} ${v.verb('think')} ` +
             `${v.subj} ${v.is} at work and ${v.subj} ${v.verb('keep')} trying to get out of bed. ` +
-            `${v.Subj} ${v.has} that flap when I hold ${v.poss} hands out. Observations are all normal.`,
+            `${v.Subj} ${v.has} that flap when I hold ${v.poss} hands out. Vitals are all normal.`,
         },
         {
           at: jitter(ctx, ctx.declareAt + 90 * MIN),
           page: `Still muddled and now ${v.subj} ${v.verb('want')} to leave. I have looked back — ${v.subj} ` +
-            `${v.has} not opened ${v.poss} bowels in four days and the evening lactulose was not given.`,
+            `${v.has} not had a bowel movement in four days and the evening lactulose was not given.`,
         },
         {
           at: jitter(ctx, ctx.declareAt + 200 * MIN),
@@ -2285,10 +2285,10 @@ export const ARCHETYPES: CaseArchetype[] = [
       severityCall: 'stable',
       summary:
         `Cirrhosis admitted with encephalopathy, day 2. Clearer today than on admission. Back on ${ctx.voice.poss} ` +
-        `usual lactulose and rifaximin. Hepatology reviewing in the morning.`,
+        `usual lactulose and rifaximin. Hepatology will see them in the morning.`,
       todo: ['Chart bowel movements — the lactulose is titrated to three a day.', 'Repeat the sodium in the morning.'],
       contingencies: [
-        'If more confused, look for the precipitant before treating the confusion: bowels not open, a missed dose, infection, a bleed, or dehydration.',
+        'If more confused, look for the precipitant before treating the confusion: no bowel movement, a missed dose, infection, a bleed, or dehydration.',
         `Do not give ${ctx.voice.obj} a benzodiazepine or an antipsychotic for the agitation. It deepens the encephalopathy and it is hard to undo.`,
         'An ammonia level does not change management. The bowel chart does.',
       ],
@@ -2300,22 +2300,22 @@ export const ARCHETYPES: CaseArchetype[] = [
 
   {
     id: 'variceal-bleed',
-    label: 'Bleeding oesophageal varices',
+    label: 'Bleeding esophageal varices',
     tier: 'critical',
     setting: 'academic',
     ageRange: [40, 70],
     span: 3 * HOUR,
-    admissionDx: 'Cirrhosis — haematemesis',
-    hiddenDx: 'Rebleeding oesophageal varices in portal hypertension — a different disease from a bleeding ulcer',
+    admissionDx: 'Cirrhosis — hematemesis',
+    hiddenDx: 'Rebleeding esophageal varices in portal hypertension — a different disease from a bleeding ulcer',
     teachingPoint:
-      'A variceal bleed is a portal pressure problem wearing a haemorrhage costume. Octreotide lowers the pressure ' +
+      'A variceal bleed is a portal pressure problem wearing a hemorrhage costume. Octreotide lowers the pressure ' +
       'driving it, antibiotics are given to every cirrhotic who bleeds because they halve mortality, and the ' +
-      'definitive treatment is banding. Transfuse to a haemoglobin of 7 and no higher — over-transfusion raises ' +
+      'definitive treatment is banding. Transfuse to a hemoglobin of 7 and no higher — over-transfusion raises ' +
       'portal pressure and makes the bleeding worse, which is the one place where more blood is the wrong answer.',
     history: (ctx) => [
       ctx.rng.pick(['Alcohol-related cirrhosis, Child-Pugh B', 'Alcohol-related cirrhosis, Child-Pugh C', 'Cirrhosis from hepatitis C']),
       `MELD-Na ${bySeverityInt(ctx, 16, 26)}`,
-      ctx.rng.pick(['Grade 3 oesophageal varices, banded twice', 'Grade 2 varices, banded last month', 'Previous variceal bleed requiring TIPS discussion']),
+      ctx.rng.pick(['Grade 3 esophageal varices, banded twice', 'Grade 2 varices, banded last month', 'Previous variceal bleed requiring TIPS discussion']),
       'On a non-selective beta-blocker for prophylaxis',
     ],
     baseline: (ctx) => ({
@@ -2338,7 +2338,7 @@ export const ARCHETYPES: CaseArchetype[] = [
           at: ctx.declareAt,
           page: (g) => `${ctx.name} in ${ctx.room} has vomited a cupful of fresh blood. ` +
             (g.perf >= 1 ? `${v.Subj} ${v.is} pale and the heart rate is up.`
-              : `${v.Subj} ${v.verb('look')} frightened but the observations are holding for now.`),
+              : `${v.Subj} ${v.verb('look')} frightened but the vitals are holding for now.`),
           interventions: [
             insult(ctx, { label: 'Variceal bleed: volume loss', category: 'scenario', kind: 'scenario', target: 'edv', delta: -18, tauOn: 1200, eliminationHalfLife: 86400 }),
           ],
@@ -2348,9 +2348,9 @@ export const ARCHETYPES: CaseArchetype[] = [
           at: jitter(ctx, ctx.declareAt + 85 * MIN),
           urgent: true,
           page: (g) => `${v.Subj} ${v.is} vomiting blood again and there is a lot of it this time. ` +
-            (g.perf >= 2 ? `${v.Subj} ${v.is} grey and clammy and I can barely get a pressure.`
+            (g.perf >= 2 ? `${v.Subj} ${v.is} gray and clammy and I can barely get a pressure.`
               : g.perf >= 1 ? `${v.Subj} ${v.verb('look')} washed out and the pressure is coming down.`
-              : `Observations are still holding, but this was a much bigger bleed.`),
+              : `Vitals are still holding, but this was a much bigger bleed.`),
           interventions: [
             insult(ctx, { label: 'Variceal rebleed', category: 'scenario', kind: 'scenario', target: 'edv', delta: -30, tauOn: 1800, eliminationHalfLife: 86400 }),
           ],
@@ -2374,7 +2374,7 @@ export const ARCHETYPES: CaseArchetype[] = [
       { name: 'Pantoprazole', detail: '8 mg/h continuous infusion', since: 'admission' },
       { name: 'Ondansetron', detail: '4 mg IV every 8 hours as needed', since: 'admission' },
       { name: 'Lactulose', detail: '30 mL orally three times daily', since: 'home medication' },
-      { name: 'Nil by mouth', detail: 'for endoscopy', since: 'admission' },
+      { name: 'NPO', detail: 'for endoscopy', since: 'admission' },
     ],
     priorLabs: (ctx) => [
       prior('CBC', 320, [
@@ -2388,21 +2388,21 @@ export const ARCHETYPES: CaseArchetype[] = [
         pv('INR', bySeverity(ctx, 1.5, 2.1), '', 1, { high: 1.1 }),
         pv('Creatinine', 1.1, 'mg/dL', 2, { high: 1.1 }),
       ]),
-      prior('Endoscopy', 2880, [], 'Three columns of grade 3 oesophageal varices with red wale marks. Four bands applied. Portal hypertensive gastropathy in the fundus.'),
-      prior('Type and screen', 900, [], 'Group A positive. Antibody screen negative. Four units crossmatched and held.'),
+      prior('Endoscopy', 2880, [], 'Three columns of grade 3 esophageal varices with red wale marks. Four bands applied. Portal hypertensive gastropathy in the fundus.'),
+      prior('Type and screen', 900, [], 'Type A positive. Antibody screen negative. Four units crossmatched and held.'),
     ],
     handoff: (ctx) => ({
       severityCall: 'watcher',
       summary:
-        `Cirrhosis with a variceal bleed, banded two days ago. No further haematemesis since. Haemoglobin has ` +
+        `Cirrhosis with a variceal bleed, banded two days ago. No further hematemesis since. Hemoglobin has ` +
         `been stable. Beta-blocker held. Gastroenterology plan repeat banding in two weeks.`,
-      todo: ['Repeat haemoglobin at 06:00.', 'Nil by mouth from midnight.'],
+      todo: ['Repeat hemoglobin at 06:00.', 'NPO from midnight.'],
       contingencies: [
         `If ${ctx.voice.subj} ${ctx.voice.verb('bleed')} again: octreotide, antibiotics, and call gastroenterology tonight rather than in the morning.`,
-        'Transfuse to a haemoglobin of 7 and stop. Over-transfusion raises portal pressure and makes the bleeding worse.',
+        'Transfuse to a hemoglobin of 7 and stop. Over-transfusion raises portal pressure and makes the bleeding worse.',
         'Antibiotics go to every cirrhotic who bleeds, whether or not they look infected. It halves mortality.',
       ],
-      misleading: 'If the haemoglobin drops, transfuse up to 10 to give some margin overnight.',
+      misleading: 'If the hemoglobin drops, transfuse up to 10 to give some margin overnight.',
     }),
     expectedOrders: ['octreotide', 'ceftriaxone', 'prbc', 'consult-gi', 'transfer-icu', 'hold-rate-control'],
     contraindicatedOrders: ['ns-1000'],

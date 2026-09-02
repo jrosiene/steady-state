@@ -73,7 +73,7 @@ export function derive(
   // reason compensated shock becomes uncompensated shock rather than continuing
   // indefinitely, and the reason rate control helps a poorly-filling ventricle.
   //
-  // Its absence let the volume reflex fully compensate a class III haemorrhage:
+  // Its absence let the volume reflex fully compensate a class III hemorrhage:
   // heart rate rose, stroke volume held, cardiac output came out normal, and a
   // patient thirty-five per cent down on volume ran a blood pressure of 99 all
   // night. A fast heart and a full one are not the same heart.
@@ -203,7 +203,7 @@ export function derive(
   // isolated pumping capacity.
   //
   // Using `rvCo` here meant a dilated RV sitting on the flat part of its Starling
-  // curve reported an output of eleven litres a minute while the series
+  // curve reported an output of eleven liters a minute while the series
   // constraint held the real circulation at five, and mPAP came out at 120 mmHg
   // — a pulmonary pressure above the systemic one, which is not a state a body
   // can be in. It also made pulmonary hypertension impossible to write as a case:

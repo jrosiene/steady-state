@@ -75,7 +75,7 @@ export function stepPhysics(
     // self-cancelling loop to worry about here: heart rate does not feed back
     // into end-diastolic volume in this model, so the volume limb senses what
     // the receptors sense — including a fluid bolus, which is exactly why
-    // resuscitating a hypovolaemic patient brings their heart rate down.
+    // resuscitating a hypovolemic patient brings their heart rate down.
     const { dHr, dSvr } = computeBaroreflex(
       state.hr, state.svr, derived.map, effective.hrMod, pWithHrCeiling, effective.edv,
     );

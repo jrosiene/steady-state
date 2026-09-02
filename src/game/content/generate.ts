@@ -415,12 +415,12 @@ function downgrade(severity: Handoff['severity']): Handoff['severity'] {
 }
 
 const AUTHORS = [
-  'Dr Okafor', 'Dr Lindqvist', 'Dr Nakamura', 'Dr Achterberg', 'Dr Sridhar',
-  'Dr Villanueva', 'Dr Considine', 'Ms Halvorsen', 'Mr Trakas', 'Dr Bello',
+  'Dr. Okafor', 'Dr. Lindqvist', 'Dr. Nakamura', 'Dr. Achterberg', 'Dr. Sridhar',
+  'Dr. Villanueva', 'Dr. Considine', 'Dr. Halvorsen', 'Trakas, NP', 'Bello, PA-C',
 ];
 
 const ROLES = [
-  'day intern', 'day resident', 'day hospitalist', 'physician associate',
-  'day registrar', 'covering resident',
+  'day intern', 'day resident', 'day hospitalist', 'PGY-2',
+  'nocturnist signing out', 'teaching service resident',
 ];
 

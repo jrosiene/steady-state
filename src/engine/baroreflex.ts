@@ -21,7 +21,7 @@ import type { HemodynamicParams } from './types';
  * the pressure successfully, it had no error to act on, and nothing else in the
  * model knew the tank was emptying. That is backwards from the bedside, where a
  * rising heart rate in a patient whose blood pressure is still normal is the
- * earliest sign of haemorrhage there is, and the whole reason the pressure looks
+ * earliest sign of hemorrhage there is, and the whole reason the pressure looks
  * fine right up until it does not.
  */
 

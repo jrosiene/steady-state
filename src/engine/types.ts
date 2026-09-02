@@ -97,7 +97,7 @@ export interface DerivedValues {
   pcwp: number;
   /**
    * The shunt fraction actually in play: the anatomic/parenchymal shunt plus
-   * whatever low-flow and hydrostatic oedema are adding on top.
+   * whatever low-flow and hydrostatic edema are adding on top.
    *
    * Published because it is the load the patient is *working against*, and work
    * of breathing rises to defend gas exchange before the saturation falls. A
@@ -172,7 +172,7 @@ export interface HemodynamicParams {
    *
    * Applied to the fractional filling deficit, so a patient down 30% on their own
    * resting end-diastolic volume gains 0.3 × this many beats per minute. This is
-   * the limb that makes tachycardia precede hypotension in haemorrhage.
+   * the limb that makes tachycardia precede hypotension in hemorrhage.
    */
   gainHrVolume: number;
   /** Baroreflex gain for SVR (Wood units per mmHg error). */
@@ -206,7 +206,7 @@ export interface HemodynamicParams {
    * contractility approaches its clamp floor: a near-arrest ventricle produced
    * wedge pressures in the hundreds. That was harmless while PCWP only fed mPAP,
    * but once it drives alveolar flooding it becomes a positive feedback loop —
-   * unbounded wedge → unbounded shunt → hypoxaemia → lower contractility.
+   * unbounded wedge → unbounded shunt → hypoxemia → lower contractility.
    *
    * A wedge cannot rise without limit in any case. Beyond roughly 45–55 mmHg the
    * alveoli are frankly flooded and the pulmonary capillaries are failing; there
@@ -363,13 +363,13 @@ export interface HemodynamicParams {
    * fluid transudates into the alveoli (Starling forces across the pulmonary
    * capillary). Flooded alveoli are perfused but not ventilated — true shunt.
    *
-   * ~18 mmHg is the classical threshold for radiographic interstitial oedema;
+   * ~18 mmHg is the classical threshold for radiographic interstitial edema;
    * alveolar flooding follows above ~25 mmHg.
    */
   edemaPcwpThreshold: number;
   /**
    * Additional Qs/Qt per mmHg of PCWP above edemaPcwpThreshold.
-   * This is what makes cardiogenic pulmonary oedema hypoxaemic, and what makes
+   * This is what makes cardiogenic pulmonary edema hypoxemic, and what makes
    * preload reduction (diuresis, nitrates, PEEP) improve oxygenation.
    */
   edemaQsQtGain: number;

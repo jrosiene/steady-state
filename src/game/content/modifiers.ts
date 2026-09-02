@@ -54,7 +54,7 @@ export const COMORBIDITIES: Comorbidity[] = [
     skipFor: ['cirrhosis-sbp', 'hepatic-encephalopathy', 'variceal-bleed'],
     apply(t, rng) {
       // The important one. A blunted chronotropic response means the tachycardia
-      // that normally announces hypovolaemia never arrives, and the patient looks
+      // that normally announces hypovolemia never arrives, and the patient looks
       // deceptively well right up until the pressure goes.
       t.params.gainHr = (t.params.gainHr ?? 1.5) * rng.real(0.35, 0.55);
       t.params.hrMax = 155;
@@ -67,14 +67,14 @@ export const COMORBIDITIES: Comorbidity[] = [
     weight: 2.5,
     minAge: 50,
     skipFor: ['urosepsis'],
-    // Same physiology as chronic anaemia by the time it reaches the model, so
+    // Same physiology as chronic anemia by the time it reaches the model, so
     // only one of the two is ever drawn.
-    excludes: ['anaemia'],
+    excludes: ['anemia'],
     apply(t, rng) {
-      // Anaemia of chronic disease narrows the oxygen-delivery margin. Toward a
-      // value rather than subtracted from it: on a case that is anaemic in its
-      // own right, subtracting took an already-low haemoglobin below the
-      // anaerobic threshold at handover, so the patient was in a lactate spiral
+      // Anemia of chronic disease narrows the oxygen-delivery margin. Toward a
+      // value rather than subtracted from it: on a case that is anemic in its
+      // own right, subtracting took an already-low hemoglobin below the
+      // anaerobic threshold at sign-out, so the patient was in a lactate spiral
       // from minute zero and the case had been decided before it started.
       t.params.hgb = Math.min(t.params.hgb ?? 15, rng.real(9.4, 11.2));
     },
@@ -104,7 +104,7 @@ export const COMORBIDITIES: Comorbidity[] = [
     label: 'Chronic lung disease',
     weight: 2,
     minAge: 50,
-    skipFor: ['copd-exacerbation', 'adhf-mislabelled', 'cf-exacerbation', 'pah-rv-failure'],
+    skipFor: ['copd-exacerbation', 'adhf-mislabeled', 'cf-exacerbation', 'pah-rv-failure'],
     apply(t, rng) {
       t.state.qsQt = (t.state.qsQt ?? 0.02) + rng.real(0.04, 0.08);
       t.state.pvr = (t.state.pvr ?? 1.5) + rng.real(0.4, 0.9);
@@ -126,29 +126,29 @@ export const COMORBIDITIES: Comorbidity[] = [
     },
   },
   {
-    id: 'anaemia',
-    label: 'Chronic anaemia',
+    id: 'anemia',
+    label: 'Chronic anemia',
     weight: 2,
     excludes: ['ckd'],
     /**
      * Skipped where oxygen delivery is already the axis the case fails along.
      *
      * A background condition should narrow the margin, not decide the outcome.
-     * Anaemia acts entirely through the SvO2 → lactate → contractility spiral,
+     * Anemia acts entirely through the SvO2 → lactate → contractility spiral,
      * which is the highest-gain loop in the model, so on a case that is already
      * failing through that loop it stopped being a modifier: the same
      * cardiogenic patient died at 127 minutes without it and 15 minutes with it.
-     * Cases that are themselves anaemic set their own haemoglobin.
+     * Cases that are themselves anemic set their own hemoglobin.
      */
     skipFor: [
-      'gi-bleed', 'adhf-mislabelled', 'acs-cardiogenic',
+      'gi-bleed', 'adhf-mislabeled', 'acs-cardiogenic',
       'sickle-acute-chest', 'neutropenic-sepsis', 'cirrhosis-sbp',
     ],
     apply(t, rng) {
       // Toward a characteristic value, never subtracted from whatever the case
-      // already set. Subtracting stacked on archetypes that are anaemic in their
+      // already set. Subtracting stacked on archetypes that are anemic in their
       // own right — a stem cell transplant at day +8, a sickle cell crisis — and
-      // produced haemoglobins of 2, which is not a comorbidity, it is a corpse.
+      // produced hemoglobins of 2, which is not a comorbidity, it is a corpse.
       t.params.hgb = Math.min(t.params.hgb ?? 15, rng.real(9.2, 10.8));
     },
   },

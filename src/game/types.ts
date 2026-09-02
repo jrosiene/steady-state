@@ -17,7 +17,7 @@ import type { Gestalt } from './clinical';
 export const SHIFT_START_HOUR = 19;
 export const SHIFT_DURATION_SEC = 12 * 3600;
 
-// ─── Clinical observations ──────────────────────────────────────────────────
+// ─── Clinical measurements ─────────────────────────────────────────────────
 
 /**
  * A recorded set of vitals — what the nurse actually measured and charted.
@@ -185,7 +185,7 @@ export interface OrderDef {
   /**
    * Hours of antipyresis (°C suppression of the charted temperature) this order
    * provides. It lowers the number on the chart without touching the inflammatory
-   * process driving it — which is exactly the clinical trap worth modelling.
+   * process driving it — which is exactly the clinical trap worth modeling.
    */
   antipyreticHours?: number;
 }
@@ -243,8 +243,8 @@ export interface PriorLab {
 /**
  * When a nurse actually picks up the phone.
  *
- * An insult applied at time T does not produce a patient who looks unwell at
- * time T — it produces one who looks unwell as the insult ramps in over the next
+ * An insult applied at time T does not produce a patient who looks sick at
+ * time T — it produces one who looks sick as the insult ramps in over the next
  * ten or twenty minutes, and at a low severity it may never produce one at all.
  * Pages used to fire on the same schedule as the insults they described, so the
  * nurse announced a patient who was "using accessory muscles, only a few words at
@@ -261,7 +261,7 @@ export interface PageTrigger {
   /**
    * Send anyway this many sim-seconds after `at`.
    *
-   * A nurse asked to keep an eye on someone rings eventually even if the numbers
+   * A nurse asked to keep an eye on someone calls eventually even if the numbers
    * never move; what changes is what they say, because the text is written
    * against the grade they actually find.
    */
@@ -301,7 +301,7 @@ export interface CaseEvent {
   pageWhen?: PageTrigger;
   urgent?: boolean;
   /**
-   * Change in haemoglobin (g/dL) at this moment — blood loss.
+   * Change in hemoglobin (g/dL) at this moment — blood loss.
    * Hgb is a parameter rather than a state variable, so bleeding is applied
    * directly to params instead of through the intervention overlay.
    */
@@ -391,7 +391,7 @@ export interface PatientCase {
   /**
    * Baseline respiratory rate offset (breaths/min).
    *
-   * Chronic lung disease is modelled — shunt and congestion drive ventilation
+   * Chronic lung disease is modeled — shunt and congestion drive ventilation
    * directly — so this carries only what the model has no representation for:
    * pain, deconditioning, frailty, anxiety. A resting tachypnoea is often the
    * first thing a nurse notices, and it should come from the right place.
@@ -526,9 +526,9 @@ export interface PatientRuntime {
   location: PatientLocation;
   status: PatientStatus;
   /**
-   * Haemoglobin the patient is trending toward (g/dL).
+   * Hemoglobin the patient is trending toward (g/dL).
    *
-   * Bleeding and transfusion both move haemoglobin over tens of minutes, not
+   * Bleeding and transfusion both move hemoglobin over tens of minutes, not
    * instantly. Stepping `params.hgb` directly would drop oxygen-carrying capacity
    * between one tick and the next, which crashes SvO2 hard enough to trip the
    * acidosis feedback loop and kill a patient faster than any treatment could
@@ -549,7 +549,7 @@ export interface PatientRuntime {
    *
    * A nurse is a person at the other end of a phone, not a return value. Posting
    * their acknowledgement in the same frame as the order made the ward feel like
-   * a form submission, and a set of observations that appeared the instant it was
+   * a form submission, and a set of vitals that appeared the instant it was
    * asked for quietly implied nobody had to walk anywhere to take it.
    */
   pendingMessages: PendingMessage[];
@@ -557,7 +557,7 @@ export interface PatientRuntime {
   /**
    * Sim-time until which an antipyretic is suppressing the charted temperature.
    *
-   * Paracetamol treats the number, not the sepsis. A player who gives it and then
+   * Acetaminophen treats the number, not the sepsis. A player who gives it and then
    * reads the chart to decide how the patient is doing has blinded one of their
    * own instruments while the inflammatory process carries on underneath.
    */
@@ -590,7 +590,7 @@ export interface PatientRuntime {
    */
   reportedGrade: number;
   /**
-   * The last concern the nurse voiced about a set of observations.
+   * The last concern the nurse voiced about a set of vitals.
    *
    * Compared before speaking again, so a persistently abnormal patient is charted
    * without being announced afresh every observation round.
@@ -615,7 +615,7 @@ export interface PatientRuntime {
   code: CodeState | null;
   /** How many times circulation has been restored tonight. */
   roscCount: number;
-  /** Sim-time of the most recent ROSC, for recognising an immediate re-arrest. */
+  /** Sim-time of the most recent ROSC, for recognizing an immediate re-arrest. */
   lastRoscAt: number | null;
   outcome: PatientOutcome | null;
 }

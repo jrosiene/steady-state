@@ -41,7 +41,7 @@ export function answerQuestion(
     case 'mental':
       if (snap.cardiovascularStatus === 'arrest') return 'Unresponsive. No pulse.';
       if (snap.map < 55) {
-        return `Barely rousable — I get a groan when I press on a nail bed, and that ${v.is} about it.`;
+        return `Barely arousable — I get a groan when I press on a nail bed, and that ${v.is} about it.`;
       }
       if (snap.map < 65) {
         return `Confused. ${v.Subj} ${v.verb('keep')} asking me what year it is and trying to climb out of bed.`;
@@ -73,7 +73,7 @@ export function answerQuestion(
         if (snap.pcwp > 28) {
           return `${v.Subj} ${v.is} drowning. ${capitalise(sat)}, rate of ${rr}, pink frothy sputum, and bolt upright.`;
         }
-        return `Laboured. ${capitalise(sat)}, but ${v.subj} ${v.is} breathing ${rr} and only managing short phrases.${wet}`;
+        return `Labored. ${capitalise(sat)}, but ${v.subj} ${v.is} breathing ${rr} and only managing short phrases.${wet}`;
       }
       if (grade === 1) {
         if (snap.pcwp > 22) return `Wet. ${capitalise(sat)}, rate of ${rr}.${wet}`;
@@ -95,7 +95,7 @@ export function answerQuestion(
     case 'access':
       return inIcu
         ? `${v.Subj} ${v.has} a central line in the right IJ and an arterial line. Good access.`
-        : 'Two peripherals — a 20 in the left forearm and a 22 in the hand. The 22 is positional.';
+        : 'Two peripheral IVs — a 20 in the left forearm and a 22 in the hand. The 22 is positional.';
 
     case 'meds': {
       const running = activeTreatmentLabels(patient);

@@ -90,7 +90,7 @@ export function Briefing({
           <div className="rule">
             <h3>Vitals go stale</h3>
             <p>
-              Floor observations are every four hours. Between them, you are working
+              Floor vitals are checked every four hours. Between them, you are working
               from history. Ask for a set, or put the patient on continuous monitoring
               if you want to see them change.
             </p>
@@ -157,7 +157,7 @@ export function Briefing({
           This slides how ill the patients are, not who is on the list. A quiet night
           is the same diseases caught earlier; a bad one is several people in real
           trouble at once. Either way there is spread — a quiet ward can still hold
-          one patient who is genuinely unwell, which is the point of looking.
+          one patient who is genuinely sick, which is the point of looking.
         </p>
         <div className="acuity-bar">
           <input

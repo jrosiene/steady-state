@@ -29,7 +29,7 @@ export const ORDERS: OrderDef[] = [
     id: 'melatonin',
     label: 'Melatonin 3 mg PO',
     category: 'comfort',
-    detail: 'Sleep aid with no haemodynamic effect. The safe choice in the elderly and the delirious.',
+    detail: 'Sleep aid with no hemodynamic effect. The safe choice in the elderly and the delirious.',
     leadTimeSec: 900,
     ack: (v) => `I'll give it with ${v.poss} evening meds.`,
   },
@@ -48,7 +48,7 @@ export const ORDERS: OrderDef[] = [
   },
   {
     id: 'acetaminophen',
-    label: 'Paracetamol 650 mg PO',
+    label: 'Acetaminophen 650 mg PO',
     category: 'comfort',
     detail: 'Analgesic and antipyretic. Lowers the recorded temperature without touching the cause.',
     leadTimeSec: 600,
@@ -98,8 +98,8 @@ export const ORDERS: OrderDef[] = [
     ack: "Added to the MAR, I'll give it tonight.",
   },
   {
-    id: 'iv-resite',
-    label: 'Resite peripheral IV',
+    id: 'iv-restart',
+    label: 'Restart the peripheral IV',
     category: 'comfort',
     detail: 'Replace an infiltrated or positional cannula. Needed before anything can run reliably.',
     leadTimeSec: 900,
@@ -169,7 +169,7 @@ export const ORDERS: OrderDef[] = [
     category: 'fluids',
     detail: 'Crystalloid bolus wide open. Raises preload substantially.',
     leadTimeSec: 300,
-    ack: "Starting a litre wide open.",
+    ack: "Starting a liter wide open.",
     interventions: [
       { label: '1 L NS', category: 'treatment', kind: 'bolus', target: 'edv', delta: 40, tauOn: 600, eliminationHalfLife: 5400 },
     ],
@@ -278,7 +278,7 @@ export const ORDERS: OrderDef[] = [
     detail: 'Low-flow oxygen, FiO2 ≈ 0.28.',
     leadTimeSec: 120,
     o2Device: '2L NC',
-    ack: (v) => `${v.Subj} ${v.is} on 2 litres.`,
+    ack: (v) => `${v.Subj} ${v.is} on 2 liters.`,
     interventions: [
       { label: `${O2_LABEL_PREFIX} 2L NC`, category: 'treatment', kind: 'infusion', target: 'fiO2', delta: 0.07, tauOn: 60, eliminationHalfLife: 120 },
     ],
@@ -290,7 +290,7 @@ export const ORDERS: OrderDef[] = [
     detail: 'High-flow nasal oxygen, FiO2 ≈ 0.44.',
     leadTimeSec: 120,
     o2Device: '6L NC',
-    ack: (v) => `Turned ${v.obj} up to 6 litres.`,
+    ack: (v) => `Turned ${v.obj} up to 6 liters.`,
     interventions: [
       { label: `${O2_LABEL_PREFIX} 6L NC`, category: 'treatment', kind: 'infusion', target: 'fiO2', delta: 0.23, tauOn: 60, eliminationHalfLife: 120 },
     ],
@@ -302,7 +302,7 @@ export const ORDERS: OrderDef[] = [
     detail: 'FiO2 ≈ 0.85. Does little for a large shunt.',
     leadTimeSec: 120,
     o2Device: 'NRB 15L',
-    ack: "Non-rebreather is on at 15 litres.",
+    ack: "Non-rebreather is on at 15 liters.",
     interventions: [
       { label: `${O2_LABEL_PREFIX} NRB`, category: 'treatment', kind: 'infusion', target: 'fiO2', delta: 0.64, tauOn: 60, eliminationHalfLife: 120 },
     ],
@@ -315,7 +315,7 @@ export const ORDERS: OrderDef[] = [
     leadTimeSec: 600,
     o2Device: 'HFNC 50L',
     covers: ['o2-nrb', 'o2-nc6'],
-    ack: "Respiratory are setting up the high-flow now.",
+    ack: "Respiratory is setting up the high-flow now.",
     interventions: [
       // Both carry the O2 prefix so that ordering a different device stops them.
       // Without it high-flow would stack on top of whatever mask was already on.
@@ -373,11 +373,11 @@ export const ORDERS: OrderDef[] = [
 
   {
     id: 'physio-airway',
-    label: 'Airway clearance and chest physiotherapy',
+    label: 'Airway clearance and chest PT',
     category: 'respiratory',
-    detail: 'Nebulised hypertonic saline, then percussion and assisted clearance. The treatment for a plugged airway.',
+    detail: 'Nebulized hypertonic saline, then percussion and assisted clearance. The treatment for a plugged airway.',
     leadTimeSec: 1500,
-    ack: (v) => `I'll get the physio up to ${v.obj} — and I'll do the saline neb before they come.`,
+    ack: (v) => `I'll get respiratory up to ${v.obj} — and I'll do the saline neb before they come.`,
     interventions: [
       { label: 'Airway clearance: V/Q', category: 'treatment', kind: 'bolus', target: 'qsQt', delta: -0.09, tauOn: 1800, eliminationHalfLife: 14400 },
     ],
@@ -389,7 +389,7 @@ export const ORDERS: OrderDef[] = [
     detail: 'Definitive treatment for a pneumothorax. Re-expands the lung and relieves any tension.',
     leadTimeSec: 1200,
     once: true,
-    ack: "I'll get the chest drain trolley and page the registrar to put it in.",
+    ack: "I'll get the chest drain cart and page the resident to put it in.",
     interventions: [
       { label: 'Chest drain: re-expansion', category: 'treatment', kind: 'bolus', target: 'qsQt', delta: -0.13, tauOn: 900, eliminationHalfLife: 86400 },
       { label: 'Chest drain: decompression', category: 'treatment', kind: 'bolus', target: 'cvp', delta: -9, tauOn: 300, eliminationHalfLife: 86400 },
@@ -440,7 +440,7 @@ export const ORDERS: OrderDef[] = [
     id: 'steroids',
     label: 'Methylprednisolone IV',
     category: 'meds',
-    detail: 'Anti-inflammatory. Reduces airway oedema and vasodilatory tone.',
+    detail: 'Anti-inflammatory. Reduces airway edema and vasodilatory tone.',
     leadTimeSec: 600,
     ack: "Solu-Medrol given.",
     interventions: [
@@ -452,7 +452,7 @@ export const ORDERS: OrderDef[] = [
     id: 'furosemide',
     label: 'Furosemide 40 mg IV',
     category: 'meds',
-    detail: 'Loop diuretic. Offloads preload — helps congestion, harms hypovolaemia.',
+    detail: 'Loop diuretic. Offloads preload — helps congestion, harms hypovolemia.',
     leadTimeSec: 300,
     ack: (v) => `Lasix in. I'll watch ${v.poss} urine output.`,
     interventions: [
@@ -464,7 +464,7 @@ export const ORDERS: OrderDef[] = [
     id: 'nitro',
     label: 'Nitroglycerin infusion',
     category: 'meds',
-    detail: 'Venodilator. Drops preload and afterload — the fast fix for flash pulmonary oedema.',
+    detail: 'Venodilator. Drops preload and afterload — the fast fix for flash pulmonary edema.',
     leadTimeSec: 420,
     ack: "Nitro drip is on, titrating up.",
     interventions: [
@@ -487,7 +487,7 @@ export const ORDERS: OrderDef[] = [
     id: 'thrombolysis',
     label: 'Systemic thrombolysis (tPA)',
     category: 'meds',
-    detail: 'Lyses clot and unloads the RV. Reserved for haemodynamically unstable PE.',
+    detail: 'Lyses clot and unloads the RV. Reserved for hemodynamically unstable PE.',
     leadTimeSec: 900,
     once: true,
     ack: "tPA is drawn up — confirming the dose with pharmacy now.",
@@ -522,7 +522,7 @@ export const ORDERS: OrderDef[] = [
     id: 'ppi',
     label: 'Pantoprazole infusion',
     category: 'meds',
-    detail: 'Acid suppression to stabilise clot over an upper GI bleeding source.',
+    detail: 'Acid suppression to stabilize clot over an upper GI bleeding source.',
     leadTimeSec: 600,
     ack: "Protonix drip started.",
   },
@@ -547,7 +547,7 @@ export const ORDERS: OrderDef[] = [
   { id: 'lab-lactate', label: 'Lactate', category: 'labs', detail: 'Marker of tissue hypoperfusion.', leadTimeSec: 0, lab: { panel: 'Lactate', turnaroundSec: 1500 }, ack: "Drawing a lactate." },
   { id: 'lab-vbg', label: 'Venous blood gas', category: 'labs', detail: 'pH, pCO₂, bicarbonate, lactate.', leadTimeSec: 0, lab: { panel: 'VBG', turnaroundSec: 1200 }, ack: "Sending a VBG." },
   { id: 'lab-abg', label: 'Arterial blood gas', category: 'labs', detail: 'Oxygenation and ventilation.', leadTimeSec: 0, lab: { panel: 'ABG', turnaroundSec: 1500 }, ack: "I'll call respiratory for an ABG." },
-  { id: 'lab-cbc', label: 'CBC', category: 'labs', detail: 'Haemoglobin, white count, platelets.', leadTimeSec: 0, lab: { panel: 'CBC', turnaroundSec: 2400 }, ack: "CBC sent." },
+  { id: 'lab-cbc', label: 'CBC', category: 'labs', detail: 'Hemoglobin, white count, platelets.', leadTimeSec: 0, lab: { panel: 'CBC', turnaroundSec: 2400 }, ack: "CBC sent." },
   { id: 'lab-bmp', label: 'Basic metabolic panel', category: 'labs', detail: 'Renal function and electrolytes.', leadTimeSec: 0, lab: { panel: 'BMP', turnaroundSec: 2700 }, ack: "BMP sent." },
   { id: 'lab-trop', label: 'Troponin', category: 'labs', detail: 'Myocardial injury marker.', leadTimeSec: 0, lab: { panel: 'Troponin', turnaroundSec: 2700 }, ack: "Troponin sent." },
   {
@@ -560,8 +560,8 @@ export const ORDERS: OrderDef[] = [
     ack: (v) => `I'll set up for the tap and get ${v.obj} positioned.`,
   },
   { id: 'lab-cultures', label: 'Blood cultures ×2', category: 'labs', detail: 'Draw before antibiotics when feasible.', leadTimeSec: 0, lab: { panel: 'Blood cultures', turnaroundSec: 1800 }, ack: "Getting two sets from separate sites." },
-  { id: 'img-ekg', label: '12-lead EKG', category: 'imaging', detail: 'Rhythm, ischaemia, strain pattern.', leadTimeSec: 0, lab: { panel: 'EKG', turnaroundSec: 600 }, ack: "Doing the EKG now." },
-  { id: 'img-cxr', label: 'Portable chest X-ray', category: 'imaging', detail: 'Oedema, consolidation, pneumothorax.', leadTimeSec: 0, lab: { panel: 'CXR', turnaroundSec: 2100 }, ack: "Ordered the portable film." },
+  { id: 'img-ekg', label: '12-lead EKG', category: 'imaging', detail: 'Rhythm, ischemia, strain pattern.', leadTimeSec: 0, lab: { panel: 'EKG', turnaroundSec: 600 }, ack: "Doing the EKG now." },
+  { id: 'img-cxr', label: 'Portable chest X-ray', category: 'imaging', detail: 'Edema, consolidation, pneumothorax.', leadTimeSec: 0, lab: { panel: 'CXR', turnaroundSec: 2100 }, ack: "Ordered the portable film." },
   { id: 'img-ctpe', label: 'CT pulmonary angiogram', category: 'imaging', detail: 'Definitive test for pulmonary embolism. Requires transport.', leadTimeSec: 0, lab: { panel: 'CT PE protocol', turnaroundSec: 3000 }, ack: "Calling CT — she'll need a nurse to travel with her." },
   { id: 'img-echo', label: 'Bedside echo', category: 'imaging', detail: 'Ventricular function, filling, RV strain. Fast and at the bedside.', leadTimeSec: 0, lab: { panel: 'Bedside echo', turnaroundSec: 1500 }, ack: "I'll get the ultrasound machine." },
 
@@ -572,7 +572,7 @@ export const ORDERS: OrderDef[] = [
     category: 'nursing',
     detail: 'A current, complete set of vitals.',
     // Someone has to walk to the bedside, wrap a cuff and wait for it to cycle.
-    // Instant observations quietly taught the player that asking is free, which
+    // Instant vitals quietly taught the player that asking is free, which
     // is the one thing about a night shift that is never true.
     leadTimeSec: 150,
     ack: "Going in to get them.",
@@ -632,9 +632,9 @@ export const ORDERS: OrderDef[] = [
     id: 'consult-gi',
     label: 'Consult GI',
     category: 'disposition',
-    detail: 'Gastroenterology for endoscopic evaluation and haemostasis.',
+    detail: 'Gastroenterology for endoscopic evaluation and hemostasis.',
     leadTimeSec: 600,
-    // Repeatable. A consultant's advice is a read on the patient in front of
+    // Repeatable. A attending's advice is a read on the patient in front of
     // them, not a token you spend — and the patient you called about at 21:00 is
     // not the patient you have at 23:00. Marking it `once` meant the one moment
     // a call-back is most worth making was the one moment it was refused.
@@ -644,7 +644,7 @@ export const ORDERS: OrderDef[] = [
     id: 'consult-cards',
     label: 'Consult cardiology',
     category: 'disposition',
-    detail: 'Cardiology for ischaemia and pump failure.',
+    detail: 'Cardiology for ischemia and pump failure.',
     leadTimeSec: 600,
     ack: "Paging cardiology.",
   },
@@ -690,7 +690,7 @@ export const ORDERS: OrderDef[] = [
     once: true,
     covers: ['telemetry'],
     startsMonitoring: true,
-    ack: (v) => `Step-down have a bed and will take ${v.obj}. I'll get report ready.`,
+    ack: (v) => `Step-down has a bed and will take ${v.obj}. I'll get report ready.`,
   },
   {
     id: 'comfort-care',
@@ -703,7 +703,7 @@ export const ORDERS: OrderDef[] = [
       orderId: 'goals-of-care',
       refusal: 'Not without speaking to the family first — call them, and then we can talk about what to do overnight.',
     },
-    ack: "Understood. I'll set up a morphine drip for comfort and stop the observations.",
+    ack: "Understood. I'll set up a morphine drip for comfort and stop the vitals checks.",
   },
 ];
 

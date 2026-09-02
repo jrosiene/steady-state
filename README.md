@@ -30,7 +30,7 @@ forty-eight minutes of real time, defaulting to 30× — and pauses whenever you
 
 ### What makes it hard
 
-**Vitals go stale.** Floor observations are every four hours — forty minutes once
+**Vitals go stale.** Floor vitals are checked every four hours — forty minutes once
 a nurse has rung about someone. Between them you are reading history, and the
 patient board shows you how old each set is. Continuous monitoring collapses that
 gap, for the patients you think to order it on.
@@ -41,7 +41,7 @@ the community ones — they are different diseases with different physiology and
 different traps. The academic list carries pulmonary arterial hypertension,
 high-MELD cirrhosis with spontaneous bacterial peritonitis, febrile neutropenia
 after stem cell transplant, sickle cell acute chest syndrome, cystic fibrosis and
-necrotising pancreatitis. In each of them the reflex that is correct for the
+necrotizing pancreatitis. In each of them the reflex that is correct for the
 community case is wrong: fluid for the failing right ventricle, phenylephrine for
 the pulmonary hypertensive, antibiotics for the sterile necrosis, a normal
 saturation target for the patient who lives at 91%.
@@ -76,7 +76,7 @@ pneumonia is reported against the admission comparison. All of it is gated on th
 physiology rather than on the hidden diagnosis, so a study ordered before the
 event is genuinely, informatively normal.
 
-**Nothing on a ward is instant.** Asking for a set of observations sends someone
+**Nothing on a ward is instant.** Asking for a set of vitals sends someone
 to the bedside with a cuff, and the numbers arrive when they get back. The nurse
 acknowledges an order a beat after you place it, not in the same frame. Both
 delays are small; both exist so that asking never reads as free.
@@ -104,8 +104,8 @@ on people who die if you leave them. You can re-read any of them from the chart.
 **Most pages are not emergencies.** One patient asks for a sleeping tablet three
 times. The cost of treating every page as a crisis is paid by the patient down
 the hall — so the order set includes the ordinary night-float material (melatonin,
-paracetamol, delirium precautions, a bowel regimen, resiting a cannula) alongside
-the resuscitation drugs. Note that paracetamol lowers the *charted* temperature
+acetaminophen, delirium precautions, a bowel regimen, resiting a cannula) alongside
+the resuscitation drugs. Note that acetaminophen lowers the *charted* temperature
 without touching the sepsis underneath it.
 
 ### The ward is dealt, not written
@@ -122,9 +122,9 @@ rather than recall what a given name did last time.
 |---|---|---|
 | `urosepsis` | Pyelonephritis, improving | Urosepsis → septic shock |
 | `pneumonia-sepsis` | Community-acquired pneumonia | Sepsis with a widening shunt |
-| `adhf-mislabelled` | COPD exacerbation | Decompensated heart failure — the diagnosis is wrong |
+| `adhf-mislabeled` | COPD exacerbation | Decompensated heart failure — the diagnosis is wrong |
 | `pulmonary-embolism` | Routine post-op day 2 | Massive PE with RV failure |
-| `gi-bleed` | Stable GI bleed | Rebleeding ulcer → haemorrhagic shock |
+| `gi-bleed` | Stable GI bleed | Rebleeding ulcer → hemorrhagic shock |
 | `acs-cardiogenic` | Chest pain, troponins negative | Anterior STEMI → cardiogenic shock |
 
 **Ward-level** — serious, and usually fixable:
@@ -132,7 +132,7 @@ rather than recall what a given name did last time.
 | Archetype | Presents as | Actually |
 |---|---|---|
 | `copd-exacerbation` | COPD exacerbation | COPD exacerbation — the obvious answer is right |
-| `hypovolaemia` | Poor intake, AKI | Dry. A bolus fixes it |
+| `hypovolemia` | Poor intake, AKI | Dry. A bolus fixes it |
 | `pneumothorax` | Pleural effusion, drained today | Post-procedural pneumothorax, enlarging |
 | `aspiration-event` | Stroke with dysphagia | Witnessed aspiration → chemical pneumonitis |
 | `end-of-life-pneumonia` | Aspiration pneumonia, DNR/DNI | Dying. The intervention is a conversation |
@@ -152,9 +152,9 @@ rather than recall what a given name did last time.
 |---|---|---|
 | `pah-rv-failure` | Group 1 PAH, volume overload | RV failure. Fluid makes it worse; phenylephrine makes it worse. Rare — a right ventricle failing for the first time overnight is a night you remember |
 | `variceal-bleed` | Cirrhosis, banded varices | Rebleeding varices. Octreotide and antibiotics, and transfuse to 7 — more blood raises portal pressure |
-| `neutropenic-sepsis` | Day +8 transplant, neutropenic fever | Gram-negative bacteraemia. No pus, no infiltrate, no time |
+| `neutropenic-sepsis` | Day +8 transplant, neutropenic fever | Gram-negative bacteremia. No pus, no infiltrate, no time |
 | `sickle-acute-chest` | Sickle cell crisis | Acute chest syndrome — caused partly by treating the pain too cautiously |
-| `necrotising-pancreatitis` | Severe acute pancreatitis | Capillary leak and ARDS. Fluid, not antibiotics |
+| `necrotizing-pancreatitis` | Severe acute pancreatitis | Capillary leak and ARDS. Fluid, not antibiotics |
 | `cirrhosis-sbp` | Decompensated cirrhosis, AKI | Spontaneous bacterial peritonitis. Subacute: it costs kidneys over days, not a pressure tonight. Antibiotics and albumin overnight; the tap can wait for the day team |
 | `hepatic-encephalopathy` | Cirrhosis, confused | A symptom with a cause. Find the precipitant, and do not sedate a confused cirrhotic |
 | `sickle-vaso-occlusive` | Sickle cell crisis | A crisis that stays a crisis. The harm available is under-treating the pain |
@@ -162,7 +162,7 @@ rather than recall what a given name did last time.
 
 A ward staggers when its cases declare so problems arrive in sequence rather than
 all at once.
-Because `adhf-mislabelled` and `copd-exacerbation` are both admitted as "COPD
+Because `adhf-mislabeled` and `copd-exacerbation` are both admitted as "COPD
 exacerbation", a ward can hold two of them — and telling which is which is the
 whole job.
 
@@ -210,7 +210,7 @@ handoff quality and author, and declaration times all vary per shift.
 
 These are admitted acute-care patients, already triaged to a general ward, so
 severity never shows up as someone visibly peri-arrest at sign-out. Their 19:00
-observations look like observations a day team would have been willing to leave
+vitals look like vitals a day team would have been willing to leave
 on the floor — which is exactly why the deterioration is a surprise, and why the
 charted numbers are worth so little on their own. The exception is the patient on
 comfort measures: a low blood pressure at the end of life is not a triage failure,
@@ -222,7 +222,7 @@ pretend otherwise; what it avoids is a case lost before the player could act.
 ### Codes
 
 An arrest starts a real resuscitation rather than a coin flip. The critical care
-team run ACLS in two-minute cycles — rhythm checks, an airway, adrenaline,
+team run ACLS in two-minute cycles — rhythm checks, an airway, epinephrine,
 defibrillation where the rhythm is shockable — for up to sixteen minutes, and the
 messages report it as it happens.
 
@@ -243,7 +243,7 @@ The resulting rates land about where the real ones do:
 | Monitored, cause being treated | ~60% |
 
 Every one of those differences was decided hours before the pulse was lost. ROSC
-puts the patient in the ICU, intubated and on noradrenaline, with a stunned
+puts the patient in the ICU, intubated and on norepinephrine, with a stunned
 myocardium and an oxygen debt — and whatever caused the arrest still running
 underneath. A team who restore circulation twice and lose it again within minutes
 stop, because at that point the problem is the physiology and not the effort.
@@ -252,7 +252,7 @@ The clearest result from calibrating it: with the cause properly treated, most
 patients never arrest at all.
 
 Because outcomes come from physiology rather than from a script, the traps are
-real: a fluid bolus in the mislabelled heart failure patient raises the wedge,
+real: a fluid bolus in the mislabeled heart failure patient raises the wedge,
 floods more alveoli, and drops the saturation. Nothing special-cases it — that is
 simply what the model does.
 
@@ -275,7 +275,7 @@ and treatments, and watch the traces.
 - Afterload-sensitive SV via an ESPVR constraint
 
 ### Pulmonary circuit
-- RV Frank-Starling with its own Emax and RVEDV — RV failure is modelled independently of LV
+- RV Frank-Starling with its own Emax and RVEDV — RV failure is modeled independently of LV
 - PCWP from the LV EDPVR — rises with volume overload or systolic failure
 - mPAP = RVCO × PVR + PCWP, supporting all four PH classes
 - **RV-LV interdependence**: RVEDV dilation bows the septum leftward (the D-sign), reducing LV filling
@@ -284,13 +284,13 @@ and treatments, and watch the traces.
 ### Gas exchange
 - Two-compartment shunt model (Riley) with a Hill dissociation curve
 - Fick-based SvO2, so low output amplifies the shunt effect
-- **Hydrostatic pulmonary oedema → shunt**: once PCWP exceeds plasma oncotic pressure, alveoli flood and become true shunt. This is what makes cardiogenic pulmonary oedema hypoxaemic, why oxygen alone barely helps, and why preload reduction fixes the saturation
+- **Hydrostatic pulmonary edema → shunt**: once PCWP exceeds plasma oncotic pressure, alveoli flood and become true shunt. This is what makes cardiogenic pulmonary edema hypoxemic, why oxygen alone barely helps, and why preload reduction fixes the saturation
 - Low-flow pulmonary hypoperfusion as an effective shunt
 
 ### Vasoactive mediators
 Instantaneous reflexes (HPV, hypoxic vasodilation) plus ODE-integrated mediator
-tones (NO/PGI2, endothelin-1) that couple pulmonary hypertension and hypoxaemia
-back into systemic haemodynamics.
+tones (NO/PGI2, endothelin-1) that couple pulmonary hypertension and hypoxemia
+back into systemic hemodynamics.
 
 ### Reflex control
 The baroreflex regulates the patient's own intrinsic tone, so drug effects add on
@@ -376,7 +376,7 @@ is spent between doing nothing and doing everything: a 250 mL fluid challenge yo
 reassess before committing; high-flow nasal oxygen between a mask and BiPAP; a
 step-down bed between the ward and the unit; quetiapine between non-pharmacologic
 delirium care and haloperidol; a named antibiotic instead of reaching for
-vancomycin and piperacillin–tazobactam every time. Spectrum is modelled one way,
+vancomycin and piperacillin–tazobactam every time. Spectrum is modeled one way,
 so a broader drug is credited for a narrower expectation and never the reverse.
 
 **Comfort care is the end of a conversation.** You cannot write it before calling
@@ -392,7 +392,7 @@ the chart, struck through, because the morning team needs to read what changed.
 **How sick the ward is, is a slider.** It moves the centre of the severity
 distribution without touching the spread and without changing which diagnoses are
 on the list — so a quiet night is the same diseases caught earlier and milder, and
-can still hold one patient who is genuinely unwell. A difficulty setting that
+can still hold one patient who is genuinely sick. A difficulty setting that
 removed the variance would remove the triage.
 
 **The acuity mix is not shown.** The list size is a choice; what is on the list
@@ -424,7 +424,7 @@ Deployed via Cloudflare Pages — every push to `main` triggers a rebuild.
 
 ## Status
 
-A research and education prototype. The physiology is modelled at the level of
-detail appropriate for teaching haemodynamic reasoning to students and residents.
+A research and education prototype. The physiology is modeled at the level of
+detail appropriate for teaching hemodynamic reasoning to students and residents.
 It is not a validated clinical decision support tool, and the drug kinetics in
 particular are deliberately simplified.

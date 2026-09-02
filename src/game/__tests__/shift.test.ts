@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ShiftEngine, roscChance, causeIsBeingTreated } from '../shift';
-import { ORDER_BY_ID } from '../orders';
+import { ORDER_BY_ID, ORDERS } from '../orders';
 import { assessAppearance, describeAppearance, acuityLabel, resolveLabPanel, type Gestalt } from '../clinical';
 import { DEFAULT_PARAMS, DEFAULT_STATE } from '../../engine/constants';
 import { snapshot as computeSnapshot } from '../../engine/hemodynamics';
@@ -9,6 +9,7 @@ import { ARCHETYPES, ARCHETYPE_BY_ID } from '../content/archetypes';
 import { generateWard, composition, WARD_SIZE } from '../content/generate';
 import { makeRng } from '../content/rng';
 import { makeVoice } from '../content/voice';
+import { NURSE_QUESTIONS } from '../nurse';
 import { SEVERITY_BANDS, bandOf, insultScale, onsetScale } from '../content/severity';
 import {
   TEST_SEED,
@@ -385,7 +386,7 @@ describe('illness trajectories', () => {
     expect(treated.snap.map).toBeGreaterThan(70);
   }, 30_000);
 
-  it('GI bleed drops haemoglobin and preload; transfusion reverses both', () => {
+  it('GI bleed drops hemoglobin and preload; transfusion reverses both', () => {
     const s = shiftOf('gi-bleed', 'moderate');
     advanceToDeclaration(s, 180, 60);
 
@@ -414,8 +415,8 @@ describe('illness trajectories', () => {
     expect(s.engine.snapshot(s.patient).spO2).toBeGreaterThan(worst);
   });
 
-  it('hypovolaemia corrects with a modest fluid bolus', () => {
-    const s = shiftOf('hypovolaemia', 'moderate');
+  it('hypovolemia corrects with a modest fluid bolus', () => {
+    const s = shiftOf('hypovolemia', 'moderate');
     advanceToDeclaration(s, 45, 60);
     const dry = s.engine.snapshot(s.patient).map;
 
@@ -446,8 +447,8 @@ describe('illness trajectories', () => {
 });
 
 describe('cardiogenic physiology and the fluid trap', () => {
-  it('raises the wedge and desaturates the mislabelled heart failure patient', () => {
-    const s = shiftOf('adhf-mislabelled', 'moderate');
+  it('raises the wedge and desaturates the mislabeled heart failure patient', () => {
+    const s = shiftOf('adhf-mislabeled', 'moderate');
     advanceToDeclaration(s, 75, 60);
 
     const snap = s.engine.snapshot(s.patient);
@@ -459,12 +460,12 @@ describe('cardiogenic physiology and the fluid trap', () => {
     // Deliberately a mild case: once either arm pins against the wedge ceiling
     // the comparison stops measuring anything, and per-insult jitter means the
     // margin has to be generous rather than just below the worst severity.
-    const fluids = shiftOf('adhf-mislabelled', 0.15);
+    const fluids = shiftOf('adhf-mislabeled', 0.15);
     advanceToDeclaration(fluids, 5, 60);
     fluids.engine.placeOrder(fluids.patient, 'ns-1000');
     run(fluids.engine, 100 * MIN, 60);
 
-    const offload = shiftOf('adhf-mislabelled', 0.15);
+    const offload = shiftOf('adhf-mislabeled', 0.15);
     advanceToDeclaration(offload, 5, 60);
     offload.engine.placeOrder(offload.patient, 'nitro');
     offload.engine.placeOrder(offload.patient, 'furosemide');
@@ -564,7 +565,7 @@ describe('orders', () => {
 
 describe('nurse interaction', () => {
   it('answers questions from true physiology, not stale vitals', () => {
-    // A patient nobody has rung about is on four-hourly observations, so the
+    // A patient nobody has called about is on four-hourly observations, so the
     // chart is hours old while the bedside is current — which is the whole
     // reason asking is worth doing.
     const s = soloShift('benign-cellulitis', { severity: 0.5, declareAt: 20 * 60 });
@@ -604,7 +605,7 @@ describe('the bedside look never reassures about a patient in trouble', () => {
     // Far enough in to be breathless, well short of the arrest. Kept early
     // because per-insult jitter means how fast a given case runs is not a
     // function of severity alone.
-    const s = shiftOf('adhf-mislabelled', 0.3);
+    const s = shiftOf('adhf-mislabeled', 0.3);
     advanceToDeclaration(s, 30, 30);
 
     const snap = s.engine.snapshot(s.patient);
@@ -647,7 +648,7 @@ describe('comfort and routine orders', () => {
         const order = ORDER_BY_ID[id];
         expect(order, `${archetype.id} → ${id}`).toBeDefined();
         // Answering a benign page must never require escalating the patient.
-        // It may reasonably involve a quick set of observations or a single
+        // It may reasonably involve a quick set of vitals or a single
         // reassuring test — excluding the dangerous thing is part of the answer.
         expect(order.requiresIcu ?? false, `${archetype.id} → ${id}`).toBe(false);
         expect(['comfort', 'nursing', 'labs', 'imaging']).toContain(order.category);
@@ -674,7 +675,7 @@ describe('comfort and routine orders', () => {
   });
 
   it('does not count a sleeping tablet as responding to a deteriorating patient', () => {
-    const s = shiftOf('adhf-mislabelled', 'moderate');
+    const s = shiftOf('adhf-mislabeled', 'moderate');
     advanceToDeclaration(s, 40, 60);
     expect(s.patient.firstUnstableAt).not.toBeNull();
 
@@ -810,7 +811,7 @@ function codeTrial(
 }
 
 describe('code blue', () => {
-  it('runs ACLS in cycles with a rhythm, an airway and adrenaline', () => {
+  it('runs ACLS in cycles with a rhythm, an airway and epinephrine', () => {
     const t = codeTrial('acs-cardiogenic', 1, { monitor: true });
     expect(t.coded).toBe(true);
 
@@ -818,7 +819,7 @@ describe('code blue', () => {
     const all = codeMsgs.map((m) => m.text).join(' ');
     expect(all).toMatch(/rhythm is (VF|pulseless VT|PEA|asystole)/);
     expect(all).toMatch(/airway secured/);
-    expect(all).toMatch(/adrenaline given/);
+    expect(all).toMatch(/epinephrine given/);
   }, 30_000);
 
   it('never resuscitates a patient who is DNR/DNI', () => {
@@ -865,7 +866,7 @@ describe('code blue', () => {
         expect(t.patient.monitored).toBe(true);
         const rosc = t.patient.messages.find((m) => m.text.startsWith('ROSC'));
         expect(rosc?.text).toMatch(/intubated/);
-        expect(rosc?.text).toMatch(/noradrenaline/);
+        expect(rosc?.text).toMatch(/norepinephrine/);
       }
     }
     expect(found).toBe(true);
@@ -1057,7 +1058,7 @@ describe('library depth', () => {
 // ─── What the nurse says matches what the nurse can see ─────────────────────
 
 /**
- * Language that asserts a patient is visibly unwell.
+ * Language that asserts a patient is visibly sick.
  *
  * A page containing any of this is making a claim about the bedside, and the
  * bedside has to support it. The original failure was a nurse announcing a
@@ -1079,9 +1080,9 @@ const DISTRESS_LANGUAGE = [
   /bolt upright/i,
   /exhausted/i,
   /working (much )?harder/i,
-  /grey\b/i,
+  /gray\b/i,
   /diaphoretic/i,
-  /cold to the elbows/i,
+  /cool all the way up to the elbows/i,
 ];
 
 function claimsDistress(text: string): boolean {
@@ -1136,8 +1137,8 @@ describe('a page never describes a patient the player cannot find', () => {
 });
 
 describe('the nurse keeps watching after they have called', () => {
-  it('rings back when the patient is worse than the last report', () => {
-    const s = soloShift('adhf-mislabelled', { severity: 0.7, declareAt: 20 * 60 });
+  it('calls back when the patient is worse than the last report', () => {
+    const s = soloShift('adhf-mislabeled', { severity: 0.7, declareAt: 20 * 60 });
     run(s.engine, 2 * 3600, 30);
 
     const callbacks = s.patient.messages.filter((m) => /Calling you back|since I last looked/.test(m.text));
@@ -1146,11 +1147,11 @@ describe('the nurse keeps watching after they have called', () => {
     // And the escalation is monotone: each callback describes a worse patient
     // than the one before, because the trigger is a rise against what has
     // already been said.
-    const grades = callbacks.map((m) => (/worse than when I rang/.test(m.text) ? 2 : 1));
+    const grades = callbacks.map((m) => (/worse than when I called/.test(m.text) ? 2 : 1));
     expect(Math.max(...grades)).toBe(2);
   });
 
-  it('says nothing about a patient who was handed over unwell and stays that way', () => {
+  it('says nothing about a patient who was handed over sick and stays that way', () => {
     // A chronic-lung patient sits above the population's normal respiratory rate
     // all night. Grading work of breathing against their own baseline is what
     // stops that being reported as a deterioration.
@@ -1285,7 +1286,7 @@ describe('the nurse is a person, not a return value', () => {
   });
 
   it('charts the vitals as of when they were taken, not when they were asked for', () => {
-    const s = soloShift('adhf-mislabelled', { severity: 0.6, declareAt: 20 * 60 });
+    const s = soloShift('adhf-mislabeled', { severity: 0.6, declareAt: 20 * 60 });
     run(s.engine, 35 * 60, 30);
 
     const askedAt = s.engine.time;
@@ -1341,7 +1342,7 @@ describe('a patient who is losing volume says so before the pressure does', () =
       if (s.patient.status === 'died') { died = minute; break; }
     }
 
-    expect(died, 'an untreated severe haemorrhage still dies').toBeGreaterThan(0);
+    expect(died, 'an untreated severe hemorrhage still dies').toBeGreaterThan(0);
     expect(died - declined, 'minutes from decompensating to arrest').toBeGreaterThan(12);
   });
 });
@@ -1368,7 +1369,7 @@ describe('arrest rhythm follows the cause, not the numbers at the end', () => {
   it('does not fibrillate a patient who bled to death', () => {
     // PCWP is (EDV − V0) × stiffness / emax, so at the contractility clamp floor
     // the wedge diverges however empty the patient is. Every terminal patient
-    // therefore read as congested, and haemorrhages arrested in VF.
+    // therefore read as congested, and hemorrhages arrested in VF.
     const rhythms = new Set<string>();
     for (let i = 0; i < 25; i++) {
       const engine = new ShiftEngine(
@@ -1419,7 +1420,7 @@ describe('a diagnostic study can find the diagnosis', () => {
   });
 
   it('never tells a patient with a finding that their lungs are clear', () => {
-    for (const id of ['pneumonia-sepsis', 'aspiration-event', 'pneumothorax', 'adhf-mislabelled']) {
+    for (const id of ['pneumonia-sepsis', 'aspiration-event', 'pneumothorax', 'adhf-mislabeled']) {
       const s = soloShift(id, { severity: 0.7, declareAt: 20 * 60 });
       advanceToDeclaration(s, 60, 30);
       const impression = resolveLabPanel('CXR', s.engine.snapshot(s.patient), s.patient.params,
@@ -1430,7 +1431,7 @@ describe('a diagnostic study can find the diagnosis', () => {
   });
 });
 
-describe('you can ring the consultant back', () => {
+describe('you can ring the attending back', () => {
   it('takes the call a second time', () => {
     const s = soloShift('gi-bleed', { severity: 0.8, declareAt: 20 * 60 });
     expect(s.engine.placeOrder(s.patient, 'consult-gi')).toBeNull();
@@ -1574,7 +1575,7 @@ describe('inherited orders and results', () => {
 describe('the right ventricle ejects against a pressure', () => {
   it('drives pulmonary pressure from the flow that crosses the lung', () => {
     // mPAP was computed from the RV's isolated pumping capacity, so a dilated RV
-    // on the flat of its Starling curve reported eleven litres a minute while the
+    // on the flat of its Starling curve reported eleven liters a minute while the
     // series constraint held the real circulation at five — and mPAP came out
     // above the systemic pressure, which is not a state a body can be in.
     const dilated = computeSnapshot(
@@ -1601,7 +1602,7 @@ describe('the right ventricle ejects against a pressure', () => {
 });
 
 describe('a background condition shades a case, it does not decide it', () => {
-  it('never hands over a haemoglobin incompatible with life', () => {
+  it('never hands over a hemoglobin incompatible with life', () => {
     for (let i = 0; i < 40; i++) {
       for (const setting of ['community', 'academic'] as const) {
         for (const c of generateWard({ seed: `HGB${i}`, setting }).cases) {
@@ -1613,13 +1614,13 @@ describe('a background condition shades a case, it does not decide it', () => {
   });
 
   it('keeps the severity continuum monotone rather than letting one modifier flip it', () => {
-    // Anaemia acts entirely through the SvO2 → lactate → contractility spiral,
+    // Anemia acts entirely through the SvO2 → lactate → contractility spiral,
     // which is the highest-gain loop in the model. Stacked onto a case that
     // already fails along that axis it stopped being a modifier: the same
     // cardiogenic patient died at 127 minutes without it and 15 with it.
     const survivalMinutes: number[] = [];
     for (const severity of [0.35, 0.45, 0.55, 0.65]) {
-      const s = soloShift('adhf-mislabelled', { severity, declareAt: 20 * 60 });
+      const s = soloShift('adhf-mislabeled', { severity, declareAt: 20 * 60 });
       let lost = 12 * 60;
       for (let i = 0; i < 12 * 60; i++) {
         run(s.engine, MIN, 30);
@@ -1656,14 +1657,14 @@ describe('the academic library covers the range, not just the extremes', () => {
     const opening = s.engine.snapshot(s.patient).map;
     for (let i = 0; i < 12 * 60; i++) run(s.engine, MIN, 30);
 
-    // Haemodynamically uneventful all night, which is the point: the illness is
+    // Hemodynamically uneventful all night, which is the point: the illness is
     // neurological and the model should not pretend otherwise.
     expect(s.patient.status).toBe('stable');
     expect(Math.abs(s.engine.snapshot(s.patient).map - opening)).toBeLessThan(20);
 
     // The precipitant is in the messages and in the medication list.
     const said = s.patient.messages.map((m) => m.text).join(' ');
-    expect(said).toMatch(/bowels/i);
+    expect(said).toMatch(/bowel movement/i);
     expect(s.patient.case.medications.some((m) => /Lactulose/i.test(m.name))).toBe(true);
 
     const harms = ARCHETYPE_BY_ID['hepatic-encephalopathy'].contraindicatedOrders ?? [];
@@ -1687,7 +1688,7 @@ describe('the academic library covers the range, not just the extremes', () => {
 
   it('treats spontaneous bacterial peritonitis as the subacute illness it is', () => {
     const sbp = ARCHETYPE_BY_ID['cirrhosis-sbp'];
-    // Dangerous over days, through the kidneys — not a haemodynamic emergency
+    // Dangerous over days, through the kidneys — not a hemodynamic emergency
     // that kills before morning.
     expect(sbp.tier).toBe('ward');
     expect(sbp.expectedOrders.slice(0, 2)).toEqual(['ceftriaxone', 'albumin']);
@@ -1758,7 +1759,7 @@ describe('the nurse says a thing once', () => {
 describe('the escalation ladders have middle rungs', () => {
   it('grades oxygen from a cannula to positive pressure without a gap', () => {
     const reached = (orderId: string) => {
-      const s = soloShift('adhf-mislabelled', { severity: 0.5, declareAt: 20 * 60 });
+      const s = soloShift('adhf-mislabeled', { severity: 0.5, declareAt: 20 * 60 });
       run(s.engine, 55 * MIN, 20);
       s.engine.placeOrder(s.patient, orderId);
       run(s.engine, 20 * MIN, 20);
@@ -1777,7 +1778,7 @@ describe('the escalation ladders have middle rungs', () => {
   });
 
   it('replaces the oxygen device rather than stacking on it', () => {
-    const s = soloShift('adhf-mislabelled', { severity: 0.5, declareAt: 20 * 60 });
+    const s = soloShift('adhf-mislabeled', { severity: 0.5, declareAt: 20 * 60 });
     run(s.engine, 55 * MIN, 20);
     s.engine.placeOrder(s.patient, 'o2-nrb');
     run(s.engine, 5 * MIN, 20);
@@ -1793,7 +1794,7 @@ describe('the escalation ladders have middle rungs', () => {
 
   it('offers a fluid challenge smaller than a commitment', () => {
     const given = (orderId: string) => {
-      const s = soloShift('hypovolaemia', { severity: 0.6, declareAt: 20 * 60 });
+      const s = soloShift('hypovolemia', { severity: 0.6, declareAt: 20 * 60 });
       run(s.engine, 60 * MIN, 30);
       const before = s.engine.snapshot(s.patient).edv;
       s.engine.placeOrder(s.patient, orderId);
@@ -1814,7 +1815,7 @@ describe('the escalation ladders have middle rungs', () => {
   });
 
   it('offers a bed between the ward and the unit', () => {
-    const s = soloShift('adhf-mislabelled', { severity: 0.4, declareAt: 20 * 60 });
+    const s = soloShift('adhf-mislabeled', { severity: 0.4, declareAt: 20 * 60 });
     run(s.engine, 40 * MIN, 30);
     expect(s.engine.placeOrder(s.patient, 'step-down')).toBeNull();
     run(s.engine, 35 * MIN, 30);
@@ -1920,5 +1921,98 @@ describe('the acuity slider changes how sick the ward is, not who is on it', () 
     const idsAt = (acuity: number) =>
       new Set(generateWard({ seed: 'SAMEWARD', acuity }).cases.map((c) => c.archetypeId));
     expect([...idsAt(0)].sort()).toEqual([...idsAt(1)].sort());
+  });
+});
+
+// ─── The ward speaks American ───────────────────────────────────────────────
+
+/**
+ * Words and constructions that mark a hospital as British.
+ *
+ * The content drifted this way because the physiology reads the same in both
+ * dialects and the prose does not: a nurse who charts "observations", pages the
+ * "registrar", and asks whether the patient has "opened their bowels" is working
+ * somewhere the player has never been. Held as a test rather than a style note
+ * because it is the kind of thing that comes back one page at a time.
+ */
+const BRITISH = [
+  /\bregistrar/i,
+  /\bconsultant\b/i,
+  /opened (his|her|their) bowels/i,
+  /\bobservations\b/i,
+  /\bobs are\b/i,
+  /haemo|aemia\b|aemic\b|oedema|oesoph|melaena/i,
+  /\blitres?\b/i,
+  /nebulis|catheteris|hospitalis|recognis|stabilis/i,
+  /\bparacetamol|adrenaline|salbutamol|co-amoxiclav|flucloxacillin/i,
+  /glyceryl trinitrate/i,
+  /nil by mouth/i,
+  /\bunwell\b/i,
+  /\btrolley\b/i,
+  /\bbloods\b/i,
+  /air entry/i,
+  /\brousable\b/i,
+  /\bresite\b/i,
+  /as required\b/i,
+  /\blaboured\b/i,
+  /\bafterwards\b/i,
+  /\bgrey\b/i,
+  /in (him|her|them)self\b/i,
+  // Collective nouns take a singular verb in American English.
+  /(family|team|cardiology|hepatology|surgery|service|pharmacy|respiratory) (have|are)\b/i,
+];
+
+/** Every string a player can actually be shown. */
+function playerFacingText(): string[] {
+  const out: string[] = [];
+  const grades: Gestalt[] = [0, 1, 2, 3].map((n) => ({
+    wob: n as 0 | 1 | 2 | 3, perf: n as 0 | 1 | 2 | 3, text: '',
+  }));
+
+  for (const order of ORDERS) {
+    out.push(order.label, order.detail);
+    out.push(typeof order.ack === 'function' ? order.ack(makeVoice('female')) : order.ack);
+    if (order.requires) out.push(order.requires.refusal);
+  }
+
+  for (let seed = 0; seed < 6; seed++) {
+    for (const setting of ['community', 'academic'] as const) {
+      for (const c of generateWard({ seed: `VOICE${seed}`, setting }).cases) {
+        out.push(c.admissionDx, c.hiddenDx, c.teachingPoint, ...c.history);
+        out.push(c.handoff.summary, ...c.handoff.todo, ...c.handoff.contingencies);
+        for (const m of c.medications) out.push(m.name, m.detail, m.since);
+        for (const l of c.priorLabs) {
+          out.push(l.panel, l.impression ?? '');
+          for (const v of l.values) out.push(v.label);
+        }
+        for (const e of c.events) {
+          if (!e.page) continue;
+          if (typeof e.page === 'string') out.push(e.page);
+          else for (const g of grades) out.push(e.page(g));
+        }
+      }
+    }
+  }
+  return out;
+}
+
+describe('the ward speaks American', () => {
+  it('has no British usage anywhere a player can see it', () => {
+    const offenders: string[] = [];
+    for (const line of playerFacingText()) {
+      for (const pattern of BRITISH) {
+        const hit = line.match(pattern);
+        if (hit) offenders.push(`"${hit[0]}" in: ${line.slice(0, 90)}`);
+      }
+    }
+    expect([...new Set(offenders)]).toEqual([]);
+  });
+
+  it('keeps the nurse question prompts American too', () => {
+    for (const q of NURSE_QUESTIONS) {
+      for (const pattern of BRITISH) {
+        expect(q.text, q.id).not.toMatch(pattern);
+      }
+    }
   });
 });
