@@ -25,39 +25,38 @@ export function bloodPressure(snap: Snapshot): { sbp: number; dbp: number } {
   };
 }
 
+/** Engine respiratory rate at rest with a drive of 1. */
+const RR_REST = 13;
+
 /**
- * Ventilatory drive above rest, in breaths per minute.
+ * Breaths per minute above a normal resting rate.
  *
- * Four drives, matching how the receptors actually behave:
- *   - Metabolic acidosis → Kussmaul compensation, scaled off the bicarbonate
- *     deficit (Winter's-formula territory).
- *   - Hypoxemia → carotid body drive once SpO2 falls below ~92%.
- *   - Shunt load → the patient breathes harder to *defend* gas exchange. This is
- *     the term whose absence let a bronchospastic patient be charted at a resting
- *     rate: the model only saw the saturation, which is the outcome of the effort,
- *     and never the effort itself. Respiratory rate is the first vital sign to
- *     move in airway and parenchymal disease precisely because it moves before
- *     the saturation is allowed to fall.
- *   - Pulmonary congestion → J-receptor drive. A wet lung is stiff, and the
- *     patient breathes shallow and fast well before the number comes down.
+ * Read from the engine's ventilation model rather than assembled here. The
+ * engine owns the drives — CO2 and metabolic chemoreflexes, the carotid body,
+ * J-receptors in a wet or consolidated lung — and a rate computed from them is
+ * one that actually moves CO2, so a patient charted at 30 and a PaCO2 on the
+ * afternoon gas are the same patient. Negative when the patient is breathing
+ * slower than normal, which is the sign that matters in an opioid overdose.
+ *
+ * This used to be a separate cosmetic formula, which could not produce a
+ * slowing rate at all: sedation, narcosis and a tiring patient were invisible
+ * to it by construction.
  */
 export function respiratoryDrive(snap: Snapshot): number {
-  const metabolic = Math.max(0, 24 - snap.hco3) * 1.1;
-  const hypoxic = Math.max(0, 0.92 - snap.spO2) * 90;
-  const shunt = Math.max(0, snap.qsQtEffective - 0.04) * 55;
-  const congestion = Math.max(0, snap.pcwp - 18) * 0.45;
-  return metabolic + hypoxic + shunt + congestion;
+  return snap.rr - RR_REST;
 }
 
 /**
  * Respiratory rate.
  *
- * `rrOffset` is the chronic part of a given patient's rate — the COPD patient who
- * lives at 20 — and is carried by the case rather than derived, because nothing
- * in the model represents their years of remodeling.
+ * `rrOffset` is the part of a given patient's rate the model does not represent
+ * — pain, anxiety, deconditioning — carried by the case. It rides on top of a
+ * breathing patient and is not added to one who has stopped: the anxious
+ * patient's extra four breaths do not survive an opioid overdose.
  */
 export function respiratoryRate(snap: Snapshot, rrOffset = 0): number {
-  return Math.round(Math.min(45, 13 + rrOffset + respiratoryDrive(snap)));
+  const awake = 1 - snap.cnsDepression;
+  return Math.round(Math.max(0, Math.min(45, snap.rr + rrOffset * awake)));
 }
 
 /**
@@ -90,6 +89,7 @@ export function chartVitals(
     spo2: Math.round(snap.spO2 * 100),
     tempC: Math.round(temperature(snap, tempOffset) * 10) / 10,
     o2: o2Device,
+    ...(snap.afib > 0.5 ? { irregular: true } : {}),
   };
 }
 
@@ -105,6 +105,13 @@ export interface Gestalt {
   wob: GestaltGrade;
   /** Perfusion and mentation. */
   perf: GestaltGrade;
+  /**
+   * Sedation: drugs and CO2 narcosis. A separate axis because it is a separate
+   * failure — a hypoventilating patient is neither working hard to breathe nor
+   * poorly perfused, and both of the other axes read them as comfortable. The
+   * nurse's word for it is "hard to wake", and it is the only early sign there is.
+   */
+  sed: GestaltGrade;
   /** Prose description, worst finding first. */
   text: string;
 }
@@ -133,7 +140,7 @@ export interface Gestalt {
  */
 export function assessAppearance(snap: Snapshot, baselineDrive = 0): Gestalt {
   if (snap.cardiovascularStatus === 'arrest') {
-    return { wob: 3, perf: 3, text: 'unresponsive, no palpable pulse' };
+    return { wob: 3, perf: 3, sed: 3, text: 'unresponsive, no palpable pulse' };
   }
 
   // Pulmonary congestion is visible and audible at the bedside long before it is
@@ -159,8 +166,14 @@ export function assessAppearance(snap: Snapshot, baselineDrive = 0): Gestalt {
     snap.map < 73 || snap.lactate > 3.5 ? 1 :
     0;
 
-  if (wob === 0 && perf === 0) {
-    return { wob, perf, text: 'comfortable and conversant, no distress' };
+  const sed: GestaltGrade =
+    snap.cnsDepression >= 0.85 ? 3 :
+    snap.cnsDepression >= 0.6 ? 2 :
+    snap.cnsDepression >= 0.35 ? 1 :
+    0;
+
+  if (wob === 0 && perf === 0 && sed === 0) {
+    return { wob, perf, sed, text: 'comfortable and conversant, no distress' };
   }
 
   const breathing =
@@ -181,9 +194,36 @@ export function assessAppearance(snap: Snapshot, baselineDrive = 0): Gestalt {
     perf === 1 ? 'pale and tired, slow to answer' :
     null;
 
-  // The worse axis leads; ties go to breathing, which is the more visible.
-  const parts = wob >= perf ? [breathing, perfusion] : [perfusion, breathing];
-  return { wob, perf, text: parts.filter(Boolean).join('; ') };
+  // How much a patient says is a statement about how awake they are as well as
+  // how breathless: someone drifting off mid-sentence is not "talking in
+  // sentences", however fast they are breathing.
+  //
+  // And a patient breathing slowly is not "breathing faster than earlier" just
+  // because the saturation has started to fall: in hypoventilation the low
+  // saturation is the last sign, not a sign of effort. The slowness itself is
+  // described with the sedation below.
+  const breathingText =
+    snap.rr < 10 && wob > 0 ? (snap.spO2 < 0.9 ? 'dusky' : null) :
+    sed >= 2 && wob > 0 && wob < 3 && !congested
+      ? (wob === 2 ? 'breathing hard and fast' : 'breathing faster than earlier')
+      : breathing;
+
+  // Slow breathing is described with the sedation, because that is where the
+  // nurse sees it: a patient snoring at eight a minute is not working hard.
+  const slow = snap.rr < 8 ? ', breathing slowly and snoring' : snap.rr < 10 ? ', breathing slowly' : '';
+  const sedation =
+    sed === 3 ? `rousable only to a sternal rub${slow}` :
+    sed === 2 ? `very hard to wake, drifts off mid-sentence${slow}` :
+    sed === 1 ? `drowsy but rousable to voice${slow}` :
+    null;
+
+  // The worse axis leads; ties go to breathing, then sedation, then perfusion.
+  const ranked = [
+    { grade: wob, text: breathingText, order: 0 },
+    { grade: sed, text: sedation, order: 1 },
+    { grade: perf, text: perfusion, order: 2 },
+  ].sort((a, b) => b.grade - a.grade || a.order - b.order);
+  return { wob, perf, sed, text: ranked.map((r) => r.text).filter(Boolean).join('; ') };
 }
 
 /** Prose-only convenience wrapper. */
@@ -202,7 +242,10 @@ export function acuityLabel(snap: Snapshot, baselineDrive = 0): 'ok' | 'watch' |
   if (snap.cardiovascularStatus === 'arrest') return 'critical';
   if (snap.cardiovascularStatus === 'decompensating') return 'critical';
   if (snap.cardiovascularStatus === 'shock') return 'unstable';
-  if (snap.map < 70 || snap.spO2 < 0.92 || snap.hr > 110) return 'watch';
+  // A monitor shows the rate, so a slow one is visible too — and on a patient
+  // whose saturation is being held up by oxygen it is the only number that moves.
+  if (snap.rr < 6) return 'unstable';
+  if (snap.map < 70 || snap.spO2 < 0.92 || snap.hr > 110 || snap.rr < 9) return 'watch';
   // The respiratory rate is on the monitor too, and it is the number that moves
   // first — a board that ignored it left a working patient showing green.
   if (respiratoryDrive(snap) - baselineDrive >= 6) return 'watch';
@@ -243,17 +286,19 @@ export function resolveLabPanel(
         ],
       };
 
-    case 'VBG':
+    case 'VBG': {
+      const { pCO2: pvCO2, pH: venousPh } = venousGas(snap, params);
       return {
         ...base,
         values: [
-          v('pH', snap.pH, '', 2, { low: 7.32, high: 7.42, critical: snap.pH < 7.2 }),
-          v('pCO₂', params.paCO2 + params.co2RetentionGain * Math.max(0, params.co2RetentionCoRef - snap.co), 'mmHg', 0, { low: 41, high: 51 }),
+          v('pH', venousPh, '', 2, { low: 7.32, high: 7.42, critical: venousPh < 7.2 }),
+          v('pCO₂', pvCO2, 'mmHg', 0, { low: 41, high: 51, critical: pvCO2 > 75 }),
           v('HCO₃', snap.hco3, 'mEq/L', 0, { low: 22, high: 26 }),
           v('Base excess', snap.be, 'mEq/L', 0, { low: -2, high: 2 }),
           v('Lactate', snap.lactate, 'mmol/L', 1, { high: 2.0, critical: snap.lactate > 4 }),
         ],
       };
+    }
 
     case 'ABG':
       return {
@@ -261,7 +306,7 @@ export function resolveLabPanel(
         values: [
           v('pH', snap.pH, '', 2, { low: 7.35, high: 7.45, critical: snap.pH < 7.2 }),
           v('PaO₂', snap.paO2, 'mmHg', 0, { low: 80, critical: snap.paO2 < 55 }),
-          v('PaCO₂', params.paCO2 + params.co2RetentionGain * Math.max(0, params.co2RetentionCoRef - snap.co), 'mmHg', 0, { low: 35, high: 45 }),
+          v('PaCO₂', snap.paCO2, 'mmHg', 0, { low: 35, high: 45, critical: snap.paCO2 > 70 }),
           v('HCO₃', snap.hco3, 'mEq/L', 0, { low: 22, high: 26 }),
           v('SaO₂', snap.spO2 * 100, '%', 0, { low: 94 }),
         ],
@@ -360,7 +405,11 @@ export function resolveLabPanel(
 
     case 'EKG': {
       const rate = Math.round(snap.hr);
-      const rhythm = rate > 100 ? 'Sinus tachycardia' : rate < 60 ? 'Sinus bradycardia' : 'Normal sinus rhythm';
+      const rhythm = snap.afib > 0.5
+        ? (rate > 110 ? 'Atrial fibrillation with rapid ventricular response'
+          : rate < 60 ? 'Atrial fibrillation with slow ventricular response'
+          : 'Atrial fibrillation, rate controlled')
+        : rate > 100 ? 'Sinus tachycardia' : rate < 60 ? 'Sinus bradycardia' : 'Normal sinus rhythm';
       const strain = snap.mPAP > 30 && snap.rvedv > 190
         ? ' Right axis deviation with S1Q3T3 pattern and anteroseptal T-wave inversions — RV strain.'
         : '';
@@ -437,6 +486,24 @@ export function resolveLabPanel(
       return { ...base, values: [], impression: specific ?? 'Result unavailable.' };
   }
 }
+
+/**
+ * Venous gas from arterial physiology.
+ *
+ * Venous PCO2 sits above arterial by the CO2 the tissues add on the way
+ * through, which by the Fick principle is VCO2 / CO: about 6 mmHg at a normal
+ * output, and wider as flow falls. That widening gap is real and useful — a
+ * shocked patient's venous gas looks more acidotic than their arterial one, and
+ * a VBG read as if it were an ABG overstates the hypercapnia.
+ */
+export function venousGas(snap: Snapshot, params: HemodynamicParams): { pCO2: number; pH: number } {
+  const gap = VA_CO2_GAP_K * (params.vo2 * params.rq) / Math.max(0.5, snap.co);
+  const pCO2 = snap.paCO2 + Math.min(40, gap);
+  return { pCO2, pH: 6.1 + Math.log10(snap.hco3 / (0.0307 * pCO2)) };
+}
+
+/** mmHg per (mL/min ÷ L/min): 6 mmHg venous–arterial gap at VCO2 200, CO 5. */
+const VA_CO2_GAP_K = 0.15;
 
 function v(
   label: string,

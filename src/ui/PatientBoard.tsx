@@ -72,7 +72,7 @@ function PatientCard({
         ) : displayVitals ? (
           <>
             <span>{displayVitals.sbp}/{displayVitals.dbp}</span>
-            <span>♥ {displayVitals.hr}</span>
+            <span>♥ {displayVitals.hr}{displayVitals.irregular ? ' irreg' : ''}</span>
             <span>SpO₂ {displayVitals.spo2}%</span>
           </>
         ) : (

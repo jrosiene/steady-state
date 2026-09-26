@@ -101,6 +101,8 @@ export const COMORBIDITIES: Comorbidity[] = [
     apply(t, rng) {
       t.params.svMax = (t.params.svMax ?? 130) * rng.real(0.84, 0.92);
       t.params.emaxRef = (t.params.emaxRef ?? 2.0) * rng.real(0.86, 0.94);
+      // Frail, elderly patients are narcotized by doses a younger adult shrugs off.
+      t.params.sedativeSensitivity = (t.params.sedativeSensitivity ?? 1) * rng.real(1.15, 1.3);
     },
   },
   {
@@ -119,12 +121,48 @@ export const COMORBIDITIES: Comorbidity[] = [
     weight: 2,
     minAge: 50,
     skipFor: [
-      'copd-exacerbation', 'adhf-mislabeled', 'cf-exacerbation', 'pah-rv-failure',
+      'copd-exacerbation', 'copd-o2-narcosis', 'adhf-mislabeled', 'cf-exacerbation', 'pah-rv-failure',
       'meth-pah-right-failure', 'withdrawal-in-pah',
     ],
     apply(t, rng) {
       t.state.qsQt = (t.state.qsQt ?? 0.02) + rng.real(0.04, 0.08);
       t.state.pvr = (t.state.pvr ?? 1.5) + rng.real(0.4, 0.9);
+      // Less lung to breathe with: some ventilated units are not perfused, and
+      // there is less ventilatory reserve to call on when something else goes
+      // wrong. Not a CO2 retainer — that is a case, not a background.
+      t.state.deadSpace = (t.state.deadSpace ?? 0) + rng.real(0.05, 0.1);
+      t.params.veMax = Math.min(t.params.veMax ?? 40, rng.real(22, 30));
+    },
+  },
+  {
+    id: 'chronic-af',
+    label: 'Permanent atrial fibrillation, rate-controlled',
+    weight: 1.5,
+    minAge: 65,
+    // Their own rhythm is the case; and a heart that is fit enough to run at 50
+    // in sinus rhythm is not one that has been in AF for years.
+    skipFor: ['af-rvr-hfpef', 'af-rvr-sepsis', 'af-rvr-hfref'],
+    excludes: ['athletic'],
+    apply(t, rng) {
+      // No atrial kick, a little lost to irregularity, and a ventricular rate
+      // held down by their usual AV-nodal agent. Harmless at rest; in shock the
+      // rate climbs with the sympathetic drive and the short cycles cost more.
+      t.state.afib = 1;
+      t.params.afRestRate = rng.real(78, 92);
+    },
+  },
+  {
+    id: 'osa',
+    label: 'Obstructive sleep apnea, not using CPAP',
+    weight: 1.5,
+    minAge: 35,
+    // Already in the case, and already the point of it.
+    skipFor: ['opioid-oversedation'],
+    apply(t, rng) {
+      // The airway collapses when the patient sleeps, and opioids make them
+      // sleep: the same dose depresses ventilation considerably more. Harmless
+      // on a night nobody gives them anything, which is most nights.
+      t.params.sedativeSensitivity = (t.params.sedativeSensitivity ?? 1) * rng.real(1.35, 1.6);
     },
   },
   {

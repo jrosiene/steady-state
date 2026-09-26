@@ -5,6 +5,7 @@ import type {
 import type { Snapshot } from '../../engine/types';
 import type { Rng } from './rng';
 import type { Voice } from './voice';
+import { AF_LABEL_PREFIX, O2_LABEL_PREFIX, OPIOID_LABEL_PREFIX } from '../orders';
 import { bloodLossScale, insultScale, lerp, onsetScale, varyAxis, type Severity } from './severity';
 
 const MIN = 60;
@@ -171,6 +172,43 @@ function bySeverity(ctx: ArchetypeContext, atMild: number, atSevere: number): nu
 /** As `bySeverity`, rounded — for volumes and rates that are charted as integers. */
 function bySeverityInt(ctx: ArchetypeContext, atMild: number, atSevere: number): number {
   return Math.round(bySeverity(ctx, atMild, atSevere));
+}
+
+/**
+ * Ventilatory physiology of a chronic CO2 retainer, graded by severity.
+ *
+ * Deterministic in severity, so the prior gases an archetype hands over can be
+ * written from the same numbers the simulation will run on.
+ */
+function copdRetainer(ctx: ArchetypeContext): {
+  paCO2Setpoint: number; hco3Baseline: number; ventCo2Gain: number; veMax: number;
+} {
+  const paCO2Setpoint = bySeverity(ctx, 44, 54);
+  return {
+    paCO2Setpoint,
+    // Chronic renal compensation: ~0.4 mEq/L per mmHg of chronic hypercapnia.
+    hco3Baseline: 24 + 0.4 * (paCO2Setpoint - 40),
+    // Blunted: ~0.8 L/min per mmHg rather than ~2 in a normal adult.
+    ventCo2Gain: bySeverity(ctx, 0.15, 0.1),
+    // FEV1 around a third of predicted leaves little room above resting demand.
+    veMax: bySeverity(ctx, 11, 9),
+  };
+}
+
+/**
+ * A venous gas taken before the shift, from arterial physiology: venous pCO2
+ * runs about 6 mmHg above arterial at a normal output.
+ */
+function priorVbg(minutesBefore: number, paCO2: number, hco3: number, lactate?: number): PriorLab {
+  const pvCO2 = paCO2 + 6;
+  const pH = 6.1 + Math.log10(hco3 / (0.0307 * pvCO2));
+  const values = [
+    pv('pH', pH, '', 2, { low: 7.32, high: 7.42 }),
+    pv('pCO₂', pvCO2, 'mmHg', 0, { low: 41, high: 51 }),
+    pv('HCO₃', hco3, 'mEq/L', 0, { low: 22, high: 26 }),
+  ];
+  if (lactate !== undefined) values.push(pv('Lactate', lactate, 'mmol/L', 1, { high: 2.0 }));
+  return prior('VBG', minutesBefore, values);
 }
 
 /** A result the day team already has, timed relative to the start of the shift. */
@@ -463,10 +501,10 @@ export const ARCHETYPES: CaseArchetype[] = [
           at: jitter(ctx, ctx.declareAt + 80 * MIN),
           pageWhen: { axis: 'wob', grade: 2 },
           page: (g) => g.wob >= 3
-            ? `Worse — bolt upright, and ${v.subj} ${v.is} coughing up pink froth. I've put ${v.obj} on a non-rebreather.`
+            ? `Worse — bolt upright, and ${v.subj} ${v.is} coughing up pink froth. Can I put ${v.obj} on a non-rebreather?`
             : g.wob >= 2
             ? `Worse — ${v.subj} ${v.verb('want')} to sit right forward and ${v.subj} can't finish a sentence. ` +
-              `I've turned the oxygen up.`
+              `Do you want the oxygen turned up?`
             : `${v.Subj} ${v.is} propped right up on four pillows now and ${v.subj} ${v.verb('say')} ${v.subj} ` +
               `${v.verb('breathe')} easier that way. The numbers are much the same.`,
           interventions: [
@@ -803,7 +841,17 @@ export const ARCHETYPES: CaseArchetype[] = [
         edv: ctx.rng.int(108, 120),
         qsQt: bySeverity(ctx, 0.09, 0.17),
         pvr: 2.4,
+        // Emphysematous lung: ventilated, not perfused.
+        deadSpace: bySeverity(ctx, 0.22, 0.32),
+        // On their home 2 L, as the history says. When PaCO2 was a constant this
+        // did not matter; with real hypoventilation, alveolar PO2 falls as CO2
+        // rises, and a retainer on room air is a retainer who is hypoxemic.
+        fiO2: 0.28,
       },
+      // A chronic CO2 retainer, more so the sicker the lungs: reset chemoreceptors,
+      // renally compensated bicarbonate, a blunted response to CO2, and very
+      // little ventilatory reserve. See `copdRetainer`.
+      paramOverrides: copdRetainer(ctx),
       rrOffset: 3,
       tempOffset: 0.2,
     }),
@@ -825,6 +873,9 @@ export const ARCHETYPES: CaseArchetype[] = [
             // Bronchospasm does not self-resolve overnight; nebs and steroids reverse it.
             insult(ctx, { label: 'Bronchospasm: V/Q', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.17, tauOn: 600, eliminationHalfLife: 86400 }),
             insult(ctx, { label: 'Bronchospasm: HPV', category: 'scenario', kind: 'scenario', target: 'pvr', delta: 1.2, tauOn: 900, eliminationHalfLife: 86400 }),
+            // Gas trapping: air goes in and cannot get out, so each breath clears
+            // less CO2. With no reserve to breathe harder, PaCO2 climbs.
+            insult(ctx, { label: 'Bronchospasm: gas trapping', category: 'scenario', kind: 'scenario', target: 'deadSpace', delta: 0.08, tauOn: 900, eliminationHalfLife: 86400 }),
           ],
         },
       ];
@@ -850,23 +901,21 @@ export const ARCHETYPES: CaseArchetype[] = [
       { name: 'Home oxygen', detail: '2 L via nasal cannula — target saturation 88–92%', since: 'home therapy' },
       { name: 'Enoxaparin', detail: '40 mg subcutaneously daily', since: 'admission' },
     ],
-    priorLabs: (ctx) => [
+    priorLabs: (ctx) => {
       // The gas the covering doctor most wants and least often looks for.
-      prior('VBG', 210, [
-        pv('pH', bySeverity(ctx, 7.37, 7.32), '', 2, { low: 7.32, high: 7.42 }),
-        pv('pCO₂', bySeverityInt(ctx, 48, 61), 'mmHg', 0, { low: 41, high: 51 }),
-        pv('HCO₃', bySeverityInt(ctx, 28, 33), 'mEq/L', 0, { low: 22, high: 26 }),
-        pv('Lactate', 1.2, 'mmol/L', 1, { high: 2.0 }),
-      ]),
-      prior('VBG', 900, [
-        pv('pH', bySeverity(ctx, 7.35, 7.29), '', 2, { low: 7.32, high: 7.42 }),
-        pv('pCO₂', bySeverityInt(ctx, 52, 68), 'mmHg', 0, { low: 41, high: 51 }),
-        pv('HCO₃', bySeverityInt(ctx, 29, 34), 'mEq/L', 0, { low: 22, high: 26 }),
-      ]),
-      prior('CXR', 960, [], 'Hyperinflated lungs with flattened hemidiaphragms. No consolidation or pneumothorax.'),
-    ],
+      //
+      // Written from the same numbers the simulation runs on, so the afternoon
+      // gas and one drawn tonight describe the same patient. This afternoon's is
+      // their baseline; the one from admission, fifteen hours ago, was worse.
+      const { paCO2Setpoint, hco3Baseline } = copdRetainer(ctx);
+      return [
+        priorVbg(210, paCO2Setpoint, hco3Baseline, 1.2),
+        priorVbg(900, paCO2Setpoint + bySeverity(ctx, 5, 11), hco3Baseline + 0.5),
+        prior('CXR', 960, [], 'Hyperinflated lungs with flattened hemidiaphragms. No consolidation or pneumothorax.'),
+      ];
+    },
     expectedOrders: ['duoneb', 'steroids', 'o2-nc6', 'sit-up', 'bipap', 'hfnc'],
-    contraindicatedOrders: ['ns-1000', 'morphine-comfort'],
+    contraindicatedOrders: ['ns-1000', 'morphine-comfort', 'o2-nrb', 'lorazepam'],
   },
 
   {
@@ -2565,7 +2614,7 @@ export const ARCHETYPES: CaseArchetype[] = [
             ? `${ctx.name} in ${ctx.room} is working hard to breathe and the sats are down. ` +
               `${v.Subj} ${v.verb('say')} the pain has moved up into ${v.poss} left shoulder.`
             : `${ctx.name} in ${ctx.room} is more uncomfortable since the procedure and ${v.subj} ${v.verb('say')} ` +
-              `it hurts more to breathe in now than it did earlier. I put ${v.obj} on 2 liters.`,
+              `it hurts more to breathe in now than it did earlier. Do you want ${v.obj} on some oxygen?`,
           interventions: [
             insult(ctx, { label: 'Hydropneumothorax: shunt', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.16, tauOn: 2100, eliminationHalfLife: 86400 }),
           ],
@@ -3839,6 +3888,480 @@ export const ARCHETYPES: CaseArchetype[] = [
     }),
     expectedOrders: ['hold-nephrotoxics', 'ns-250', 'img-echo', 'vitals-now', 'call-attending', 'transfer-icu'],
     contraindicatedOrders: ['furosemide', 'ns-1000', 'phenylephrine'],
+  },
+
+  // ─── Ventilation ──────────────────────────────────────────────────────────
+  //
+  // Cases that exist because PaCO2 is physiology rather than a constant. Both
+  // turn on the same fact: a pulse oximeter measures oxygenation, and says
+  // nothing about ventilation — least of all on supplemental oxygen.
+
+  {
+    id: 'opioid-oversedation',
+    label: 'Post-operative opioid oversedation',
+    tier: 'critical',
+    ageRange: [58, 84],
+    span: 3 * HOUR,
+    admissionDx: 'Post-operative day 1 — total knee replacement',
+    hiddenDx:
+      'Opioid-induced respiratory depression: PCA and as-needed hydromorphone on top of gabapentin, ' +
+      'in a patient with untreated sleep apnea, with the oxygen masking it',
+    teachingPoint:
+      'A pulse oximeter measures oxygenation, not ventilation. On two liters, a patient can retain CO2 ' +
+      'to the point of narcosis while the saturation reads 94%. The signs are a slow rate and a patient ' +
+      'who is hard to wake, and the nurse who calls about the pain score is telling you about both. ' +
+      'Naloxone reverses it within minutes — and wears off within the hour, while the hydromorphone does ' +
+      'not, so stop the opioids, watch, and expect to give it again.',
+    history: (ctx) => [
+      'Obstructive sleep apnea — does not use CPAP',
+      'Osteoarthritis, right knee',
+      ...ctx.rng.sample(['Obesity', 'Hypertension', 'Type 2 diabetes', 'Chronic back pain'], 2),
+    ],
+    baseline: (ctx) => ({
+      stateOverrides: {
+        hr: ctx.rng.int(76, 90),
+        svr: 16,
+        edv: ctx.rng.int(112, 124),
+        // Basal atelectasis after a general anesthetic, which is why the day
+        // team put the oxygen on — and why nobody will see the saturation fall.
+        qsQt: bySeverity(ctx, 0.05, 0.07),
+        fiO2: 0.28,
+      },
+      paramOverrides: {
+        // The airway collapses when this patient sleeps. The same dose of opioid
+        // does considerably more than it would in someone without apnea.
+        sedativeSensitivity: bySeverity(ctx, 1.3, 1.6),
+      },
+      // Pain.
+      rrOffset: 3,
+    }),
+    script: (ctx) => {
+      const v = ctx.voice;
+      return [
+        {
+          // The call before the call: pain after physical therapy. Answering it
+          // with more opioid is the reflex, and it adds to what follows.
+          at: ctx.declareAt - jitter(ctx, 50 * MIN, 10 * MIN),
+          page: `${ctx.room} is in a lot of pain after physical therapy — ${v.subj} ${v.verb('say')} eight out of ten ` +
+            `and ${v.subj} ${v.has} been pressing the PCA a lot. Can ${v.subj} have something extra?`,
+        },
+        {
+          at: ctx.declareAt,
+          // PCA demand doses stacking on the evening gabapentin as the patient
+          // finally falls asleep. Scenario-kind, so stopping the PCA stops it —
+          // and hydromorphone takes hours to leave once it has.
+          interventions: [
+            insult(ctx, {
+              label: `${OPIOID_LABEL_PREFIX} PCA hydromorphone`, category: 'scenario', kind: 'scenario',
+              target: 'ventDepression', delta: 0.55, tauOn: 40 * MIN, eliminationHalfLife: 9000,
+            }),
+          ],
+          pageWhen: { axis: 'sed', grade: 1, by: 90 * MIN },
+          page: (g) => g.sed >= 3
+            ? `I can barely wake ${ctx.name}. ${v.Subj} only ${v.verb('respond')} to a sternal rub and ${v.subj} ${v.is} ` +
+              `breathing maybe six times a minute. Sat is still OK on the 2 liters.`
+            : g.sed >= 2
+            ? `I'm worried about ${ctx.name}. ${v.Subj} ${v.verb('keep')} falling asleep while I'm talking to ${v.obj}, ` +
+              `${v.subj} ${v.is} snoring, and ${v.poss} rate is slow. Sat is fine though — 94% on 2 liters.`
+            : `${ctx.name} is finally comfortable — asleep and snoring. I couldn't get a pain score because ` +
+              `${v.subj} ${v.verb('keep')} dozing off. Should I hold the next PCA dose, or is ${v.subj} OK?`,
+        },
+      ];
+    },
+    handoff: (ctx) => ({
+      severityCall: 'stable',
+      summary:
+        `Day 1 after a right total knee replacement. Uncomplicated. Pain controlled on a hydromorphone PCA. ` +
+        `Sats were 90–91% on room air in recovery so ${ctx.voice.subj} ${ctx.voice.is} on 2 liters.`,
+      todo: ['PCA: hydromorphone 0.2 mg demand, 10-minute lockout, no basal rate.', 'PT again in the morning.'],
+      contingencies: [
+        'Has sleep apnea and does not use CPAP — please make sure the sedation scores are being done.',
+        'If sedated with a slow rate, hold the PCA and give naloxone.',
+      ],
+      misleading: 'If the pain is not controlled, give hydromorphone 0.5 mg IV on top of the PCA.',
+    }),
+    medications: () => [
+      { name: 'Hydromorphone PCA', detail: '0.2 mg demand dose, 10-minute lockout, no basal', since: 'day 1 post-op' },
+      { name: 'Gabapentin', detail: '300 mg orally three times daily', since: 'day 1 post-op' },
+      { name: 'Oxycodone', detail: '5–10 mg orally every 4 hours as needed', since: 'day 1 post-op' },
+      { name: 'Acetaminophen', detail: '1 g orally every 6 hours, regular', since: 'day 1 post-op' },
+      { name: 'Enoxaparin', detail: '40 mg subcutaneously daily', since: 'day 1 post-op' },
+      { name: 'Supplemental oxygen', detail: '2 L via nasal cannula', since: 'recovery' },
+    ],
+    priorLabs: () => [
+      prior('CBC', 720, [
+        pv('WBC', 11.4, 'K/µL', 1, { low: 4, high: 11 }),
+        pv('Hgb', 11.6, 'g/dL', 1, { low: 12 }),
+        pv('Platelets', 212, 'K/µL', 0, { low: 150 }),
+      ]),
+    ],
+    expectedOrders: ['naloxone', 'hold-opioids', 'lab-abg', 'telemetry'],
+    contraindicatedOrders: ['hydromorphone', 'morphine-comfort', 'oxycodone', 'lorazepam'],
+  },
+
+  {
+    id: 'copd-o2-narcosis',
+    label: 'Oxygen-induced hypercapnia',
+    tier: 'ward',
+    ageRange: [60, 84],
+    span: 4 * HOUR,
+    admissionDx: 'COPD exacerbation, improving',
+    hiddenDx:
+      'Acute-on-chronic hypercapnic respiratory failure, caused by high-flow oxygen in a chronic CO2 retainer',
+    teachingPoint:
+      'A saturation of 99% in someone whose target is 88–92% is not good news. In a chronic CO2 retainer, ' +
+      'high-flow oxygen releases the hypoxic vasoconstriction that was matching perfusion to ventilation and ' +
+      'removes the hypoxic drive to breathe, and the PaCO2 climbs until the patient is narcotized — peaceful, ' +
+      'asleep, and perfectly saturated. Turn the oxygen down to target, get a gas, and put them on BiPAP if they ' +
+      'are acidotic. Treating the drowsiness as sleep is the step that kills them.',
+    history: (ctx) => [
+      ctx.rng.pick(['Severe COPD (FEV1 29%)', 'Severe COPD (FEV1 33%)', 'COPD, emphysema-predominant']),
+      'Chronic hypercapnic respiratory failure',
+      'Home O2 2L',
+      ctx.rng.pick(['50 pack-year smoking history', 'Ex-smoker, 45 pack-years']),
+    ],
+    baseline: (ctx) => ({
+      stateOverrides: {
+        hr: ctx.rng.int(84, 94),
+        svr: 14,
+        edv: ctx.rng.int(106, 118),
+        // Day three of an exacerbation that is responding: better, not gone.
+        qsQt: bySeverity(ctx, 0.13, 0.18),
+        pvr: 2.6,
+        deadSpace: bySeverity(ctx, 0.26, 0.34),
+        fiO2: 0.28,
+      },
+      paramOverrides: copdRetainer(ctx),
+      rrOffset: 3,
+      tempOffset: 0.1,
+    }),
+    script: (ctx) => {
+      const v = ctx.voice;
+      return [
+        {
+          // The ordinary call that sets up the fatal one. Breathless people are
+          // anxious and sleep badly, and there is a benzodiazepine on the home list.
+          at: ctx.declareAt - jitter(ctx, 70 * MIN, 10 * MIN),
+          page: `${ctx.room} is anxious and can't sleep. ${v.Subj} ${v.verb('say')} ${v.subj} ${v.verb('take')} lorazepam ` +
+            `at home some nights and ${v.verb('want')} to know if ${v.subj} can have some.`,
+        },
+        {
+          // A plug, a cough, a desaturation that frightens whoever is in the room.
+          at: ctx.declareAt,
+          interventions: [
+            insult(ctx, { label: 'Mucus plug: V/Q', category: 'scenario', kind: 'scenario', target: 'qsQt', delta: 0.07, tauOn: 5 * MIN, eliminationHalfLife: 2 * HOUR }),
+            // Obstruction traps gas behind it as well as shunting past it.
+            insult(ctx, { label: 'Mucus plug: gas trapping', category: 'scenario', kind: 'scenario', target: 'deadSpace', delta: 0.12, tauOn: 10 * MIN, eliminationHalfLife: 2 * HOUR }),
+          ],
+        },
+        {
+          // …so the non-rebreather goes on. The page is good news, and it is not.
+          at: ctx.declareAt + 12 * MIN,
+          o2Device: 'NRB 15L',
+          interventions: [
+            { label: `${O2_LABEL_PREFIX} NRB`, category: 'treatment', kind: 'infusion', target: 'fiO2', delta: 0.64, tauOn: 60, eliminationHalfLife: 120 },
+          ],
+          page: `FYI — ${ctx.name}'s sat dropped to 84% after a coughing fit, so I put ${v.obj} on the non-rebreather. ` +
+            `The sats have come right up and ${v.subj} ${v.is} finally getting some sleep. Just letting you know.`,
+        },
+        {
+          at: ctx.declareAt + 20 * MIN,
+          pageWhen: { axis: 'sed', grade: 1, by: 3 * HOUR },
+          page: (g) => g.sed >= 3
+            ? `${ctx.name} won't wake up properly. ${v.Subj} ${v.verb('open')} ${v.poss} eyes to a sternal rub and ` +
+              `that's it. The sat is fine on the non-rebreather, so I don't think it's ${v.poss} breathing?`
+            : g.sed >= 2
+            ? `${ctx.name} is really hard to wake — ${v.subj} ${v.verb('mumble')} and ${v.verb('drift')} off again. ` +
+              `Sat is great on the non-rebreather. Is it OK to just let ${v.obj} sleep?`
+            : g.sed >= 1
+            ? `${ctx.name} is sleeping very deeply — I had to shake ${v.obj} to get vitals. Sats are good. ` +
+              `Is it OK to let ${v.obj} sleep?`
+            : `${ctx.name} is sleeping. Sats are good. I'll keep an eye.`,
+        },
+      ];
+    },
+    handoff: (ctx) => ({
+      severityCall: 'stable',
+      summary: 'COPD exacerbation, day 3, improving on prednisone, nebulizers and doxycycline. Home oxygen user.',
+      todo: ['Scheduled nebulizers.'],
+      contingencies: [
+        `Known CO2 retainer — target saturation 88–92%. Please do not put ${ctx.voice.obj} on high-flow oxygen.`,
+      ],
+      misleading: `If ${ctx.voice.subj} ${ctx.voice.verb('desaturate')}, turn the oxygen up and give a neb.`,
+    }),
+    medications: (ctx) => [
+      { name: 'Prednisone', detail: '40 mg orally daily', since: 'day 3 of 5' },
+      { name: 'Albuterol/ipratropium nebulizers', detail: 'every 6 hours, plus as needed', since: 'admission' },
+      { name: 'Doxycycline', detail: '100 mg orally twice daily', since: 'day 3 of 5' },
+      { name: 'Home oxygen', detail: '2 L via nasal cannula — target saturation 88–92%', since: 'home therapy' },
+      { name: ctx.rng.pick(['Tiotropium', 'Umeclidinium/vilanterol']), detail: 'inhaled daily', since: 'home medication' },
+    ],
+    priorLabs: (ctx) => {
+      const { paCO2Setpoint, hco3Baseline } = copdRetainer(ctx);
+      return [
+        priorVbg(300, paCO2Setpoint, hco3Baseline, 1.1),
+        prior('CXR', 2 * 24 * 60, [], 'Hyperinflated lungs with flattened hemidiaphragms. No consolidation or pneumothorax.'),
+      ];
+    },
+    findings: () => (panel) =>
+      panel === 'CXR'
+        ? 'Hyperinflated lungs. No new consolidation, no pneumothorax. Unchanged from admission.'
+        : null,
+    expectedOrders: ['o2-nc', 'lab-abg', 'bipap', 'duoneb'],
+    contraindicatedOrders: ['lorazepam', 'morphine-comfort', 'hydromorphone', 'o2-nrb'],
+  },
+
+  // ─── Rhythm ───────────────────────────────────────────────────────────────
+  //
+  // New atrial fibrillation with a fast rate is among the commonest overnight
+  // pages, and "slow it down" is right in one of these three and wrong in the
+  // other two. The rhythm is identical; the ventricle behind it is not.
+
+  {
+    id: 'af-rvr-hfpef',
+    label: 'New AF with rapid ventricular response, stiff ventricle',
+    tier: 'ward',
+    ageRange: [68, 88],
+    span: 3 * HOUR,
+    admissionDx: 'Cellulitis of the leg, improving on IV antibiotics',
+    hiddenDx:
+      'New atrial fibrillation with a rapid ventricular response in a hypertrophied, stiff left ventricle — ' +
+      'losing both the atrial kick and the diastole it depends on to fill',
+    teachingPoint:
+      'A stiff ventricle fills late and slowly, and leans on the atrium to finish the job. New AF takes away ' +
+      'both the atrial kick and the time, so the output falls while the pressure behind it floods the lungs. ' +
+      'Here slowing the rate is the treatment: a beta-blocker or diltiazem gives diastole back, the wedge falls ' +
+      'and the output rises. If the pressure is already failing, cardiovert. More fluid does not help a ' +
+      'ventricle that cannot fill in the time it is given.',
+    history: (ctx) => [
+      'Hypertension, long-standing',
+      'Heart failure with preserved ejection fraction — LVH, EF 60%',
+      ...ctx.rng.sample(['Type 2 diabetes', 'Obesity', 'Chronic kidney disease stage 3', 'Osteoarthritis'], 2),
+    ],
+    baseline: (ctx) => ({
+      stateOverrides: {
+        hr: ctx.rng.int(70, 80),
+        svr: 19,
+        edv: ctx.rng.int(104, 114),
+        emax: 2.4,
+      },
+      paramOverrides: {
+        // A thick, stiff ventricle: high filling pressure for its volume, and
+        // unusually dependent on atrial contraction to fill.
+        lvEdpvrStiffness: bySeverity(ctx, 0.28, 0.34),
+        atrialKickFraction: bySeverity(ctx, 0.26, 0.34),
+        afRestRate: bySeverity(ctx, 135, 165),
+      },
+      rrOffset: 1,
+      tempOffset: 0.2,
+    }),
+    script: (ctx) => {
+      const v = ctx.voice;
+      return [
+        {
+          at: ctx.declareAt,
+          interventions: [
+            { label: `${AF_LABEL_PREFIX} onset`, category: 'scenario', kind: 'scenario', target: 'afib', delta: 1, tauOn: 60, eliminationHalfLife: 30 },
+          ],
+          pageWhen: { axis: 'either', grade: 1, by: 12 * MIN },
+          page: (g) => g.wob >= 2 || g.perf >= 2
+            ? `${ctx.name} in ${ctx.room} has gone into a fast irregular rhythm — well over 140 on the monitor I brought in. ` +
+              `${v.Subj} ${v.is} short of breath, crackly at the bases, and the pressure is coming down.`
+            : `${ctx.name} in ${ctx.room} says ${v.poss} heart is racing. The pulse is fast and irregular, over 130, ` +
+              `and ${v.subj} ${v.is} a bit short of breath. Pressure is holding. ${v.Subj} ${v.has} never had this before.`,
+        },
+      ];
+    },
+    handoff: (ctx) => ({
+      severityCall: 'stable',
+      summary: 'Left leg cellulitis, day 3, improving on cefazolin. Background hypertension and HFpEF.',
+      todo: ['Mark the erythema margin again in the morning.'],
+      contingencies: [
+        `Gets flash pulmonary edema when ${ctx.voice.poss} pressure runs high — has needed IV furosemide before.`,
+      ],
+      misleading: 'If the pressure drops, give a 500 mL bolus — the cellulitis may be getting worse.',
+    }),
+    medications: () => [
+      { name: 'Cefazolin', detail: '2 g IV every 8 hours', since: 'day 3' },
+      { name: 'Amlodipine', detail: '10 mg orally daily', since: 'home medication' },
+      { name: 'Lisinopril', detail: '20 mg orally daily', since: 'home medication' },
+      { name: 'Furosemide', detail: '20 mg orally daily', since: 'home medication' },
+      { name: 'Enoxaparin', detail: '40 mg subcutaneously daily', since: 'admission' },
+    ],
+    priorLabs: () => [
+      prior('EKG', 60 * 48, [], 'Sinus rhythm at 72. Left ventricular hypertrophy with repolarization changes. No acute changes.'),
+      prior('Bedside echo', 60 * 24 * 90, [], 'Concentric LVH, EF 60%. Grade II diastolic dysfunction. Left atrium moderately dilated.'),
+    ],
+    findings: () => (panel, snap) =>
+      panel === 'Bedside echo' && snap.afib > 0.5
+        ? 'Atrial fibrillation. Concentric LVH with a small, hyperdynamic cavity and very short filling time; ' +
+          'normal systolic function. Dilated left atrium. No pericardial effusion.'
+        : null,
+    expectedOrders: ['img-ekg', 'metoprolol-iv', 'telemetry', 'heparin'],
+    contraindicatedOrders: ['ns-1000'],
+  },
+
+  {
+    id: 'af-rvr-sepsis',
+    label: 'AF with rapid ventricular response in sepsis',
+    tier: 'critical',
+    ageRange: [62, 88],
+    span: 4 * HOUR,
+    admissionDx: 'Urinary tract infection',
+    hiddenDx:
+      'Urosepsis progressing to septic shock, with new AF driven by the sympathetic surge — the fast rate is a ' +
+      'symptom of the sepsis and partly compensation for it',
+    teachingPoint:
+      'The page is about the heart rate, and the heart rate is not the problem. Sepsis drove this patient into ' +
+      'AF and is driving the ventricular rate, so the rate falls when the sepsis is treated — fluid, antibiotics, ' +
+      'cultures and a lactate. Diltiazem into a vasodilated, underfilled, septic patient drops the pressure ' +
+      'further and takes away the contractility they have left. If the rate itself needs help, amiodarone ' +
+      'spares the pressure.',
+    history: (ctx) => ctx.rng.sample(
+      ['Type 2 diabetes', 'Benign prostatic hyperplasia', 'Recurrent UTIs', 'Hypertension', 'Chronic kidney disease stage 3'],
+      3,
+    ),
+    baseline: (ctx) => ({
+      stateOverrides: {
+        hr: ctx.rng.int(82, 94),
+        svr: 15.5,
+        edv: ctx.rng.int(104, 116),
+        noTone: bySeverity(ctx, 0.05, 0.14),
+      },
+      paramOverrides: { afRestRate: 115 },
+      rrOffset: 2,
+      tempOffset: 0.4,
+    }),
+    script: (ctx) => {
+      const v = ctx.voice;
+      return [
+        {
+          at: ctx.declareAt,
+          interventions: [
+            insult(ctx, { label: 'Urosepsis: vasodilation', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.42, tauOn: 2400, eliminationHalfLife: 43200 }),
+            insult(ctx, { label: 'Urosepsis: third-spacing', category: 'scenario', kind: 'scenario', target: 'edv', delta: -22, tauOn: 3000, eliminationHalfLife: 43200 }),
+          ],
+        },
+        {
+          at: jitter(ctx, ctx.declareAt + 90 * MIN),
+          interventions: [
+            insult(ctx, { label: 'Urosepsis: progression', category: 'scenario', kind: 'scenario', target: 'noTone', delta: 0.3, tauOn: 1800, eliminationHalfLife: 43200 }),
+          ],
+          pageWhen: { axis: 'perf', grade: 2, by: 2 * HOUR },
+          page: (g) => g.perf >= 2
+            ? `${ctx.name} in ${ctx.room} is still fast and irregular, and now the pressure is low — ` +
+              `${v.subj} ${v.is} clammy and not making sense.`
+            : `${ctx.name} is still in AF. ${v.Subj} ${v.verb('look')} washed out.`,
+        },
+        {
+          // The sympathetic surge tips the atria over.
+          at: jitter(ctx, ctx.declareAt + 35 * MIN, 5 * MIN),
+          interventions: [
+            { label: `${AF_LABEL_PREFIX} onset`, category: 'scenario', kind: 'scenario', target: 'afib', delta: 1, tauOn: 60, eliminationHalfLife: 30 },
+          ],
+          page: `${ctx.name} in ${ctx.room} has gone into a fast, irregular rhythm — ${v.subj} ${v.has} ` +
+            `never been in AF. ${v.Subj} ${v.is} shivering and ${v.verb('say')} ${v.subj} ${v.verb('feel')} awful. ` +
+            `Do you want something to slow it down?`,
+          urgent: true,
+        },
+      ];
+    },
+    handoff: () => ({
+      severityCall: 'stable',
+      summary: 'Cystitis, day 1 of ceftriaxone. Mild AKI, improving with fluids. Eating and drinking.',
+      todo: ['Chase the urine culture.'],
+      contingencies: [],
+    }),
+    medications: () => [
+      { name: 'Ceftriaxone', detail: '1 g IV daily', since: 'day 1' },
+      { name: 'Lactated Ringer\'s', detail: '75 mL/h', since: 'admission' },
+      { name: 'Tamsulosin', detail: '0.4 mg orally at night', since: 'home medication' },
+    ],
+    priorLabs: () => [
+      prior('EKG', 60 * 20, [], 'Sinus rhythm at 88. Normal axis and intervals.'),
+      prior('BMP', 60 * 10, [
+        pv('Creatinine', 1.6, 'mg/dL', 2, { high: 1.2 }),
+        pv('CO₂', 22, 'mEq/L', 0, { low: 22, high: 29 }),
+      ]),
+    ],
+    expectedOrders: ['ns-1000', 'lab-lactate', 'lab-cultures', 'pip-tazo', 'transfer-icu'],
+    contraindicatedOrders: ['diltiazem', 'metoprolol-iv'],
+  },
+
+  {
+    id: 'af-rvr-hfref',
+    label: 'AF with rapid ventricular response in a failing ventricle',
+    tier: 'ward',
+    ageRange: [60, 84],
+    span: 3 * HOUR,
+    admissionDx: 'Heart failure exacerbation, diuresing',
+    hiddenDx:
+      'AF with a rapid ventricular response in ischemic cardiomyopathy (EF 20%) — a ventricle that cannot ' +
+      'tolerate a negative inotrope',
+    teachingPoint:
+      'The rate needs slowing, and how matters more than whether. Diltiazem and a bolus of IV metoprolol ' +
+      'slow the rate by also weakening a ventricle that has nothing to spare, and a patient with an EF of 20% ' +
+      'goes from fast and congested to slow and in cardiogenic shock. Amiodarone or digoxin slow the rate ' +
+      'without taking the contractility; keep diuresing, anticoagulate, and cardiovert if the pressure goes.',
+    history: () => [
+      'Ischemic cardiomyopathy — EF 20% on echo in the spring',
+      'Coronary artery disease, three-vessel CABG',
+      'Implantable cardioverter-defibrillator',
+      'Type 2 diabetes',
+    ],
+    baseline: (ctx) => ({
+      stateOverrides: {
+        hr: ctx.rng.int(74, 84),
+        svr: 19,
+        edv: ctx.rng.int(145, 155),
+        emax: bySeverity(ctx, 1.4, 1.2),
+      },
+      paramOverrides: { afRestRate: bySeverity(ctx, 130, 150) },
+      rrOffset: 2,
+    }),
+    script: (ctx) => {
+      const v = ctx.voice;
+      return [
+        {
+          at: ctx.declareAt,
+          interventions: [
+            { label: `${AF_LABEL_PREFIX} onset`, category: 'scenario', kind: 'scenario', target: 'afib', delta: 1, tauOn: 60, eliminationHalfLife: 30 },
+          ],
+          pageWhen: { axis: 'either', grade: 1, by: 15 * MIN },
+          page: (g) => g.wob >= 2 || g.perf >= 2
+            ? `${ctx.name} in ${ctx.room} is in a fast irregular rhythm, 140s, more short of breath, and the ` +
+              `pressure is soft. ${v.Subj} ${v.verb('look')} gray.`
+            : `${ctx.name} in ${ctx.room}'s monitor alarmed — ${v.subj} ${v.is} in AF now, rate 130s to 140s. ` +
+              `${v.Subj} ${v.verb('feel')} ${v.poss} heart pounding. Can I give the diltiazem from the protocol?`,
+        },
+      ];
+    },
+    handoff: (ctx) => ({
+      severityCall: 'watcher',
+      summary: 'HFrEF exacerbation (EF 20%), day 2 of IV diuresis, 2 L negative. Still crackly at the bases.',
+      todo: ['Furosemide 80 mg IV at midnight.', 'Repeat BMP in the morning.'],
+      contingencies: [
+        `Has had paroxysmal AF before — on apixaban at home, held for a procedure that was then cancelled.`,
+        `If ${ctx.voice.subj} ${ctx.voice.verb('go')} into AF, avoid diltiazem — EF is 20%.`,
+      ],
+      misleading: 'If the rate goes up, there is a diltiazem protocol on the order set.',
+    }),
+    medications: () => [
+      { name: 'Furosemide', detail: '80 mg IV twice daily', since: 'day 2' },
+      { name: 'Carvedilol', detail: '6.25 mg orally twice daily (dose reduced on admission)', since: 'home medication' },
+      { name: 'Sacubitril/valsartan', detail: 'held — creatinine', since: 'held on admission' },
+      { name: 'Spironolactone', detail: '25 mg orally daily', since: 'home medication' },
+      { name: 'Apixaban', detail: 'held since yesterday for a procedure that was cancelled', since: 'held' },
+    ],
+    priorLabs: () => [
+      prior('Bedside echo', 60 * 24 * 150, [], 'Dilated LV with severe global hypokinesis, EF 20%. Moderate functional MR.'),
+      prior('BMP', 60 * 9, [
+        pv('Potassium', 4.2, 'mEq/L', 1, { low: 3.5, high: 5.1 }),
+        pv('Creatinine', 1.5, 'mg/dL', 2, { high: 1.2 }),
+      ]),
+    ],
+    expectedOrders: ['amiodarone', 'img-ekg', 'furosemide', 'heparin', 'telemetry'],
+    contraindicatedOrders: ['diltiazem', 'metoprolol-iv', 'ns-1000'],
   },
 ];
 

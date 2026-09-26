@@ -11,7 +11,7 @@ const p = DEFAULT_PARAMS;
 const STATE_NUMERIC_KEYS = [
   'hr', 'svr', 'edv', 'emax', 'cvp', 'hrMod',
   'rvEmax', 'pvr', 'rvedv', 'qsQt', 'fiO2',
-  'noTone', 'et1Tone', 'lactate', 'time',
+  'noTone', 'et1Tone', 'lactate', 'paCO2', 'ventDepression', 'deadSpace', 'ventSupport', 'respFatigue', 'afib', 'avBlock', 'time',
 ] as const;
 
 /** All numeric keys of DerivedValues. */

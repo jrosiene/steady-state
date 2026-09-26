@@ -29,13 +29,15 @@ describe('rk4Step', () => {
     // We repurpose the solver with a custom derivative function.
     const decayState: HemodynamicState = {
       hr: 100, svr: 0, edv: 0, emax: 0, cvp: 0, hrMod: 0,
-      rvEmax: 0, pvr: 0, rvedv: 0, qsQt: 0, fiO2: 0, noTone: 0, et1Tone: 0, lactate: 1, time: 0,
+      rvEmax: 0, pvr: 0, rvedv: 0, qsQt: 0, fiO2: 0, noTone: 0, et1Tone: 0, lactate: 1,
+      paCO2: 0, ventDepression: 0, deadSpace: 0, ventSupport: 0, respFatigue: 0, afib: 0, avBlock: 0, time: 0,
     };
     // The params argument is unused here, so it is simply omitted — a function of
     // fewer parameters still satisfies the derivative signature.
     const decayDeriv = (s: HemodynamicState): HemodynamicState => ({
       hr: -s.hr, svr: 0, edv: 0, emax: 0, cvp: 0, hrMod: 0,
-      rvEmax: 0, pvr: 0, rvedv: 0, qsQt: 0, fiO2: 0, noTone: 0, et1Tone: 0, lactate: 0, time: 1,
+      rvEmax: 0, pvr: 0, rvedv: 0, qsQt: 0, fiO2: 0, noTone: 0, et1Tone: 0, lactate: 0,
+      paCO2: 0, ventDepression: 0, deadSpace: 0, ventSupport: 0, respFatigue: 0, afib: 0, avBlock: 0, time: 1,
     });
 
     const dt = 0.1;

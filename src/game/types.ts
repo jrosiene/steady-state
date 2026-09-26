@@ -38,6 +38,8 @@ export interface Vitals {
   tempC: number;
   /** O2 delivery device in place when measured, e.g. "RA", "2L NC". */
   o2: string;
+  /** Pulse irregularly irregular when counted — AF. A cuff and a finger both notice. */
+  irregular?: boolean;
 }
 
 /** One analyte within a lab panel. */
@@ -176,6 +178,13 @@ export interface OrderDef {
    * handed over.
    */
   holds?: string[];
+  /**
+   * Intervention label prefixes this order stops once it takes effect.
+   *
+   * `holds` only strikes the drug through on the chart; this is what actually
+   * turns a running infusion off. Boluses already given are unaffected.
+   */
+  stops?: string[];
   /** Raises Hgb — handled specially since Hgb is a param, not a state variable. */
   raisesHgb?: number;
   /** Marks the patient as continuously monitored (live vitals). */
@@ -255,7 +264,7 @@ export interface PriorLab {
  */
 export interface PageTrigger {
   /** Which axis of the bedside look this page is about. */
-  axis: 'wob' | 'perf' | 'either';
+  axis: 'wob' | 'perf' | 'sed' | 'either';
   /** Hold until that axis reaches this grade. Defaults to 1 — visibly not right. */
   grade?: 1 | 2 | 3;
   /**
@@ -306,6 +315,12 @@ export interface CaseEvent {
    * directly to params instead of through the intervention overlay.
    */
   hgbDelta?: number;
+  /**
+   * An oxygen device someone else put on — a nurse who found a low saturation
+   * and reached for the non-rebreather. Replaces whatever device was on, exactly
+   * as if it had been ordered, and the chart shows it.
+   */
+  o2Device?: string;
 }
 
 export type CodeStatus = 'Full Code' | 'DNR/DNI' | 'DNR, OK to intubate';

@@ -14,5 +14,10 @@ export default defineConfig({
     // are seconds of real work, not hung tests, and the library keeps growing —
     // a five-second default turns every new case into a spurious failure.
     testTimeout: 300_000,
+    // Calibration harnesses live in scripts/ and run only on request
+    // (`npm run calibrate`); they integrate dozens of full shifts each.
+    include: process.env.CALIBRATE
+      ? ['scripts/**/*.calib.ts']
+      : ['src/**/*.test.{ts,tsx}'],
   },
 })

@@ -38,8 +38,20 @@ export function answerQuestion(
     case 'look':
       return capitalise(`${describeAppearance(snap, patient.case.baselineDrive)}.`);
 
-    case 'mental':
+    case 'mental': {
       if (snap.cardiovascularStatus === 'arrest') return 'Unresponsive. No pulse.';
+      // Sedation first: a narcotized patient is the one whose pressure is fine,
+      // and every perfusion branch below would call them alert.
+      const slow = snap.rr < 10 ? ` Breathing about ${Math.round(snap.rr)} a minute.` : '';
+      if (snap.cnsDepression >= 0.85) {
+        return `I can only get a response with a sternal rub, and then ${v.subj} ${v.verb('drift')} straight back off.${slow}`;
+      }
+      if (snap.cnsDepression >= 0.6) {
+        return `Very hard to wake. ${v.Subj} ${v.verb('open')} ${v.poss} eyes when I shout, then ${v.verb('fall')} asleep mid-sentence.${slow}`;
+      }
+      if (snap.cnsDepression >= 0.35) {
+        return `Drowsy. ${v.Subj} ${v.verb('wake')} to ${v.poss} name and ${v.is} oriented, but ${v.subj} ${v.verb('keep')} nodding off.${slow}`;
+      }
       if (snap.map < 55) {
         return `Barely arousable — I get a groan when I press on a nail bed, and that ${v.is} about it.`;
       }
@@ -50,6 +62,7 @@ export function answerQuestion(
         return `Drowsy. ${v.Subj} ${v.verb('wake')} to voice but ${v.verb('drift')} straight back off.`;
       }
       return 'Alert and oriented. Same as earlier.';
+    }
 
     case 'breathing': {
       // Answered from work of breathing, not from the saturation.
@@ -66,6 +79,12 @@ export function answerQuestion(
         ? ` Crackles up both bases, and ${v.subj} ${v.isnt} tolerating lying flat.`
         : '';
 
+      // Slow breathing is its own answer. The saturation may be perfectly good —
+      // on oxygen it usually is — and that is exactly the trap.
+      if (rr < 10) {
+        return `Slow. ${capitalise(sat)}, but ${v.subj} ${v.is} only breathing ${rr} a minute, and ` +
+          `${snap.cnsDepression >= 0.35 ? `${v.subj} ${v.is} hard to wake` : `${v.subj} ${v.is} snoring`}.`;
+      }
       if (grade === 3) {
         return `Terrible — ${sat}, rate of ${rr}, using every accessory muscle ${v.subj} ${v.has}.${wet}`;
       }
@@ -174,16 +193,31 @@ export function vitalsConcern(v: Vitals, snap: Snapshot, baselineDrive = 0): Vit
   }
 
   if (v.hr > 130) {
-    problems.push(`heart rate ${v.hr}`);
+    problems.push(`heart rate ${v.hr}${v.irregular ? ' and irregular' : ''}`);
     kinds.push('hr');
     urgent = true;
   } else if (v.hr > 115 || v.hr < 45) {
-    problems.push(`heart rate ${v.hr}`);
+    problems.push(`heart rate ${v.hr}${v.irregular ? ' and irregular' : ''}`);
   }
 
   if (v.rr > 30) {
     problems.push(`respiratory rate ${v.rr}`);
     kinds.push('rr');
+    urgent = true;
+  } else if (v.rr < 8) {
+    problems.push(`respiratory rate only ${v.rr}`);
+    kinds.push('rr-low');
+    urgent = true;
+  } else if (v.rr < 10) {
+    problems.push(`respiratory rate ${v.rr}`);
+    kinds.push('rr-low');
+  }
+
+  // Sedation is urgent, but its words come from the bedside look below, which
+  // already leads with it — listing it here as well said it twice.
+  const sedated = snap.cnsDepression >= 0.6;
+  if (sedated) {
+    kinds.push('sedation');
     urgent = true;
   }
 
@@ -192,7 +226,7 @@ export function vitalsConcern(v: Vitals, snap: Snapshot, baselineDrive = 0): Vit
     kinds.push('temp');
   }
 
-  if (problems.length === 0) return null;
+  if (problems.length === 0 && !sedated) return null;
 
   const gestalt = describeAppearance(snap, baselineDrive);
   const lead = urgent
@@ -202,7 +236,9 @@ export function vitalsConcern(v: Vitals, snap: Snapshot, baselineDrive = 0): Vit
   return {
     urgent,
     key: `${urgent ? 'urgent' : 'flag'}:${[...new Set(kinds)].sort().join('+')}`,
-    text: `${lead} — ${problems.join(', ')}. ${capitalise(gestalt)}.`,
+    text: problems.length > 0
+      ? `${lead} — ${problems.join(', ')}. ${capitalise(gestalt)}.`
+      : `${lead} — ${gestalt}.`,
   };
 }
 

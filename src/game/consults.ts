@@ -19,7 +19,8 @@ export function attendingAdvice(patient: PatientRuntime, snap: Snapshot): string
   const lowOutput = snap.co < 3.5;
   const vasodilated = snap.svr < 13;
   const rvStrained = snap.rvedv > 185 && snap.mPAP > 27;
-  const acidotic = snap.pH < 7.3;
+  // Metabolic: a respiratory acidosis is a ventilation problem, handled above.
+  const acidotic = snap.pHMetabolic < 7.3;
 
   // Obstructive: a pressure-overloaded RV with a low wedge is mechanical until
   // proven otherwise.
@@ -62,6 +63,36 @@ export function attendingAdvice(patient: PatientRuntime, snap: Snapshot): string
       `${v.subj} ${v.is} bleeding then the only two treatments are blood and stopping the bleeding. A pressor here ` +
       `just squeezes an empty circuit and makes the number look better while the gut and the kidneys go without. ` +
       `Transfuse, get GI involved tonight rather than in the morning, and move ${v.obj} where ${v.subj} can be watched.`
+    );
+  }
+
+  // Ventilatory failure: not enough air moving, whatever the saturation says.
+  // Checked before the hypoxemic branch because the dangerous version of this
+  // patient is *not* hypoxic — the oxygen is hiding it.
+  const setpoint = patient.params.paCO2Setpoint;
+  const narcotized = snap.cnsDepression >= 0.35;
+  const hypercapnic = snap.paCO2 > setpoint + 12 && snap.pH < 7.33;
+  if ((narcotized && snap.rr < 12) || (hypercapnic && !shocked)) {
+    const onOxygen = snap.fiO2 > 0.3;
+    const opioidOnBoard = patient.interventions.some((iv) =>
+      iv.target === 'ventDepression' && iv.delta > 0 && iv.stopTime === undefined);
+    return (
+      `That is a ventilation problem, not an oxygenation one. ` +
+      (onOxygen
+        ? `The saturation is reassuring you about the wrong thing — on that much oxygen ${v.subj} can retain CO2 ` +
+          `until ${v.subj} ${v.verb('stop')} breathing and still read in the nineties. `
+        : '') +
+      `Get a gas now; the PaCO2 and the pH are the numbers that matter. ` +
+      (opioidOnBoard || (narcotized && snap.rr < 12)
+        ? `If there is an opioid anywhere in this, give naloxone, stop the PCA and the as-needed doses, and have ` +
+          `someone stay in the room — it wears off before the opioid does, so expect to give it again. `
+        : '') +
+      (setpoint > 45
+        ? `${v.Subj} ${v.is} a retainer: turn the oxygen down to a target of 88 to 92, and if the pH is under 7.30 ` +
+          `${v.subj} ${v.verb('need')} BiPAP, not a sleeping tablet. `
+        : `If ${v.subj} ${v.is} acidotic and not waking up, ${v.subj} ${v.verb('need')} ventilatory support — BiPAP ` +
+          `if ${v.subj} can protect ${v.poss} airway, the unit if not. `) +
+      `Nothing sedating until this is sorted out.`
     );
   }
 

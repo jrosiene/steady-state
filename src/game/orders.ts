@@ -11,6 +11,21 @@ import type { OrderDef, OrderCategory } from './types';
 export const O2_LABEL_PREFIX = 'O2:';
 
 /**
+ * Prefix marking an intervention as an opioid effect, whether it came from an
+ * order or from a case script (a PCA the day team started). Holding opioids
+ * stops every running infusion carrying it; a bolus already given cannot be
+ * taken back, which is what naloxone is for.
+ */
+export const OPIOID_LABEL_PREFIX = 'Opioid:';
+
+/**
+ * Prefix marking a case's atrial fibrillation. Cardioversion stops every
+ * running intervention carrying it — the rhythm reverts; whatever drove it
+ * into AF is another matter.
+ */
+export const AF_LABEL_PREFIX = 'Rhythm: AF';
+
+/**
  * The order set available on a night shift.
  *
  * Lead times are the real latency between placing an order and the drug reaching
@@ -125,9 +140,32 @@ export const ORDERS: OrderDef[] = [
     leadTimeSec: 600,
     ack: (v) => `I'll give it and stay with ${v.obj}.`,
     interventions: [
-      // Hypoventilation reduces functional residual capacity and worsens V/Q —
-      // an accepted trade when the goal is comfort, and a harm when it is not.
-      { label: 'Opioid hypoventilation', category: 'treatment', kind: 'bolus', target: 'qsQt', delta: 0.04, tauOn: 900, eliminationHalfLife: 14400 },
+      // Depresses the ventilatory controller. Hypoventilation, CO2 retention and
+      // the desaturation that follows on room air all emerge from that — an
+      // accepted trade when the goal is comfort, and a harm when it is not.
+      { label: `${OPIOID_LABEL_PREFIX} morphine`, category: 'treatment', kind: 'bolus', target: 'ventDepression', delta: 0.3, tauOn: 600, eliminationHalfLife: 10800 },
+    ],
+  },
+  {
+    id: 'oxycodone',
+    label: 'Oxycodone 5 mg PO',
+    category: 'comfort',
+    detail: 'Oral opioid for moderate pain. Slower on, gentler peak than IV.',
+    leadTimeSec: 900,
+    ack: (v) => `Given. I'll reassess ${v.poss} pain in an hour.`,
+    interventions: [
+      { label: `${OPIOID_LABEL_PREFIX} oxycodone`, category: 'treatment', kind: 'bolus', target: 'ventDepression', delta: 0.18, tauOn: 1800, eliminationHalfLife: 12600 },
+    ],
+  },
+  {
+    id: 'hydromorphone',
+    label: 'Hydromorphone 0.5 mg IV',
+    category: 'comfort',
+    detail: 'IV opioid for severe pain. Works in minutes. Depresses breathing more than the oral dose does, and more again in someone old, frail or with sleep apnea.',
+    leadTimeSec: 600,
+    ack: (v) => `Pushed it. I'll check ${v.poss} sedation score in half an hour.`,
+    interventions: [
+      { label: `${OPIOID_LABEL_PREFIX} hydromorphone`, category: 'treatment', kind: 'bolus', target: 'ventDepression', delta: 0.3, tauOn: 480, eliminationHalfLife: 9000 },
     ],
   },
 
@@ -135,9 +173,14 @@ export const ORDERS: OrderDef[] = [
     id: 'lorazepam',
     label: 'Lorazepam 0.5 mg',
     category: 'comfort',
-    detail: 'Short-acting benzodiazepine for acute anxiety or withdrawal. Sedating, and deliriogenic in the elderly.',
+    detail: 'Short-acting benzodiazepine for acute anxiety or withdrawal. Sedating, deliriogenic in the elderly, and additive with any opioid on board.',
     leadTimeSec: 600,
     ack: 'Given.',
+    interventions: [
+      // Mild on its own. The danger is the patient who already has an opioid
+      // depressing the same controller — the effects add.
+      { label: 'Sedative: lorazepam', category: 'treatment', kind: 'bolus', target: 'ventDepression', delta: 0.15, tauOn: 600, eliminationHalfLife: 43200 },
+    ],
   },
 
   // ─── Fluids / blood ───────────────────────────────────────────────────────
@@ -322,22 +365,29 @@ export const ORDERS: OrderDef[] = [
       { label: `${O2_LABEL_PREFIX} HFNC`, category: 'treatment', kind: 'infusion', target: 'fiO2', delta: 0.79, tauOn: 300, eliminationHalfLife: 600 },
       // A few centimetres of PEEP: less than BiPAP, more than a mask.
       { label: `${O2_LABEL_PREFIX} HFNC recruitment`, category: 'treatment', kind: 'infusion', target: 'qsQt', delta: -0.05, tauOn: 900, eliminationHalfLife: 1800 },
+      // Flow flushes the nasopharynx of expired gas: a little less dead space.
+      { label: `${O2_LABEL_PREFIX} HFNC washout`, category: 'treatment', kind: 'infusion', target: 'deadSpace', delta: -0.04, tauOn: 300, eliminationHalfLife: 600 },
     ],
   },
   {
     id: 'bipap',
     label: 'BiPAP',
     category: 'respiratory',
-    detail: 'Positive pressure recruits alveoli and unloads the LV by dropping preload.',
+    detail: 'Positive pressure recruits alveoli, unloads the LV by dropping preload, and does part of the work of breathing — the treatment for a patient who is retaining CO2.',
     leadTimeSec: 600,
     o2Device: 'BiPAP',
     ack: "Respiratory is at the bedside setting up BiPAP.",
     interventions: [
+      // Every component carries the O2 prefix, so taking the mask off (ordering
+      // any other device) takes all of it off — not just the oxygen.
       { label: `${O2_LABEL_PREFIX} BiPAP`, category: 'treatment', kind: 'infusion', target: 'fiO2', delta: 0.29, tauOn: 120, eliminationHalfLife: 180 },
       // PEEP recruits flooded alveoli — the mechanism that makes NIV work in edema.
-      { label: 'BiPAP recruitment', category: 'treatment', kind: 'infusion', target: 'qsQt', delta: -0.08, tauOn: 300, eliminationHalfLife: 300 },
+      { label: `${O2_LABEL_PREFIX} BiPAP recruitment`, category: 'treatment', kind: 'infusion', target: 'qsQt', delta: -0.08, tauOn: 300, eliminationHalfLife: 300 },
       // Raised intrathoracic pressure reduces venous return.
-      { label: 'BiPAP preload↓', category: 'treatment', kind: 'infusion', target: 'edv', delta: -12, tauOn: 300, eliminationHalfLife: 300 },
+      { label: `${O2_LABEL_PREFIX} BiPAP preload↓`, category: 'treatment', kind: 'infusion', target: 'edv', delta: -12, tauOn: 300, eliminationHalfLife: 300 },
+      // Inspiratory pressure does part of the work of breathing: the reason NIV
+      // is the treatment for hypercapnic failure and not just an oxygen mask.
+      { label: `${O2_LABEL_PREFIX} BiPAP ventilation`, category: 'treatment', kind: 'infusion', target: 'ventSupport', delta: 0.6, tauOn: 300, eliminationHalfLife: 180 },
     ],
   },
   {
@@ -352,10 +402,12 @@ export const ORDERS: OrderDef[] = [
     ack: "Anaesthesia is on the way for the tube.",
     interventions: [
       { label: `${O2_LABEL_PREFIX} Vent`, category: 'treatment', kind: 'infusion', target: 'fiO2', delta: 0.79, tauOn: 120, eliminationHalfLife: 300 },
-      { label: 'Vent recruitment', category: 'treatment', kind: 'infusion', target: 'qsQt', delta: -0.10, tauOn: 300, eliminationHalfLife: 600 },
+      { label: `${O2_LABEL_PREFIX} Vent recruitment`, category: 'treatment', kind: 'infusion', target: 'qsQt', delta: -0.10, tauOn: 300, eliminationHalfLife: 600 },
+      // The ventilator breathes: sedation and a tiring diaphragm stop mattering.
+      { label: `${O2_LABEL_PREFIX} Vent ventilation`, category: 'treatment', kind: 'infusion', target: 'ventSupport', delta: 1, tauOn: 120, eliminationHalfLife: 300 },
       // Peri-intubation hypotension: sedation vasodilates, PPV drops venous return.
       { label: 'Induction vasodilation', category: 'treatment', kind: 'bolus', target: 'svr', delta: -4, tauOn: 120, eliminationHalfLife: 1800 },
-      { label: 'PPV preload↓', category: 'treatment', kind: 'infusion', target: 'edv', delta: -15, tauOn: 300, eliminationHalfLife: 600 },
+      { label: `${O2_LABEL_PREFIX} PPV preload↓`, category: 'treatment', kind: 'infusion', target: 'edv', delta: -15, tauOn: 300, eliminationHalfLife: 600 },
     ],
   },
   {
@@ -367,6 +419,8 @@ export const ORDERS: OrderDef[] = [
     ack: "Starting nebs now.",
     interventions: [
       { label: 'Duonebs (V/Q)', category: 'treatment', kind: 'bolus', target: 'qsQt', delta: -0.10, tauOn: 600, eliminationHalfLife: 7200 },
+      // Opening the airways empties trapped gas: less dead space, less CO2.
+      { label: 'Duonebs (gas trapping)', category: 'treatment', kind: 'bolus', target: 'deadSpace', delta: -0.07, tauOn: 600, eliminationHalfLife: 7200 },
       { label: 'Duonebs (chrono)', category: 'treatment', kind: 'bolus', target: 'hrMod', delta: 12, tauOn: 600, eliminationHalfLife: 5400 },
     ],
   },
@@ -490,6 +544,33 @@ export const ORDERS: OrderDef[] = [
     ],
   },
   {
+    id: 'naloxone',
+    label: 'Naloxone 0.4 mg IV',
+    category: 'meds',
+    detail: 'Opioid antagonist. Reverses sedation and respiratory depression within minutes — and wears off in about an hour, which is sooner than most of the opioids it is reversing.',
+    leadTimeSec: 120,
+    ack: (v) => `Pushing it now. I'll stay in the room with ${v.obj}.`,
+    interventions: [
+      // Short-acting on purpose: the Bateman curve peaks at ~5 minutes and is
+      // largely gone in two hours, while hydromorphone and morphine are not.
+      // Re-sedation after a single dose is the lesson, not a bug.
+      { label: 'Naloxone: reversal', category: 'treatment', kind: 'bolus', target: 'ventDepression', delta: -0.9, tauOn: 60, eliminationHalfLife: 3000 },
+      // Abrupt reversal of analgesia is a sympathetic event.
+      { label: 'Naloxone: sympathetic surge', category: 'treatment', kind: 'bolus', target: 'hrMod', delta: 14, tauOn: 60, eliminationHalfLife: 2400 },
+    ],
+  },
+  {
+    id: 'hold-opioids',
+    label: 'Hold opioids and sedatives',
+    category: 'meds',
+    detail: 'Stop the PCA, the as-needed opioids and anything else sedating. What is already in the body still has to wear off.',
+    leadTimeSec: 300,
+    once: true,
+    holds: ['hydromorphone', 'morphine', 'oxycodone', 'fentanyl', 'pca', 'gabapentin', 'pregabalin', 'lorazepam', 'zolpidem'],
+    stops: [OPIOID_LABEL_PREFIX],
+    ack: "PCA is off and I've taken the as-needed opioids off the MAR.",
+  },
+  {
     id: 'buprenorphine',
     label: 'Buprenorphine',
     category: 'meds',
@@ -525,6 +606,7 @@ export const ORDERS: OrderDef[] = [
     interventions: [
       { label: 'Steroids (NO↓)', category: 'treatment', kind: 'bolus', target: 'noTone', delta: -0.3, tauOn: 1800, eliminationHalfLife: 14400 },
       { label: 'Steroids (V/Q)', category: 'treatment', kind: 'bolus', target: 'qsQt', delta: -0.06, tauOn: 3600, eliminationHalfLife: 14400 },
+      { label: 'Steroids (gas trapping)', category: 'treatment', kind: 'bolus', target: 'deadSpace', delta: -0.04, tauOn: 3600, eliminationHalfLife: 14400 },
     ],
   },
   {
@@ -748,6 +830,82 @@ export const ORDERS: OrderDef[] = [
     interventions: [
       // Restores some of the chronotropic reserve the drug was taking away.
       { label: 'Beta-blocker held', category: 'treatment', kind: 'infusion', target: 'hrMod', delta: 10, tauOn: 3600, eliminationHalfLife: 86400 },
+    ],
+  },
+  // ─── Rate and rhythm ──────────────────────────────────────────────────────
+  //
+  // Each AV-nodal blocker carries the rest of its pharmacology with it, because
+  // that is where the harm lives: diltiazem's negative inotropy and vasodilation
+  // in a failing or septic heart, metoprolol's in a patient whose rate is the
+  // only thing holding their output up.
+  {
+    id: 'diltiazem',
+    label: 'Diltiazem 10 mg IV',
+    category: 'meds',
+    detail: 'Calcium channel blocker. Fast, effective AV-nodal rate control — and a negative inotrope and vasodilator, which is the problem in a failing or hypotensive heart.',
+    leadTimeSec: 300,
+    ack: "Pushing it slowly now. I'll stay and watch the pressure.",
+    // Interchangeable for rate control in a heart that can tolerate either.
+    covers: ['metoprolol-iv'],
+    interventions: [
+      { label: 'Diltiazem: AV block', category: 'treatment', kind: 'bolus', target: 'avBlock', delta: 0.35, tauOn: 180, eliminationHalfLife: 10800 },
+      { label: 'Diltiazem: sinus', category: 'treatment', kind: 'bolus', target: 'hrMod', delta: -8, tauOn: 180, eliminationHalfLife: 10800 },
+      { label: 'Diltiazem: inotropy', category: 'treatment', kind: 'bolus', target: 'emax', delta: -0.25, tauOn: 180, eliminationHalfLife: 10800 },
+      { label: 'Diltiazem: vasodilation', category: 'treatment', kind: 'bolus', target: 'svr', delta: -2.5, tauOn: 180, eliminationHalfLife: 10800 },
+    ],
+  },
+  {
+    id: 'metoprolol-iv',
+    label: 'Metoprolol 5 mg IV',
+    category: 'meds',
+    detail: 'Beta-blocker. Slows AV conduction and sinus rate. Negatively inotropic, less vasodilating than diltiazem. Takes away compensation in a patient who needs their rate.',
+    leadTimeSec: 300,
+    ack: 'Giving it over two minutes.',
+    covers: ['diltiazem'],
+    interventions: [
+      { label: 'Metoprolol IV: AV block', category: 'treatment', kind: 'bolus', target: 'avBlock', delta: 0.3, tauOn: 300, eliminationHalfLife: 12600 },
+      { label: 'Metoprolol IV: sinus', category: 'treatment', kind: 'bolus', target: 'hrMod', delta: -12, tauOn: 300, eliminationHalfLife: 12600 },
+      { label: 'Metoprolol IV: inotropy', category: 'treatment', kind: 'bolus', target: 'emax', delta: -0.2, tauOn: 300, eliminationHalfLife: 12600 },
+    ],
+  },
+  {
+    id: 'amiodarone',
+    label: 'Amiodarone 150 mg IV load',
+    category: 'meds',
+    detail: 'Slower, gentler rate control that spares the contractility — the usual choice in a failing heart or a soft pressure. The IV load vasodilates a little.',
+    leadTimeSec: 900,
+    ack: "Pharmacy is sending it up — I'll run the load over ten minutes.",
+    // The two rate-control options that spare a failing ventricle.
+    covers: ['digoxin'],
+    interventions: [
+      { label: 'Amiodarone: AV block', category: 'treatment', kind: 'bolus', target: 'avBlock', delta: 0.28, tauOn: 1200, eliminationHalfLife: 43200 },
+      { label: 'Amiodarone: vasodilation', category: 'treatment', kind: 'bolus', target: 'svr', delta: -1.2, tauOn: 600, eliminationHalfLife: 7200 },
+    ],
+  },
+  {
+    id: 'digoxin',
+    label: 'Digoxin 0.25 mg IV',
+    category: 'meds',
+    detail: 'Vagotonic AV-nodal slowing with a little inotropy. Safe in a failing ventricle, slow to work, and weak against a high sympathetic drive.',
+    leadTimeSec: 900,
+    ack: "I'll get it from pharmacy.",
+    covers: ['amiodarone'],
+    interventions: [
+      { label: 'Digoxin: AV block', category: 'treatment', kind: 'bolus', target: 'avBlock', delta: 0.2, tauOn: 3600, eliminationHalfLife: 129600 },
+      { label: 'Digoxin: inotropy', category: 'treatment', kind: 'bolus', target: 'emax', delta: 0.12, tauOn: 3600, eliminationHalfLife: 129600 },
+    ],
+  },
+  {
+    id: 'cardioversion',
+    label: 'Synchronized cardioversion',
+    category: 'meds',
+    detail: 'Electrical reversion to sinus rhythm under brief sedation. The answer for AF that is causing instability — and it does nothing about whatever drove the patient into AF.',
+    leadTimeSec: 1200,
+    stops: [AF_LABEL_PREFIX],
+    ack: "Calling the rapid response team for pads and sedation — they'll do it at the bedside.",
+    interventions: [
+      // Procedural sedation, briefly: it depresses breathing like any other.
+      { label: 'Cardioversion: sedation', category: 'treatment', kind: 'bolus', target: 'ventDepression', delta: 0.3, tauOn: 60, eliminationHalfLife: 600 },
     ],
   },
   {

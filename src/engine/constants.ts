@@ -47,6 +47,22 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   tauHr: 3.0,
   tauSvr: 8.0,
 
+  // --- Rhythm (rhythm.ts) ---
+  // Untreated AF at rest conducts ~100–120; a septic or anxious patient whose
+  // sinus drive would be 120 runs 110 + 0.8 × 50 = 150.
+  afRestRate: 110,
+  afSympGain: 0.8,
+  afMinRate: 45,
+  afMaxRate: 175,
+  atrialKickFraction: 0.2,
+  afFillPenaltyMultiplier: 1.6,
+  // ~25 mL held in the atrium of a normal heart → +6 mmHg wedge; more if stiff.
+  laBackupGain: 0.25,
+  laKickShare: 0.3,
+  // At 150 in a normal heart: 0.42 × 70/80 ≈ 37% of stroke output lost to short
+  // cycles, which leaves cardiac output about where sinus rhythm had it.
+  afPulseDeficitGain: 0.35,
+
   // --- Rate-dependent diastolic filling ---
   // HR 110 → no penalty; 140 → ×0.90; 170 → ×0.79; 200 → ×0.69.
   // Enough that tachycardia stops rescuing output, not so much that a sinus
@@ -58,14 +74,53 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   // --- Oxygenation / Fick ---
   vo2: 250,     // mL O2/min — resting O2 consumption
   hgb: 15,      // g/dL — normal hemoglobin
-  paCO2: 40,    // mmHg — baseline arterial CO2 at normal CO
-  co2RetentionGain: 3,   // mmHg paCO2 rise per L/min CO below reference
-                          // CO=2: +7.5 mmHg → paCO2=47.5 → pH drops ~0.07 at lac=7.6
-                          // CO=1: +10.5 mmHg → paCO2=50.5 → pH drops ~0.10 at lac=7.6
-  co2RetentionCoRef: 4.5, // L/min — normal CO; below this, CO2 clearance is impaired
   rq: 0.8,      // respiratory quotient
   p50: 26.8,    // mmHg — standard P50 (normal pH/temp/2,3-DPG)
   hillN: 2.7,   // Hill curve cooperativity coefficient
+
+  // --- Ventilation (ventilation.ts) ---
+  paCO2Setpoint: 40,
+  hco3Baseline: 24,
+  // VCO2 = 250 × 0.8 = 200 mL/min → VA for PaCO2 40 = 0.863 × 200 / 40 = 4.32 L/min.
+  // Plus anatomic dead space: 13 breaths × 0.15 L = 1.95 L/min → VE 6.27 L/min.
+  veRef: 6.27,
+  rrRef: 13,
+  rrVeExponent: 0.75,
+  rrShallowShuntGain: 2.0,
+  rrShallowEdemaGain: 0.03,
+  vdAnatomic: 0.15,
+  // Apnea: 200 mL/min ÷ 50 mL/mmHg = 4 mmHg/min, the textbook apneic rise.
+  co2Capacitance: 50,
+  // ~2 L/min per mmHg above setpoint (0.33 × 6.27): the normal hypercapnic response.
+  ventCo2Gain: 0.33,
+  ventCo2GainLow: 0.08,
+  // A normal adult is obtunded by ~PaCO2 90; a retainer at 55 tolerates more.
+  narcosisThreshold: 40,
+  narcosisGain: 0.02,
+  rrDepressionShare: 0.5,
+  sedativeSensitivity: 1,
+  sedationCapacityShare: 0.6,
+  ventMetabolicGain: 0.07,
+  ventHypoxicGain: 6,
+  ventHypoxicSpO2Threshold: 0.92,
+  ventShuntGain: 4.0,
+  ventEdemaGain: 0.02,
+  ventPapGain: 0.03,
+  ventMetabolicCurvature: 16,
+  veMax: 40,
+  ventFatigueCoRef: 3.0,
+  ventSupportCapacity: 40,
+  // Wedge 30 (12 over threshold) → capacity ÷ 1.36.
+  edemaComplianceGain: 0.03,
+  // Sustained load above ~45% of capacity fatigues the diaphragm (the
+  // tension-time threshold): at 80% of capacity, exhaustion in about an hour.
+  // Recovery takes hours.
+  fatigueLoadThreshold: 0.45,
+  fatigueLoadRange: 0.35,
+  fatigueCapacityGain: 0.55,
+  tauFatigue: 3600,
+  tauFatigueRecovery: 5400,
+  ventO2DeadSpaceGain: 0.9,
 
   // --- Layer A: Instantaneous feedback couplings ---
   hpvSpO2Threshold: 0.93,    // HPV onset below SpO2 93%
@@ -120,6 +175,7 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   // forty minutes of visible decline that a player can actually act inside.
   tauLactateRise: 600,
   tauLactateClear: 900,       // 15 min to clear (hepatic lactate clearance is slower)
+  respiratoryAcidosisTolerance: 0.2,
   acidosisPhThreshold: 7.35,  // myocardial depression starts at mild acidosis
   acidosisEmaxGain: 7.0,      // pH=7.24 → penalty 0.77 → emaxEff=1.23 (38% ↓); unstable with SvO2<40%
                                // pH=7.20 → penalty 1.05 → emaxEff=0.95 (53% ↓); CO collapses → spiral
@@ -205,6 +261,17 @@ export const DEFAULT_STATE: HemodynamicState = {
 
   // Acid-base
   lactate: 1.0,  // mmol/L — normal resting lactate
+
+  // Ventilation
+  paCO2: 40,
+  ventDepression: 0,
+  deadSpace: 0,
+  ventSupport: 0,
+  respFatigue: 0,
+
+  // Rhythm
+  afib: 0,
+  avBlock: 0,
 
   time: 0,
 };

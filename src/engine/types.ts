@@ -70,6 +70,52 @@ export interface HemodynamicState {
    */
   lactate: number;
 
+  // --- Ventilation ---
+  /**
+   * Arterial PCO2 (mmHg). Integrated from a CO2 mass balance: metabolic
+   * production in, alveolar ventilation out. See ventilation.ts.
+   */
+  paCO2: number;
+  /**
+   * Depression of the ventilatory controller, 0–1. Opioids, benzodiazepines,
+   * sedation. Scales the whole chemoreflex — including its response to CO2,
+   * which is why an overdose retains rather than merely breathing a little less.
+   * Driven by intervention overlays (derivative = 0).
+   */
+  ventDepression: number;
+  /**
+   * Alveolar dead-space fraction from disease (0–1): ventilated lung that is not
+   * perfused, or is so over-ventilated relative to its perfusion that the extra
+   * air is wasted. Emphysema, bronchospasm with gas trapping, PE.
+   * Driven by overlays and baseline (derivative = 0).
+   */
+  deadSpace: number;
+  /**
+   * Ventilatory support, 0 (spontaneous) to 1 (controlled mechanical
+   * ventilation). NIV sits between. Adds capacity and shields the controller
+   * from sedation. Driven by overlays (derivative = 0).
+   */
+  ventSupport: number;
+  /**
+   * Respiratory muscle fatigue, 0 (fresh) to 1 (exhausted). ODE: rises when the
+   * patient's own breathing load stays above what the diaphragm can sustain, and
+   * recovers slowly with rest or ventilatory support. Scales capacity down —
+   * the positive feedback by which a patient working hard to breathe tires.
+   */
+  respFatigue: number;
+
+  // --- Rhythm (see rhythm.ts) ---
+  /**
+   * Atrial fibrillation, 0 (sinus) to 1 (AF). Driven by overlays — onset is a
+   * case event, conversion is stopping it. Continuous so transitions ramp.
+   */
+  afib: number;
+  /**
+   * AV-nodal blockade from drugs, 0–1: the fraction by which the conducted
+   * ventricular rate in AF is reduced. Driven by overlays (derivative = 0).
+   */
+  avBlock: number;
+
   /** Current simulation time (seconds). */
   time: number;
 }
@@ -115,9 +161,24 @@ export interface DerivedValues {
   svO2: number;
 
   // --- Blood gases / acid-base ---
-  /** Arterial pH. Derived from lactate (metabolic component) + paCO2 (constant) via Henderson-Hasselbalch. */
+  /** Arterial pH, Henderson–Hasselbalch from bicarbonate and the integrated PaCO2. */
   pH: number;
-  /** Bicarbonate (mEq/L). Falls ~1 mEq/L per 1 mmol/L lactate rise above 1 (pure anion-gap acidosis). */
+  /**
+   * pH the fixed-acid load alone would produce at a PaCO2 of 40 — the base
+   * deficit, in pH units. Drives the acidosis penalties (myocardial depression,
+   * vasoplegia, SA-node suppression), which are metabolic phenomena; a
+   * respiratory acidosis of the same arterial pH is much better tolerated.
+   */
+  pHMetabolic: number;
+  /**
+   * The pH the acidosis penalties act on: metabolic pH, lowered by whatever part
+   * of the respiratory acidosis exceeds the tolerated range.
+   */
+  pHPenalty: number;
+  /**
+   * Bicarbonate (mEq/L). The patient's renal baseline, less ~1 mEq/L per mmol/L
+   * of lactate above 1 (anion-gap acidosis titrates bicarbonate one for one).
+   */
   hco3: number;
   /** Base excess (mEq/L). Negative in metabolic acidosis. */
   be: number;
@@ -131,6 +192,40 @@ export interface DerivedValues {
    * 'arrest':      MAP < 20 or pH < 6.9 — irreversible without intervention
    */
   cardiovascularStatus: CardiovascularStatus;
+
+  // --- Ventilation ---
+  /** Minute ventilation achieved (L/min). */
+  ve: number;
+  /** Minute ventilation the chemoreflex is asking for (L/min), before sedation and fatigue. */
+  veDemand: number;
+  /** Sustainable ventilation the respiratory muscles can deliver (L/min). */
+  veCapacity: number;
+  /** Alveolar ventilation (L/min) — what clears CO2. */
+  va: number;
+  /** Respiratory rate (breaths/min), before any case-specific offset. */
+  rr: number;
+  /** Tidal volume (L). */
+  vt: number;
+  /** Total physiologic dead-space fraction, VD/VT. */
+  vdVt: number;
+  /**
+   * Depression of consciousness, 0 alert → 1 unrousable: drug sedation plus CO2
+   * narcosis relative to this patient's own PaCO2 setpoint. What a nurse sees.
+   */
+  cnsDepression: number;
+  /**
+   * Breathing load: the patient's own share of the ventilation (support
+   * excluded) as a fraction of their unfatigued capacity. Drives fatigue.
+   */
+  breathingLoad: number;
+
+  // --- Rhythm ---
+  /**
+   * The rate the ventricles actually beat at (bpm). Equal to the sinus drive in
+   * sinus rhythm; in AF, set by AV-nodal conduction. `snapshot()` reports this
+   * as `hr`, because it is the pulse a nurse counts and a monitor shows.
+   */
+  hrEffective: number;
 }
 
 /** Full snapshot = dynamic state + derived values. */
@@ -180,6 +275,36 @@ export interface HemodynamicParams {
   /** HR time constant (seconds). */
   tauHr: number;
 
+  // --- Rhythm (rhythm.ts) ---
+  /** Ventricular response in AF at resting sympathetic tone, untreated (bpm). */
+  afRestRate: number;
+  /** Extra ventricular rate in AF per bpm of sinus drive above baseline. */
+  afSympGain: number;
+  /** Floor on the conducted AF rate however much AV block is on board (bpm). */
+  afMinRate: number;
+  /** Ceiling set by AV-nodal refractoriness (bpm). */
+  afMaxRate: number;
+  /**
+   * Fraction of end-diastolic volume contributed by atrial contraction, lost in
+   * AF. ~0.2 in a normal heart; up to ~0.35 in a stiff, hypertrophied one that
+   * fills late (HFpEF, aortic stenosis).
+   */
+  atrialKickFraction: number;
+  /** Multiplier on the rate-dependent filling penalty in AF (irregular short cycles). */
+  afFillPenaltyMultiplier: number;
+  /**
+   * Left-atrial pressure rise per mL of filling lost to AF (mmHg/mL), at normal
+   * LV stiffness. Scaled by lvEdpvrStiffness, so a stiff ventricle backs up more.
+   */
+  laBackupGain: number;
+  /** Share of the lost atrial kick that stays in the atrium as backup volume. */
+  laKickShare: number;
+  /**
+   * Stroke output lost to AF irregularity per unit of (rate − 80) / 80, at
+   * normal stiffness (scaled by √stiffness). The pulse deficit.
+   */
+  afPulseDeficitGain: number;
+
   // --- Rate-dependent diastolic filling ---
   /** Heart rate above which diastole is short enough to cost filling (bpm). */
   filltimeHrThreshold: number;
@@ -225,25 +350,112 @@ export interface HemodynamicParams {
   vo2: number;
   /** Hemoglobin concentration (g/dL). */
   hgb: number;
-  /** Baseline arterial CO2 (mmHg) at normal cardiac output. */
-  paCO2: number;
-  /**
-   * CO2 retention gain: mmHg paCO2 rise per L/min CO below co2RetentionCoRef.
-   * Mechanism: low cardiac output → impaired pulmonary CO2 clearance →
-   * rising PaCO2 → superimposed respiratory acidosis on top of metabolic.
-   * This mixed acidosis (type A lactic + respiratory) is the clinical pattern
-   * in cardiogenic shock and late-stage hemodynamic failure.
-   * Hook: set to 0 for mechanically ventilated patients (CO2 normalized by vent).
-   */
-  co2RetentionGain: number;
-  /** Reference CO above which CO2 clearance is adequate (L/min). */
-  co2RetentionCoRef: number;
   /** Respiratory quotient (VCO2/VO2). */
   rq: number;
   /** Hill curve P50 (mmHg). PaO2 at which Hgb is 50% saturated. */
   p50: number;
   /** Hill curve exponent. */
   hillN: number;
+
+  // --- Ventilation (see ventilation.ts) ---
+  /**
+   * The PaCO2 this patient's chemoreceptors defend (mmHg). 40 normally; reset
+   * upward in chronic hypercapnia, which is what lets a COPD patient live at 55.
+   */
+  paCO2Setpoint: number;
+  /**
+   * Bicarbonate with no fixed acid on board (mEq/L). 24 normally; raised by
+   * renal compensation in a chronic CO2 retainer, lowered in chronic kidney disease.
+   */
+  hco3Baseline: number;
+  /** Resting minute ventilation at a drive of 1 (L/min). */
+  veRef: number;
+  /** Resting respiratory rate at a drive of 1 (breaths/min). */
+  rrRef: number;
+  /** RR ∝ (VE/veRef)^this. Below 1: tidal volume carries part of any increase. */
+  rrVeExponent: number;
+  /** Rapid-shallow pattern shift per unit of shunt above 4% (J-receptor). */
+  rrShallowShuntGain: number;
+  /** Rapid-shallow pattern shift per mmHg of wedge above the edema threshold. */
+  rrShallowEdemaGain: number;
+  /** Anatomic dead space (L per breath). */
+  vdAnatomic: number;
+  /** Effective whole-body CO2 capacitance (mL CO2 per mmHg). Sets the apneic rise rate. */
+  co2Capacitance: number;
+  /** Drive per mmHg PaCO2 above setpoint (fraction of resting ventilation). */
+  ventCo2Gain: number;
+  /**
+   * PaCO2 above setpoint at which CO2 narcosis begins depressing the controller
+   * (mmHg). Past this, hypercapnia sedates the respiratory centre it is meant to
+   * be stimulating — the positive feedback by which hypercapnic failure ends.
+   */
+  narcosisThreshold: number;
+  /** Additional ventilatory depression per mmHg above the narcosis threshold. */
+  narcosisGain: number;
+  /**
+   * Multiplier on drug-induced ventilatory depression (1 = typical adult).
+   * Obstructive sleep apnea, frailty and age all make the same dose of opioid
+   * do more; this is where that lives, so the order carries the dose and the
+   * patient carries the vulnerability.
+   */
+  sedativeSensitivity: number;
+  /**
+   * Fraction of sedative depression that also comes off ventilatory capacity:
+   * accessory muscles and upper-airway tone that a loaded patient needs.
+   */
+  sedationCapacityShare: number;
+  /**
+   * How much of sedative depression falls on rate rather than depth. Opioid
+   * breathing is slow, not shallow: rate is scaled by (1 − this × depression).
+   */
+  rrDepressionShare: number;
+  /** Drive per mmHg PaCO2 below setpoint — the flat limb of the dog-leg. */
+  ventCo2GainLow: number;
+  /** Drive per mEq/L bicarbonate below baseline (fixed-acid chemoreflex). */
+  ventMetabolicGain: number;
+  /** Drive per unit SpO2 below ventHypoxicSpO2Threshold (carotid body). */
+  ventHypoxicGain: number;
+  ventHypoxicSpO2Threshold: number;
+  /** Non-chemical drive per unit shunt above 4% (J-receptor / stretch). */
+  ventShuntGain: number;
+  /** Non-chemical drive per mmHg wedge above the edema threshold. */
+  ventEdemaGain: number;
+  /** Non-chemical drive per mmHg mean PA pressure above 25 (pulmonary vascular receptors). */
+  ventPapGain: number;
+  /** Deficit (mEq/L) at which the metabolic drive has doubled its linear value. */
+  ventMetabolicCurvature: number;
+  /** Sustainable minute ventilation with a normal circulation (L/min). */
+  veMax: number;
+  /** CO below which respiratory muscle capacity falls in proportion (L/min). */
+  ventFatigueCoRef: number;
+  /**
+   * Breathing load (fraction of unfatigued capacity) the respiratory muscles can
+   * sustain indefinitely. Around 0.4–0.5 in health; set per patient from their
+   * handover load when they live close to their ceiling, because chronically
+   * loaded muscles are adapted to it.
+   */
+  fatigueLoadThreshold: number;
+  /** Load excess over threshold that fatigues at the base rate (1/tauFatigue). */
+  fatigueLoadRange: number;
+  /** Fraction of capacity lost at full fatigue. */
+  fatigueCapacityGain: number;
+  /** Time to exhaustion at an excess load of fatigueLoadRange (seconds). */
+  tauFatigue: number;
+  /** Time constant for recovery (seconds). Slower: a tired diaphragm needs hours. */
+  tauFatigueRecovery: number;
+  /**
+   * Loss of sustainable ventilation per mmHg of wedge above the edema threshold:
+   * capacity is divided by (1 + this × excess). A wet lung is a stiff lung.
+   */
+  edemaComplianceGain: number;
+  /** Capacity added at full ventilatory support (L/min). */
+  ventSupportCapacity: number;
+  /**
+   * Alveolar dead space added per unit (shunt above 5%) × (FiO2 above 0.21).
+   * Oxygen releases hypoxic vasoconstriction and returns perfusion to poorly
+   * ventilated units — the V/Q mechanism of oxygen-induced hypercapnia.
+   */
+  ventO2DeadSpaceGain: number;
 
   // --- Layer A: Instantaneous feedback couplings ---
   /** SpO2 threshold below which HPV kicks in (0.93 = 93%). */
@@ -328,6 +540,12 @@ export interface HemodynamicParams {
   tauLactateClear: number;
   /** pH threshold below which acidosis begins depressing myocardial contractility. */
   acidosisPhThreshold: number;
+  /**
+   * pH drop from CO2 above this patient's setpoint that is tolerated before it
+   * counts toward the acidosis penalties. 0.2 ≈ PaCO2 at 1.6× setpoint: permissive
+   * hypercapnia goes unpunished; narcotic levels of CO2 do not.
+   */
+  respiratoryAcidosisTolerance: number;
   /** Emax penalty per unit pH deficit below acidosisPhThreshold. */
   acidosisEmaxGain: number;
   /**

@@ -213,7 +213,7 @@ function EngineBench() {
           <h2 style={styles.panelTitle}>Vitals Monitor</h2>
           <div style={styles.vitalsGrid}>
             <VitalDisplay label="MAP" value={snap.map} unit="mmHg" color="#ff4444" warn={snap.map < 65 || snap.map > 110} />
-            <VitalDisplay label="HR" value={snap.hr} unit="bpm" color="#44ff44" warn={snap.hr > 120 || snap.hr < 50} />
+            <VitalDisplay label={snap.afib > 0.5 ? 'HR (AF)' : 'HR'} value={snap.hr} unit="bpm" color="#44ff44" warn={snap.hr > 120 || snap.hr < 50 || snap.afib > 0.5} />
             <VitalDisplay label="SV" value={snap.sv} unit="mL" color="#4488ff" warn={snap.sv < 40} />
             <VitalDisplay label="CO" value={snap.co} unit="L/min" color="#ffaa44" warn={snap.co < 3.5} />
             <VitalDisplay label="SVR" value={snap.svr} unit="WU" color="#ff88ff" />
@@ -265,8 +265,12 @@ function EngineBench() {
             <BgRow label="pH"          value={snap.pH}      unit=""        color="#ff88aa" decimals={2} warn={snap.pH < 7.35 || snap.pH > 7.45} />
             <BgRow label="HCO₃"        value={snap.hco3}    unit="mEq/L"  color="#88ccff" warn={snap.hco3 < 18 || snap.hco3 > 26} />
             <BgRow label="Base Excess" value={snap.be}      unit="mEq/L"  color="#aaaacc" warn={snap.be < -4 || snap.be > 2} />
+            <BgRow label="PaCO₂"       value={snap.paCO2}   unit="mmHg"   color="#ffaa88" warn={snap.paCO2 < 35 || snap.paCO2 > 45} />
             <BgRow label="PaO₂"        value={snap.paO2}    unit="mmHg"   color="#44aaff" warn={snap.paO2 < 60} />
             <BgRow label="Lactate"     value={snap.lactate} unit="mmol/L" color="#ffcc44" warn={snap.lactate > 2.0} />
+            <BgRow label="RR"          value={snap.rr}      unit="/min"   color="#88ffcc" decimals={0} warn={snap.rr < 10 || snap.rr > 24} />
+            <BgRow label="VE"          value={snap.ve}      unit="L/min"  color="#88ddff" warn={snap.veDemand > snap.veCapacity} />
+            <BgRow label="Sedation"    value={snap.cnsDepression * 100} unit="%" color="#cc99ff" decimals={0} warn={snap.cnsDepression >= 0.35} />
           </div>
         </div>
 
@@ -304,6 +308,8 @@ function EngineBench() {
               }} />
             <ScenarioButton label="Cardiogenic Shock" description="Emax −1.2 over ~3 min (acute MI)"
               onClick={() => addIntervention('Acute MI', 'scenario', 'scenario', 'emax', -1.2, 90, 1250)} />
+            <ScenarioButton label="Atrial Fibrillation" description="AF onset: ventricular rate set by AV conduction and sympathetic tone; atrial kick lost. Stop it to cardiovert."
+              onClick={() => addIntervention('AF', 'scenario', 'scenario', 'afib', 1, 30, 30)} />
             <ScenarioButton label="Tension Pneumothorax" description="EDV −50 mL, CVP +12 over ~2 min"
               onClick={() => {
                 addIntervention('Tension PTX: tamponade', 'scenario', 'scenario', 'edv', -50, 60, 21);
@@ -345,6 +351,10 @@ function EngineBench() {
                 addIntervention('COPD-E: shunt↑', 'scenario', 'scenario', 'qsQt', 0.25, 180, 1250);
                 addIntervention('COPD-E: PVR↑', 'scenario', 'scenario', 'pvr', 1.5, 300, 1250);
               }} />
+            <ScenarioButton label="Gas Trapping" description="Dead space +0.25 over ~5 min. Hypercapnia once ventilatory reserve runs out."
+              onClick={() => addIntervention('Gas trapping', 'scenario', 'scenario', 'deadSpace', 0.25, 300, 1250)} />
+            <ScenarioButton label="Opioid Overdose" description="Ventilatory depression 0.9 over ~10 min. SpO2 lags; PaCO2 and sedation lead."
+              onClick={() => addIntervention('Opioid overdose', 'scenario', 'scenario', 'ventDepression', 0.9, 600, 9000)} />
           </div>
 
           {/* Section: Heart Failure */}
@@ -405,6 +415,30 @@ function EngineBench() {
               onClick={() => addIntervention('iNO/PGI2', 'treatment', 'infusion', 'pvr', -0.8, 300, 60)} />
             <ScenarioButton label="Supplemental O2 (40%)" description="Infusion · FiO2 +0.19. Onset ~30s. t½ 1 min washout."
               onClick={() => addIntervention('Supp O2 40%', 'treatment', 'infusion', 'fiO2', 0.19, 30, 60)} />
+            <ScenarioButton label="BiPAP" description="Infusion · ventilatory support 0.6, FiO2 +0.29, recruitment. Unloads the respiratory muscles."
+              onClick={() => {
+                addIntervention('BiPAP: support', 'treatment', 'infusion', 'ventSupport', 0.6, 300, 180);
+                addIntervention('BiPAP: FiO2', 'treatment', 'infusion', 'fiO2', 0.29, 120, 180);
+                addIntervention('BiPAP: recruitment', 'treatment', 'infusion', 'qsQt', -0.08, 300, 300);
+              }} />
+            <ScenarioButton label="Mechanical Ventilation" description="Infusion · full support. Drive, sedation and fatigue stop mattering."
+              onClick={() => {
+                addIntervention('Vent: support', 'treatment', 'infusion', 'ventSupport', 1, 120, 300);
+                addIntervention('Vent: FiO2', 'treatment', 'infusion', 'fiO2', 0.39, 120, 300);
+              }} />
+            <ScenarioButton label="Diltiazem 10 mg" description="Bolus · AV block 0.35, Emax −0.25, SVR −2.5. Rate control that costs contractility and tone."
+              onClick={() => {
+                addIntervention('Diltiazem: AV block', 'treatment', 'bolus', 'avBlock', 0.35, 180, 10800);
+                addIntervention('Diltiazem: inotropy', 'treatment', 'bolus', 'emax', -0.25, 180, 10800);
+                addIntervention('Diltiazem: vasodilation', 'treatment', 'bolus', 'svr', -2.5, 180, 10800);
+              }} />
+            <ScenarioButton label="Amiodarone 150 mg" description="Bolus · AV block 0.28 over ~20 min, mild vasodilation. Spares contractility."
+              onClick={() => {
+                addIntervention('Amiodarone: AV block', 'treatment', 'bolus', 'avBlock', 0.28, 1200, 43200);
+                addIntervention('Amiodarone: vasodilation', 'treatment', 'bolus', 'svr', -1.2, 600, 7200);
+              }} />
+            <ScenarioButton label="Naloxone 0.4 mg" description="Bolus · ventilatory depression −0.9, peak ~5 min, t½ 50 min — shorter than most opioids."
+              onClick={() => addIntervention('Naloxone', 'treatment', 'bolus', 'ventDepression', -0.9, 60, 3000)} />
 
             {/* ── Bolus (irreversible once given) ── */}
             <ScenarioButton label="Fluid Bolus (1L NS)" description="Bolus · EDV +40 mL. Distributes ~10 min. t½ ~1h (renal)."
@@ -707,10 +741,11 @@ const PulmonaryTrendChart = memo(function PulmonaryTrendChart({ history }: { his
     { label: 'SpO2%', getValue: (s) => s.spO2 * 100,   color: '#00ccff', min: 70, max: 100 },
     { label: 'mPAP',  getValue: (s) => s.mPAP,          color: '#ffcc44', min: 8,  max: 60  },
     { label: 'PCWP',  getValue: (s) => s.pcwp,          color: '#ff8844', min: 2,  max: 40  },
+    { label: 'PaCO2', getValue: (s) => s.paCO2,         color: '#ffaa88', min: 20, max: 100 },
     { label: 'NO%',   getValue: (s) => s.noTone  * 100, color: '#44ffaa', min: 0,  max: 100 },
     { label: 'ET1%',  getValue: (s) => s.et1Tone * 100, color: '#ff6644', min: 0,  max: 100 },
   ];
-  return <VitalsChart history={history} traces={traces} title="Pulmonary: SpO2% (cyan) · mPAP (yellow) · PCWP (orange) · NO% (green) · ET-1% (red-orange)" />;
+  return <VitalsChart history={history} traces={traces} title="Pulmonary: SpO2% (cyan) · mPAP (yellow) · PCWP (orange) · PaCO2 (salmon) · NO% (green) · ET-1% (red-orange)" />;
 });
 
 const InterventionTimeline = memo(function InterventionTimeline({ history, interventions }: { history: Snapshot[]; interventions: Intervention[] }) {

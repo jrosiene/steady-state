@@ -101,6 +101,15 @@ are shown as empty, because a missing contingency plan is information. The fulle
 handoff on the ward is on the patient who needs it least; two of the thinnest are
 on people who die if you leave them. You can re-read any of them from the chart.
 
+**A saturation is not a breath.** Ventilation is modeled, so the pulse oximeter
+measures what it really measures. A patient narcotized by a PCA breathes six
+times a minute and reads 95% on two liters; a COPD patient put on a
+non-rebreather reads 99% while their CO2 climbs past 90. The signs are a slow
+rate and a patient who is hard to wake, the nurse can tell you both, and the gas
+shows it. Opioids and sedatives act on breathing — more so in the old, the frail
+and anyone with sleep apnea — and naloxone wears off before most of what it
+reverses.
+
 **Most pages are not emergencies.** One patient asks for a sleeping tablet three
 times. The cost of treating every page as a crisis is paid by the patient down
 the hall — so the order set includes the ordinary night-float material (melatonin,
@@ -126,16 +135,18 @@ rather than recall what a given name did last time.
 | `pulmonary-embolism` | Routine post-op day 2 | Massive PE with RV failure |
 | `gi-bleed` | Stable GI bleed | Rebleeding ulcer → hemorrhagic shock |
 | `acs-cardiogenic` | Chest pain, troponins negative | Anterior STEMI → cardiogenic shock |
+| `opioid-oversedation` | Day 1 after a knee replacement, on a PCA | Opioid-induced hypoventilation in untreated sleep apnea, hidden by 2 L of oxygen. Naloxone wears off before the hydromorphone does |
 
 **Ward-level** — serious, and usually fixable:
 
 | Archetype | Presents as | Actually |
 |---|---|---|
-| `copd-exacerbation` | COPD exacerbation | COPD exacerbation — the obvious answer is right |
+| `copd-exacerbation` | COPD exacerbation | COPD exacerbation — the obvious answer is right. A chronic retainer: severe ones need BiPAP, and a non-rebreather narcotizes them |
 | `hypovolemia` | Poor intake, AKI | Dry. A bolus fixes it |
 | `pneumothorax` | Pleural effusion, drained today | Post-procedural pneumothorax, enlarging |
 | `aspiration-event` | Stroke with dysphagia | Witnessed aspiration → chemical pneumonitis |
 | `end-of-life-pneumonia` | Aspiration pneumonia, DNR/DNI | Dying. The intervention is a conversation |
+| `copd-o2-narcosis` | COPD exacerbation, improving | A CO2 retainer the nurse put on a non-rebreather. The page is good news; the saturation is the trap |
 
 **Benign** — nothing is wrong, and the pages keep coming:
 
@@ -204,22 +215,23 @@ response; a severe one needs escalation and an inotrope, not just a diuretic.
 
 ### Comorbidities
 
-Nine background conditions, sampled one or two per patient and orthogonal to
+Ten background conditions, sampled one or two per patient and orthogonal to
 whatever is acutely wrong. Each is a real physiologic modifier and a real clinical
 trap rather than a stat adjustment — a beta-blocked patient never mounts the
 tachycardia that normally announces a bleed, a patient with pulmonary
 hypertension has far less right ventricle in reserve when it is loaded, and
 long-standing hypertension means the "normal" blood pressure that reassures you
-is already a large fall for them. They appear in the past medical history, so the
+is already a large fall for them, and untreated sleep apnea turns an ordinary
+dose of opioid into a respiratory arrest. They appear in the past medical history, so the
 information is always available to a player who reads the chart.
 
 ### How much variety
 
 | Axis | Depth |
 |---|---|
-| Archetypes | 36 — 17 critical, 15 ward, 4 benign |
+| Archetypes | 38 — 18 critical, 16 ward, 4 benign |
 | Severity | continuous, with per-insult variation of ±0.16 around it |
-| Comorbidities | 9, zero to two per patient |
+| Comorbidities | 10, zero to two per patient |
 | Distinct archetype combinations | ~190 per 200 generated wards |
 
 On top of that: names, ages, pronouns, rooms, nurses, allergies, histories,
@@ -303,6 +315,30 @@ and treatments, and watch the traces.
 - Fick-based SvO2, so low output amplifies the shunt effect
 - **Hydrostatic pulmonary edema → shunt**: once PCWP exceeds plasma oncotic pressure, alveoli flood and become true shunt. This is what makes cardiogenic pulmonary edema hypoxemic, why oxygen alone barely helps, and why preload reduction fixes the saturation
 - Low-flow pulmonary hypoperfusion as an effective shunt
+- The alveolar gas equation uses the live PaCO2, so a patient who hypoventilates desaturates on room air — and supplemental oxygen hides it
+
+### Ventilation and CO2
+PaCO2 is a state variable, integrated from a CO2 mass balance: metabolic
+production (VO2 × RQ) in, alveolar ventilation out, through the body's CO2
+stores. Written that way rather than as a steady state because apnea has no
+steady state — PaCO2 simply climbs, about 4 mmHg a minute.
+
+- **Chemoreflex controller.** Minute ventilation answers to CO2 above the patient's own setpoint (steep, ~2 L/min per mmHg), CO2 below it (flat — the dog-leg that makes compensation possible), fixed acid (superlinear in the bicarbonate deficit), and the carotid body. Metabolic acidosis is compensated to within Winter's formula (1.5 × HCO3 + 8 ± 2) from HCO3 8 to 20, without any lookup of Winter's formula
+- **Non-chemical drive.** J-receptors in a wet or consolidated lung and pulmonary vascular receptors drive ventilation that the CO2 brake does not switch off: pneumonia, PE and pulmonary edema are hypocapnic until the patient tires
+- **Breathing pattern and dead space.** Rate rises less than proportionally with ventilation, and stiff-lung drive shifts it rapid and shallow; anatomic dead space is a volume per breath, so shallow breathing wastes more of each. Opioid breathing is slow and deep
+- **Capacity and fatigue.** Sustainable ventilation falls with a failing circulation (the diaphragm is a muscle with a blood supply) and with a stiff, edematous lung. Load above what the muscles can sustain accumulates fatigue, which lowers capacity further — the slide that ends in "they are tiring"
+- **Sedation.** Opioids and benzodiazepines scale the whole controller down, including its response to CO2, and take some of the accessory-muscle and upper-airway effort a loaded patient depends on. Sleep apnea, frailty and age raise sensitivity. Past about 40 mmHg above setpoint, CO2 narcosis depresses the controller further — the positive feedback by which hypercapnic failure ends
+- **Chronic retainers.** A reset CO2 setpoint, renally compensated bicarbonate, a blunted CO2 response and little ventilatory reserve. High-flow oxygen releases the hypoxic vasoconstriction that was matching perfusion to ventilation and removes hypoxic drive; the PaCO2 climbs with a saturation that looks excellent
+- **Support.** Non-invasive ventilation adds capacity and does part of the work; a ventilator replaces the drive entirely, so sedation and fatigue stop mattering
+
+The acidosis penalties (myocardial depression, vasoplegia, SA-node suppression)
+act on the *metabolic* component — the base deficit — plus only the part of a
+respiratory acidosis beyond what permissive hypercapnia tolerates (a pH drop of
+about 0.2 from CO2). A PaCO2 of 60 costs nothing; a PaCO2 of 125 in a narcotized
+retainer does. Keying the penalties to arterial pH put a hypoventilating patient
+into cardiogenic shock; keying them to the base deficit left the calibrated shock
+spiral exactly where it was, and lets hypercapnia kill the way it actually does —
+through narcosis, apnea and hypoxemia.
 
 ### Vasoactive mediators
 Instantaneous reflexes (HPV, hypoxic vasodilation) plus ODE-integrated mediator
@@ -317,9 +353,13 @@ opposed — `delta / (1 + gainSvr × CO)` survives — and reflex bradycardia on
 
 ### Acid-base
 Lactate as a first-order ODE driven by oxygen delivery, perfusion pressure, and
-inflammatory tone, feeding pH → myocardial depression, vasoplegia, and SA-node
-suppression. This is the failure spiral, and it is what makes late recognition
-qualitatively different from early recognition rather than merely worse.
+inflammatory tone, feeding the base deficit → myocardial depression, vasoplegia,
+and SA-node suppression. This is the failure spiral, and it is what makes late
+recognition qualitatively different from early recognition rather than merely
+worse. Arterial pH is Henderson–Hasselbalch from bicarbonate and the integrated
+PaCO2, so a septic patient breathing off their lactate shows a compensated pH and
+a low PaCO2 on the gas, and a venous gas carries the veno-arterial CO2 gap that
+widens as output falls.
 
 ---
 
@@ -333,8 +373,10 @@ src/engine/          Physiology. Pure functions, no UI, no game concepts.
   baroreflex.ts      First-order HR/SVR regulation
   pulmonary.ts       PCWP, RV output, mPAP, TPG
   oxygenation.ts     Alveolar gas equation, Hill curve, Fick SvO2, shunt mixing
+  ventilation.ts     Chemoreflex, breathing pattern, dead space, capacity, fatigue, CO2 balance
   vasoactive.ts      Layer A reflexes + Layer B mediator ODE targets
-  hemodynamics.ts    derive() pipeline, derivative(), intervention overlay
+  hemodynamics.ts    derive() pipeline, overlayDerivative() — the one definition of
+                     dState/dt, used by the bench, the ward and the tests
   solver.ts          RK4 integrator, clamps
   patient.ts         Gaussian patient sampling
 

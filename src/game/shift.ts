@@ -304,6 +304,16 @@ export class ShiftEngine {
       if (p.firedEvents.includes(i) || this.time < ev.at) return;
       p.firedEvents.push(i);
 
+      if (ev.o2Device) {
+        // Somebody else changed the oxygen. The device replaces the old one the
+        // same way an order would, including stopping its effects.
+        for (const iv of p.interventions) {
+          if (iv.label.startsWith(O2_LABEL_PREFIX) && iv.stopTime === undefined) {
+            iv.stopTime = p.state.time;
+          }
+        }
+        p.o2Device = ev.o2Device;
+      }
       if (ev.interventions) {
         for (const spec of ev.interventions) {
           p.interventions.push({ ...spec, startTime: p.state.time });
@@ -345,7 +355,8 @@ export class ShiftEngine {
       const trigger = ev.pageWhen!;
       const grade = trigger.axis === 'wob' ? gestalt.wob
         : trigger.axis === 'perf' ? gestalt.perf
-        : Math.max(gestalt.wob, gestalt.perf);
+        : trigger.axis === 'sed' ? gestalt.sed
+        : Math.max(gestalt.wob, gestalt.perf, gestalt.sed);
 
       if (grade < (trigger.grade ?? 1) && this.time < pending.sendBy) {
         still.push(pending);
@@ -450,7 +461,7 @@ export class ShiftEngine {
     if (snap.cardiovascularStatus === 'arrest') return;
 
     const gestalt = assessAppearance(snap, p.case.baselineDrive);
-    const grade = Math.max(gestalt.wob, gestalt.perf);
+    const grade = Math.max(gestalt.wob, gestalt.perf, gestalt.sed);
 
     // Improvement resets the reference: the nurse's sense of the patient tracks
     // the patient, so getting better and worse again is worth a second call.
@@ -633,6 +644,14 @@ export class ShiftEngine {
       // Crossed off the list the player is reading, so the chart tells the truth
       // about what is actually running.
       p.heldMeds = [...new Set([...p.heldMeds, ...order.holds])];
+    }
+    if (order.stops) {
+      for (const iv of p.interventions) {
+        if (iv.kind !== 'bolus' && iv.stopTime === undefined
+            && order.stops.some((prefix) => iv.label.startsWith(prefix))) {
+          iv.stopTime = p.state.time;
+        }
+      }
     }
     if (order.antipyreticHours) {
       p.antipyreticUntil = this.time + order.antipyreticHours * 3600;
@@ -847,7 +866,7 @@ export class ShiftEngine {
    * arrests in asystole, which is the rhythm with almost no survivors.
    */
   private arrestRhythm(p: PatientRuntime, snap: Snapshot): CodeRhythm {
-    if (snap.pH < 7.0) return this.rng.chance(0.72) ? 'asystole' : 'PEA';
+    if (snap.pHPenalty < 7.0) return this.rng.chance(0.72) ? 'asystole' : 'PEA';
 
     // A full ventricle is part of the definition, and the reason it has to be
     // stated: PCWP is (EDV − V0) × stiffness / emax, so as contractility
@@ -882,7 +901,9 @@ export class ShiftEngine {
       p.o2Device = 'Vent';
       p.interventions.push(
         { label: `${O2_LABEL_PREFIX} Vent`, category: 'treatment', kind: 'infusion', target: 'fiO2', delta: 0.79, tauOn: 30, eliminationHalfLife: 600, startTime: t },
-        { label: 'Vent recruitment', category: 'treatment', kind: 'infusion', target: 'qsQt', delta: -0.1, tauOn: 120, eliminationHalfLife: 600, startTime: t },
+        { label: `${O2_LABEL_PREFIX} Vent recruitment`, category: 'treatment', kind: 'infusion', target: 'qsQt', delta: -0.1, tauOn: 120, eliminationHalfLife: 600, startTime: t },
+        // Somebody is squeezing the bag: the patient's own drive no longer matters.
+        { label: `${O2_LABEL_PREFIX} Vent ventilation`, category: 'treatment', kind: 'infusion', target: 'ventSupport', delta: 1, tauOn: 30, eliminationHalfLife: 300, startTime: t },
       );
       beats.push('airway secured and the tube is confirmed');
     }
@@ -967,6 +988,9 @@ export class ShiftEngine {
       // and leaving it at the arrest value puts the pH low enough that the
       // acidosis penalty alone re-arrests the patient within a minute.
       lactate: Math.min(p.state.lactate, 7),
+      // Bagged through the code and ventilated since: whatever CO2 had built up
+      // before the arrest has largely been blown off by the time there is a pulse.
+      paCO2: Math.min(p.state.paCO2, p.params.paCO2Setpoint + 15),
     };
 
     p.interventions.push(
@@ -1150,7 +1174,7 @@ function createRuntime(c: PatientCase): PatientRuntime {
     lastPageAt: -Infinity,
     // Seeded from how the patient looks at sign-out, so someone who arrives on
     // the shift already sick is not paged about for being what they were.
-    reportedGrade: Math.max(handoverGestalt.wob, handoverGestalt.perf),
+    reportedGrade: Math.max(handoverGestalt.wob, handoverGestalt.perf, handoverGestalt.sed),
     lastConcern: null,
     heldMeds: [],
     lastVitalsAt: 0,
@@ -1201,7 +1225,7 @@ export function roscChance(code: CodeState, snap: Snapshot): number {
   if (code.causeAddressed) p += 0.1;
 
   // A profoundly acidotic myocardium does not respond to epinephrine.
-  if (snap.pH < 7.0) p -= 0.06;
+  if (snap.pHPenalty < 7.0) p -= 0.06;
 
   p *= Math.pow(0.7, Math.max(0, code.cycle - 1));
   return Math.max(0.01, Math.min(0.6, p));
@@ -1233,7 +1257,7 @@ function minutesInto(code: CodeState, now: number): number {
 
 export function formatVitals(v: Vitals): string {
   return (
-    `Vitals — BP ${v.sbp}/${v.dbp} (MAP ${v.map}) · HR ${v.hr} · RR ${v.rr} · ` +
+    `Vitals — BP ${v.sbp}/${v.dbp} (MAP ${v.map}) · HR ${v.hr}${v.irregular ? ' irregular' : ''} · RR ${v.rr} · ` +
     `SpO₂ ${v.spo2}% on ${v.o2} · T ${v.tempC.toFixed(1)}°C`
   );
 }

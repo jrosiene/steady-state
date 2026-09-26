@@ -6,10 +6,13 @@ import { makeCast } from './demographics';
 import { ARCHETYPES, ARCHETYPE_BY_ID, type ArchetypeContext, type CaseArchetype, type HandoffDraft } from './archetypes';
 import { bandOf, clampSeverity, sampleSeverity, type Severity } from './severity';
 import { DEFAULT_PARAMS, DEFAULT_STATE } from '../../engine/constants';
-import { snapshot as computeSnapshot } from '../../engine/hemodynamics';
+import { snapshot as computeSnapshot, withSteadyPaCO2 } from '../../engine/hemodynamics';
 import { respiratoryDrive } from '../clinical';
 
 const MIN = 60;
+
+/** Load above a patient's own handover load before their respiratory muscles fatigue. */
+const FATIGUE_HEADROOM = 0.1;
 
 /** Default ward size. Eight is what one covering doctor is realistically holding. */
 export const WARD_SIZE = 8;
@@ -177,6 +180,25 @@ export function generateWard(options: WardOptions = {}): GeneratedWard {
       state: { ...(base.stateOverrides ?? {}) },
     };
     applyComorbidities(comorbidities, target, rng);
+
+    // Start the gas where this patient's breathing holds it, rather than at 40
+    // and drifting there over the first few minutes of the shift.
+    target.state.paCO2 = withSteadyPaCO2(
+      { ...DEFAULT_STATE, ...target.state },
+      { ...DEFAULT_PARAMS, ...target.params },
+    ).paCO2;
+
+    // A patient who lives close to their ventilatory ceiling — severe COPD, a
+    // chest wall that barely moves — has respiratory muscles adapted to that
+    // load. Fatigue is measured from where they start, not from a healthy
+    // adult's threshold, or they would be tiring at sign-out.
+    const handoverLoad = computeSnapshot(
+      { ...DEFAULT_STATE, ...target.state },
+      { ...DEFAULT_PARAMS, ...target.params },
+    ).breathingLoad;
+    if (handoverLoad + FATIGUE_HEADROOM > DEFAULT_PARAMS.fatigueLoadThreshold) {
+      target.params.fatigueLoadThreshold = handoverLoad + FATIGUE_HEADROOM;
+    }
 
     // The patient's own physiology at 19:00 — the comparison film, and the
     // reference for anything that has to reason about change rather than about

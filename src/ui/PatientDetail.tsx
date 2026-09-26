@@ -169,8 +169,8 @@ function VitalsCard({
           warn={vitals.map < 70}
         />
         <Vital label="MAP" value={vitals.map} bad={vitals.map < 60} warn={vitals.map < 70} />
-        <Vital label="HR" value={vitals.hr} bad={vitals.hr > 130 || vitals.hr < 45} warn={vitals.hr > 110} />
-        <Vital label="RR" value={vitals.rr} bad={vitals.rr > 30} warn={vitals.rr > 22} />
+        <Vital label={vitals.irregular ? 'HR irreg' : 'HR'} value={vitals.hr} bad={vitals.hr > 130 || vitals.hr < 45} warn={vitals.hr > 110 || vitals.irregular === true} />
+        <Vital label="RR" value={vitals.rr} bad={vitals.rr > 30 || vitals.rr < 8} warn={vitals.rr > 22 || vitals.rr < 10} />
         <Vital label="SpO₂" value={`${vitals.spo2}%`} bad={vitals.spo2 < 88} warn={vitals.spo2 < 93} />
         <Vital label="Temp" value={vitals.tempC.toFixed(1)} bad={vitals.tempC >= 39} warn={vitals.tempC >= 38.3 || vitals.tempC < 36} />
       </div>

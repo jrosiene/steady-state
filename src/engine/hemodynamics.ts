@@ -10,6 +10,8 @@ import { computeSV } from './frank-starling';
 import { computeBaroreflex } from './baroreflex';
 import { computePCWP, computeRVOutput, computeMPAP } from './pulmonary';
 import { computeOxygenation } from './oxygenation';
+import { afStrokeLoss, fillingFraction, laBackupVolume, ventricularRate } from './rhythm';
+import { arterialPh, cnsDepression, computeVentilation, fatigueRate, paCO2Derivative } from './ventilation';
 import {
   computeHPV,
   computeHypoxicVasodilation,
@@ -34,28 +36,56 @@ export function derive(
   state: HemodynamicState,
   params: HemodynamicParams,
 ): DerivedValues {
-  // ── Blood gases — two-pass to resolve pH ↔ Emax ↔ CO circular dependency ──
+  // ── Blood gases ──────────────────────────────────────────────────────────
   //
-  // Circular dependency:
-  //   pH → acidosisEmaxPenalty → emaxEffective → SV → CO → paCO2eff → pH
+  // PaCO2 is a state variable (integrated CO2 mass balance), so pH is known
+  // before anything else and there is no circular dependency to break: the old
+  // two-pass pH ↔ Emax ↔ CO resolution existed only because PaCO2 was being
+  // computed from cardiac output inside this function.
   //
-  // Resolution: pHPrelim uses constant paCO2 (drives Emax in this tick).
-  //             pHFinal uses CO-adjusted paCO2 (returned for display/status).
-  //             One-tick lag on the CO2 retention → Emax path is negligible
-  //             given that the fastest ODE time constant (tauHr=3s) >> dt (50ms).
-  //
-  // HCO3 model: pure anion-gap metabolic acidosis, 1:1 stoichiometry.
-  //   Henderson-Hasselbalch: pH = 6.1 + log10(HCO3 / (0.0307 × paCO2))
-  //   Normal: HCO3=24, paCO2=40 → pH = 7.39 ✓   Lactate=10: HCO3=15 → pH_prelim=7.19 ✓
-  const hco3 = Math.max(5, 24 - Math.max(0, state.lactate - 1));
+  // HCO3: the patient's own renal baseline, titrated 1:1 by lactate above 1.
+  //   Normal: HCO3=24, PaCO2=40 → pH 7.39.
+  //   Lactate 10 → HCO3 15; compensated to PaCO2 ~30 → pH ~7.31 (Winter's 30.5 ± 2).
+  const acidLoad = Math.max(0, state.lactate - 1);
+  const hco3 = Math.max(5, params.hco3Baseline - acidLoad);
   const be = hco3 - 24;
-  const pHPrelim = 6.1 + Math.log10(hco3 / (0.0307 * params.paCO2));
+  const pH = arterialPh(hco3, state.paCO2);
+
+  // The metabolic component of the acidosis, expressed as the pH this acid load
+  // would produce at a normal PaCO2 — equivalently, a base deficit.
+  //
+  // The myocardial, vascular and SA-node penalties below are keyed to this, not
+  // to the arterial pH, and the distinction is deliberate. Respiratory acidosis
+  // of the same pH is far better tolerated: CO2 drives sympathetic output that
+  // offsets its direct negative inotropy, which is why permissive hypercapnia to
+  // a pH of 7.20 is routine ICU practice and a lactic acidosis to the same pH is
+  // a patient in trouble. Keying the penalties to arterial pH put a narcotized
+  // patient with a PaCO2 of 75 into cardiogenic shock; keying them to the base
+  // deficit leaves the metabolic failure spiral exactly as it was calibrated,
+  // and lets hypercapnia kill the way it actually does — through narcosis,
+  // apnea and hypoxemia (see ventilation.ts).
+  //
+  // Referenced to 24 rather than to this patient's own baseline bicarbonate, so
+  // a compensated CO2 retainer's extra bicarbonate is not counted as reserve.
+  const pHMetabolic = arterialPh(Math.max(5, 24 - acidLoad), 40);
+
+  // The pH the acidosis penalties act on: the metabolic component, plus whatever
+  // part of the respiratory component exceeds what the body tolerates.
+  //
+  // The respiratory component is the pH drop caused by CO2 above this patient's
+  // own setpoint, log10(PaCO2 / setpoint) — isolated explicitly, so a chronic
+  // renal acidosis or a retainer's compensated bicarbonate does not leak into it.
+  // Permissive hypercapnia is safe to a drop of about 0.2 (PaCO2 ~63 in a normal
+  // adult); beyond that CO2 does depress the myocardium and blunt the response to
+  // catecholamines. A PaCO2 of 60 costs nothing; 125 in a retainer at 55 does.
+  const respiratoryDrop = Math.log10(Math.max(1, state.paCO2) / params.paCO2Setpoint);
+  const pHPenalty = pHMetabolic - Math.max(0, respiratoryDrop - params.respiratoryAcidosisTolerance);
 
   // ── Vasoactive tone effects (Layer B: state variables → algebraic corrections) ──
   // Acidosis-driven myocardial depression: pH < 7.35 → progressive emax penalty.
   // Mechanism: intracellular acidosis reduces myofilament Ca²⁺ sensitivity and SR function.
   // Combined with noTone depression (septic cardiomyopathy) — independent mechanisms.
-  const acidosisEmaxPenalty = Math.max(0, (params.acidosisPhThreshold - pHPrelim) * params.acidosisEmaxGain);
+  const acidosisEmaxPenalty = Math.max(0, (params.acidosisPhThreshold - pHPenalty) * params.acidosisEmaxGain);
   const emaxEffective = Math.max(0.05,
     state.emax
     - state.noTone * params.noToneEmaxGain
@@ -77,12 +107,13 @@ export function derive(
   // heart rate rose, stroke volume held, cardiac output came out normal, and a
   // patient thirty-five per cent down on volume ran a blood pressure of 99 all
   // night. A fast heart and a full one are not the same heart.
-  const fillingPenalty = 1 - params.filltimeGain
-    * Math.max(0, state.hr - params.filltimeHrThreshold) / params.filltimeHrThreshold;
-  const edvEffective = Math.max(
-    params.edvMin,
-    (state.edv - rvlvPenalty) * Math.max(params.filltimeFloor, fillingPenalty),
-  );
+  //
+  // Rhythm: in AF the ventricles beat at what the AV node conducts, not at the
+  // sinus drive, and filling loses the atrial kick on top of the rate penalty.
+  // Every use of heart rate below is this ventricular rate.
+  const hr = ventricularRate(state.hr, state.afib, state.avBlock, params);
+  const filling = fillingFraction(hr, state.afib, params);
+  const edvEffective = Math.max(params.edvMin, (state.edv - rvlvPenalty) * filling);
 
   // ── Pass 1: SV, CO, preliminary oxygenation ──────────────────────────────
   //
@@ -94,19 +125,14 @@ export function derive(
   //
   // RV output depends only on rvedv, rvEmax and hr, so it can be computed here
   // with no circular dependency on anything downstream.
-  const { rvSv, rvCo } = computeRVOutput(state.rvedv, state.rvEmax, state.hr, params);
+  // The RV loses its atrial kick too (the rate term is shared diastole).
+  const rvKick = 1 - Math.max(0, Math.min(1, state.afib)) * params.atrialKickFraction;
+  const { rvSv, rvCo } = computeRVOutput(state.rvedv * rvKick, state.rvEmax, hr, params);
 
-  const svLv = computeSV(edvEffective, emaxEffective, params);
+  const svLv = computeSV(edvEffective, emaxEffective, params)
+    * (1 - afStrokeLoss(hr, state.afib, params));
   const sv = Math.min(svLv, rvSv);
-  const co = (state.hr * sv) / 1000;
-
-  // ── CO2 retention: low cardiac output → impaired pulmonary CO2 clearance ──
-  // Below co2RetentionCoRef, rising venous pCO2 and V/Q mismatch drive PaCO2 up.
-  // Produces mixed metabolic + respiratory acidosis — the clinical pattern of
-  // cardiogenic shock, cardiac arrest, and severe hemodynamic failure.
-  const paCO2Effective = params.paCO2
-    + params.co2RetentionGain * Math.max(0, params.co2RetentionCoRef - co);
-  const pH = 6.1 + Math.log10(hco3 / (0.0307 * paCO2Effective));
+  const co = (hr * sv) / 1000;
 
   // Low-flow pulmonary hypoperfusion: when CO falls below threshold, the V/Q model
   // understates hypoxemia because it assumes adequate pulmonary blood flow.
@@ -119,13 +145,23 @@ export function derive(
   // floods alveoli that remain perfused — anatomically true shunt, not V/Q mismatch.
   // This is the coupling that makes cardiogenic pulmonary edema hypoxemic, and that
   // makes preload reduction (diuresis, nitrates, PEEP) restore oxygenation.
-  const pcwp = computePCWP(edvEffective, emaxEffective, params);
+  //
+  // Left-atrial backup in AF. The volume AF keeps out of the ventricle does not
+  // vanish: it stays in the left atrium, whose pressure rises — which is why AF
+  // with a fast rate floods the lungs of a stiff ventricle even as the
+  // ventricle itself is underfilled. Scaled by chamber stiffness, so a normal
+  // heart barely notices and an HFpEF heart does. AF only: sinus tachycardia's
+  // filling penalty was calibrated without it, on hemorrhage.
+  const laBackup = params.laBackupGain * (params.lvEdpvrStiffness / 0.2)
+    * laBackupVolume(state.edv - rvlvPenalty, hr, state.afib, params);
+  const pcwp = Math.min(params.pcwpMax, computePCWP(edvEffective, emaxEffective, params) + laBackup);
   const edemaShunt = params.edemaQsQtGain * Math.max(0, pcwp - params.edemaPcwpThreshold);
 
   const effectiveQsQt = Math.min(0.98, state.qsQt + lowFlowShunt + edemaShunt);
 
   // Oxygenation is CO-dependent but not SVR/PVR-dependent
-  const { spO2, paO2, svO2 } = computeOxygenation(state.fiO2, effectiveQsQt, co, params);
+  const { spO2, paO2, svO2 } = computeOxygenation(state.fiO2, effectiveQsQt, co, params, state.paCO2);
+
 
   // ── Pass 2: apply SpO2-driven feedbacks ──────────────────────────────────
   // HPV (Layer A): hypoxemia → pulmonary vasoconstriction
@@ -137,7 +173,7 @@ export function derive(
   // Mechanism: H⁺ competes with Ca²⁺ on vascular smooth muscle contractile proteins
   // and reduces α-receptor sensitivity — the baroreflex response is overwhelmed at
   // severe acidosis even when state.svr is at its maximum clamped value.
-  const acidosisSvrPenalty = Math.max(0, (params.acidosisSvrPhThreshold - pH) * params.acidosisSvrGain);
+  const acidosisSvrPenalty = Math.max(0, (params.acidosisSvrPhThreshold - pHPenalty) * params.acidosisSvrGain);
 
   // Effective SVR: baroreflex base − noTone vasodilation + et1 vasoconstriction − hypoxic dilation − acidosis vasoplegia
   const svrEffective = Math.max(
@@ -169,7 +205,7 @@ export function derive(
   const afterloadExcess = Math.max(0, mapPrelim - params.afterloadMapThreshold);
   const afterloadPenaltyFrac = afterloadExcess / (emaxEffective * params.afterloadSvGain);
   const svFinal = sv * Math.max(0, 1 - afterloadPenaltyFrac);
-  const coFinal = (state.hr * svFinal) / 1000;
+  const coFinal = (hr * svFinal) / 1000;
 
   // ── Pass 4: afterload-sensitive RV output ────────────────────────────────
   //
@@ -193,7 +229,7 @@ export function derive(
 
   // Series constraint again, now that the RV has been asked to do it for real.
   const svLoaded = Math.min(svFinal, rvSvLoaded);
-  const coLoaded = (state.hr * svLoaded) / 1000;
+  const coLoaded = (hr * svLoaded) / 1000;
 
   // Final hemodynamics with corrected SVR/PVR and afterload-adjusted output
   const map = coLoaded * svrEffective + state.cvp;
@@ -210,16 +246,83 @@ export function derive(
   // any baseline severe enough to be worth simulating diverged immediately.
   const mPAP = computeMPAP(coLoaded, pvrEffective, pcwp);
 
+  // ── Ventilation ──────────────────────────────────────────────────────────
+  // What the patient is breathing now, given the gas tensions they have. The
+  // PaCO2 this produces is not returned here; ventilation sets the *rate of
+  // change* of PaCO2, which the integrator carries (see paCO2Derivative).
+  // Computed last because it needs the final circulation (mPAP, delivered CO)
+  // and nothing else in this function depends on it.
+  const vent = computeVentilation({
+    paCO2: state.paCO2,
+    hco3,
+    spO2,
+    qsQtEffective: effectiveQsQt,
+    pcwp,
+    mPAP,
+    co: coLoaded,
+    ventDepression: state.ventDepression,
+    deadSpace: state.deadSpace,
+    ventSupport: state.ventSupport,
+    respFatigue: state.respFatigue,
+    fiO2: state.fiO2,
+    qsQt: state.qsQt,
+  }, params);
+
   // ── Cardiovascular failure status ────────────────────────────────────────
   // Composite of perfusion pressure, output, and metabolic reserve.
   // Each tier represents a clinically distinct decision point.
+  // Status reads the worse of arterial and metabolic pH: a patient whose PaCO2
+  // has run to 150 is arresting whatever their lactate says.
+  const pHStatus = Math.min(pH, pHMetabolic);
   const cardiovascularStatus: CardiovascularStatus =
-    map < 20 || pH < 6.9 ? 'arrest' :
-    map < 35 || coLoaded < 1.0 || pH < 7.1 ? 'decompensating' :
-    map < 50 || coLoaded < 2.0 || pH < 7.2 ? 'shock' :
+    map < 20 || pHStatus < 6.9 ? 'arrest' :
+    map < 35 || coLoaded < 1.0 || pHStatus < 7.1 ? 'decompensating' :
+    map < 50 || coLoaded < 2.0 || pHStatus < 7.2 ? 'shock' :
     'compensated';
 
-  return { emaxEffective, sv: svLoaded, co: coLoaded, map, rvSv, rvCo, mPAP, pcwp, qsQtEffective: effectiveQsQt, spO2, paO2, svO2, pH, hco3, be, cardiovascularStatus };
+  return {
+    emaxEffective, sv: svLoaded, co: coLoaded, map, rvSv, rvCo, mPAP, pcwp,
+    qsQtEffective: effectiveQsQt, spO2, paO2, svO2, pH, pHMetabolic, pHPenalty, hco3, be, cardiovascularStatus,
+    ve: vent.ve, veDemand: vent.veDemand, veCapacity: vent.veCapacity, va: vent.va,
+    rr: vent.rr, vt: vent.vt, vdVt: vent.vdVt,
+    cnsDepression: cnsDepression(state.paCO2, state.ventDepression, params),
+    breathingLoad: vent.breathingLoad,
+    hrEffective: hr,
+  };
+}
+
+/**
+ * The same state with PaCO2 at the value this patient's ventilation holds.
+ *
+ * PaCO2 is integrated, so a case that starts from the population default of 40
+ * would spend its first few minutes drifting to its own equilibrium — a
+ * pneumonia breathing itself down to 34, a retainer up to 50 — and the vitals
+ * charted at sign-out would not be the vitals at 19:05. Solving for the steady
+ * state up front starts every patient where they actually live.
+ *
+ * The CO2 balance falls with PaCO2 across the physiologic range (more CO2
+ * means both more drive and more CO2 per breath), but not everywhere: far
+ * enough up, alveolar O2 runs out on room air, the circulation fails and
+ * ventilation stops, and the balance turns positive again. So this scans up
+ * from a low PaCO2 for the FIRST crossing — the equilibrium a living patient
+ * sits at — and bisects within that bracket.
+ */
+export function withSteadyPaCO2(state: HemodynamicState, params: HemodynamicParams): HemodynamicState {
+  const vco2 = params.vo2 * params.rq;
+  const balance = (paCO2: number) =>
+    paCO2Derivative(paCO2, derive({ ...state, paCO2 }, params).va, vco2, params);
+  let lo = 15;
+  if (balance(lo) <= 0) return { ...state, paCO2: lo };
+  for (let hi = lo + 2; hi <= 120; hi += 2) {
+    if (balance(hi) > 0) { lo = hi; continue; }
+    for (let i = 0; i < 30; i++) {
+      const mid = (lo + hi) / 2;
+      if (balance(mid) > 0) lo = mid; else hi = mid;
+    }
+    return { ...state, paCO2: (lo + hi) / 2 };
+  }
+  // No equilibrium below 120: leave the case's own value and let it declare itself.
+  return state;
 }
 
 /** Build a full snapshot (state + derived) for the UI layer. */
@@ -227,69 +330,90 @@ export function snapshot(
   state: HemodynamicState,
   params: HemodynamicParams,
 ): Snapshot {
-  return { ...state, ...derive(state, params) };
+  const derived = derive(state, params);
+  // The pulse the patient has. In sinus rhythm this is state.hr; in AF it is
+  // the conducted ventricular rate, which is what a monitor or a nurse counts.
+  return { ...state, ...derived, hr: derived.hrEffective };
 }
 
 /**
- * Compute the derivative of the dynamic state (dState/dt).
+ * The derivative of the dynamic state, dState/dt — the one place it is defined.
  *
- * ODE variables:
- *   hr, svr   — baroreflex (existing)
- *   noTone    — Layer B: NO/PGI2 mediator, driven by SpO2 feedback + intervention overlay
- *   et1Tone   — Layer B: ET-1 mediator, driven by mPAP feedback (self-amplifying loop)
- *   rvedv     — RV volume adapts to afterload (PVR), driving RVLV interdependence
+ * Takes both the BASE state (what is being integrated) and the EFFECTIVE state
+ * (base + intervention overlays, clamped). The distinction is the model's key
+ * invariant:
  *
- * All other variables (edv, emax, cvp, hrMod, rvEmax, pvr, qsQt, fiO2) have
- * derivative = 0: they are driven purely by intervention overlays, not intrinsic dynamics.
+ *   - Everything the body SENSES is read from the effective state: MAP, SpO2,
+ *     mPAP, filling, gas tensions. A patient on a fluid bolus has the bolus in
+ *     their ventricle, and their receptors know it.
+ *   - Everything the body REGULATES is compared against the base state: the
+ *     patient's own HR and SVR tone, and the mediator ODEs. Comparing a
+ *     controller against the effective value puts the drug inside the loop,
+ *     where an integrating controller cancels it exactly — which once made
+ *     every vasopressor in the game inert. Sensing the effective pressure while
+ *     regulating intrinsic tone gives the finite-gain opposition a real reflex
+ *     shows: delta / (1 + gainSvr × CO) of a pressor survives.
+ *
+ * ODE variables: hr, svr (baroreflex); noTone, et1Tone (mediators); rvedv (RV
+ * adaptation); lactate; paCO2 (CO2 mass balance); respFatigue. Everything else has zero
+ * derivative and is moved only by overlays.
+ *
+ * This used to exist three times — here, in the bench loop, and in the ward's
+ * physics step — and the copies had drifted (different PVR back-calculation,
+ * different filling signal to the baroreflex). One definition, called by all.
  */
-export function derivative(
-  state: HemodynamicState,
-  params: HemodynamicParams,
+export function overlayDerivative(
+  base: HemodynamicState,
+  effective: HemodynamicState,
+  p: HemodynamicParams,
 ): HemodynamicState {
-  const derived = derive(state, params);
-  const { map, spO2, mPAP, svO2, pH } = derived;
+  const derived = derive(effective, p);
 
-  // pH-dependent HR ceiling: H⁺ directly depresses SA node automaticity and
-  // desensitizes β-adrenergic receptors. Despite maximum sympathetic drive,
-  // HR cannot be sustained above a pH-dependent ceiling in severe acidosis.
-  // Linear interpolation: at acidosisHrPhThreshold (7.1) → full hrMax
-  //                       at acidosisHrPhFloor (6.8) → hrMin (agonal)
+  // pH-dependent HR ceiling: H⁺ depresses SA node automaticity and desensitizes
+  // β-receptors, so in severe acidosis no amount of sympathetic drive holds a rate.
+  // Linear from full hrMax at acidosisHrPhThreshold to hrMin at acidosisHrPhFloor.
   const hrCeilingFraction = Math.max(0, Math.min(1,
-    (pH - params.acidosisHrPhFloor) / (params.acidosisHrPhThreshold - params.acidosisHrPhFloor),
+    (derived.pHPenalty - p.acidosisHrPhFloor) / (p.acidosisHrPhThreshold - p.acidosisHrPhFloor),
   ));
-  const hrCeiling = params.hrMin + hrCeilingFraction * (params.hrMax - params.hrMin);
-  const paramsWithHrCeiling = hrCeiling < params.hrMax
-    ? { ...params, hrMax: hrCeiling }
-    : params;
+  const hrCeiling = p.hrMin + hrCeilingFraction * (p.hrMax - p.hrMin);
+  const pWithHrCeiling = hrCeiling < p.hrMax ? { ...p, hrMax: hrCeiling } : p;
 
-  // Baroreflex (with pH-adjusted hrMax)
-  const { dHr, dSvr } = computeBaroreflex(state.hr, state.svr, map, state.hrMod, paramsWithHrCeiling, state.edv);
+  // Baroreflex: senses effective MAP and filling, regulates intrinsic (base) tone.
+  // Filling has no self-cancelling loop (HR does not feed back into EDV here), so
+  // the volume limb reads the effective EDV — including any fluid given, which is
+  // why resuscitating a hypovolemic patient brings their heart rate down.
+  const { dHr, dSvr } = computeBaroreflex(
+    base.hr, base.svr, derived.map, effective.hrMod, pWithHrCeiling, effective.edv,
+  );
 
-  // Vasoactive mediator ODEs (Layer B)
-  const { noToneTarget, et1ToneTarget } = computeVasoactiveToneTargets(spO2, mPAP, params);
-  const dNoTone  = (noToneTarget  - state.noTone)  / params.tauNoTone;
-  const dEt1Tone = (et1ToneTarget - state.et1Tone) / params.tauEt1Tone;
+  // Mediator ODEs: targets from effective SpO2/mPAP, relaxation of BASE tone.
+  const { noToneTarget, et1ToneTarget } = computeVasoactiveToneTargets(derived.spO2, derived.mPAP, p);
+  const dNoTone = (noToneTarget - base.noTone) / p.tauNoTone;
+  const dEt1Tone = (et1ToneTarget - base.et1Tone) / p.tauEt1Tone;
 
-  // Lactate ODE: three independent drivers.
-  // 1. SvO2 deficit: type A — anaerobic metabolism when O2 delivery < demand
-  // 2. MAP deficit: type A — microvascular maldistribution at low perfusion pressure
-  // 3. noTone: type B — cytopathic hypoxia in sepsis; cells can't use O2 even when SvO2 is normal
-  //    This is why septic lactate doesn't correlate with SvO2 the way hemorrhagic shock does.
-  //    Uses state.noTone (which is the effective noTone after interventions in this call path).
+  // RVEDV adapts to effective PVR (afterload) and effective EDV (venous return),
+  // back-calculated from mPAP = CO × PVR + PCWP, which is how mPAP is formed.
+  const pvrEffective = derived.co > 0 ? (derived.mPAP - derived.pcwp) / derived.co : p.pvrRef;
+  const rvedvTarget = computeRvedvTarget(pvrEffective, effective.edv, p.rvedvRef, p);
+  const dRvedv = (rvedvTarget - base.rvedv) / p.tauRvAdaptation;
+
+  // Lactate: type A (SvO2 deficit, low perfusion pressure) + type B (inflammatory
+  // tone, from the effective state so sepsis overlays count). Septic lactate does
+  // not track SvO2 the way hemorrhagic lactate does, and this is why.
   const lactateTarget = 1
-    + params.lactateSvO2Gain  * Math.max(0, params.lactateSvO2Threshold - svO2)
-    + params.lactateMAPGain   * Math.max(0, params.lactateMAPThreshold  - map)
-    + params.lactateNoToneGain * state.noTone;
-  const tauLactate = lactateTarget > state.lactate ? params.tauLactateRise : params.tauLactateClear;
-  const dLactate = (lactateTarget - state.lactate) / tauLactate;
+    + p.lactateSvO2Gain * Math.max(0, p.lactateSvO2Threshold - derived.svO2)
+    + p.lactateMAPGain * Math.max(0, p.lactateMAPThreshold - derived.map)
+    + p.lactateNoToneGain * effective.noTone;
+  const tauLactate = lactateTarget > base.lactate ? p.tauLactateRise : p.tauLactateClear;
+  const dLactate = (lactateTarget - base.lactate) / tauLactate;
 
-  // RVEDV adapts to effective PVR (afterload) and effective EDV (venous return coupling).
-  // Back-calculate pvrEffective from mPAP = rvCo × pvrEff + pcwp.
-  const pvrEffective = derived.rvCo > 0
-    ? (derived.mPAP - derived.pcwp) / derived.rvCo
-    : params.pvrRef;
-  const rvedvTarget = computeRvedvTarget(pvrEffective, state.edv, params.rvedvRef, params);
-  const dRvedv = (rvedvTarget - state.rvedv) / params.tauRvAdaptation;
+  // CO2 mass balance: production (VO2 × RQ) against alveolar clearance.
+  const dPaCO2 = paCO2Derivative(effective.paCO2, derived.va, p.vo2 * p.rq, p);
+
+  // Respiratory muscle fatigue accumulates while the load is above what the
+  // muscles can sustain and recovers only once it is below — cumulative, like a
+  // task-failure curve, rather than settling at a partial level. See fatigueRate.
+  const dFatigue = fatigueRate(derived.breathingLoad, base.respFatigue, p);
 
   return {
     hr: dHr,
@@ -306,8 +430,26 @@ export function derivative(
     noTone: dNoTone,
     et1Tone: dEt1Tone,
     lactate: dLactate,
+    paCO2: dPaCO2,
+    ventDepression: 0,
+    deadSpace: 0,
+    ventSupport: 0,
+    respFatigue: dFatigue,
+    afib: 0,
+    avBlock: 0,
     time: 1,
   };
+}
+
+/**
+ * dState/dt for a state with no overlays (or one already folded in).
+ * Equivalent to overlayDerivative(state, state, params).
+ */
+export function derivative(
+  state: HemodynamicState,
+  params: HemodynamicParams,
+): HemodynamicState {
+  return overlayDerivative(state, state, params);
 }
 
 /**

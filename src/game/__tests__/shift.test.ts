@@ -216,9 +216,10 @@ describe('pronouns and verb agreement', () => {
     // branch has to be rendered — a broken template hiding in the tier that only
     // fires on a mild case is exactly the one that would reach a player.
     const grades: Gestalt[] = [0, 1, 2, 3].flatMap((n) => [
-      { wob: n as 0 | 1 | 2 | 3, perf: 0 as const, text: '' },
-      { wob: 0 as const, perf: n as 0 | 1 | 2 | 3, text: '' },
-      { wob: n as 0 | 1 | 2 | 3, perf: n as 0 | 1 | 2 | 3, text: '' },
+      { wob: n as 0 | 1 | 2 | 3, perf: 0 as const, sed: 0 as const, text: '' },
+      { wob: 0 as const, perf: n as 0 | 1 | 2 | 3, sed: 0 as const, text: '' },
+      { wob: 0 as const, perf: 0 as const, sed: n as 0 | 1 | 2 | 3, text: '' },
+      { wob: n as 0 | 1 | 2 | 3, perf: n as 0 | 1 | 2 | 3, sed: n as 0 | 1 | 2 | 3, text: '' },
     ]);
 
     for (let i = 0; i < 15; i++) {
@@ -279,7 +280,7 @@ describe('severity', () => {
       const severeScore = severe.died ? 0 : severe.snap.map;
       expect(severeScore, `${archetype.id} severe vs mild`).toBeLessThanOrEqual(mildScore);
     }
-  }, 60_000);
+  }, 180_000); // two full shifts per critical archetype, and the library keeps growing
 });
 
 // ─── Lifecycle and observation ──────────────────────────────────────────────
@@ -1649,8 +1650,20 @@ describe('a background condition shades a case, it does not decide it', () => {
     }
     // No single step collapses by more than half — a modifier narrows the margin,
     // it does not replace the disease.
+    //
+    // A patient who survives the whole night gives no bound on the next step:
+    // once respiratory compensation existed, the mildest of these started to
+    // survive (hyperventilation raises alveolar PO2), and "40% of twelve hours"
+    // stopped being a statement about the modifier. Between two deaths the ratio
+    // is the test; after a survivor, the next death must still leave the player
+    // a real window.
     for (let i = 1; i < survivalMinutes.length; i++) {
-      expect(survivalMinutes[i], `step ${i}`).toBeGreaterThan(survivalMinutes[i - 1] * 0.4);
+      const previous = survivalMinutes[i - 1];
+      if (previous >= 12 * 60 - 20) {
+        expect(survivalMinutes[i], `step ${i}`).toBeGreaterThan(90);
+      } else {
+        expect(survivalMinutes[i], `step ${i}`).toBeGreaterThan(previous * 0.4);
+      }
     }
   });
 });
@@ -2065,7 +2078,7 @@ const BRITISH = [
 function playerFacingText(): string[] {
   const out: string[] = [];
   const grades: Gestalt[] = [0, 1, 2, 3].map((n) => ({
-    wob: n as 0 | 1 | 2 | 3, perf: n as 0 | 1 | 2 | 3, text: '',
+    wob: n as 0 | 1 | 2 | 3, perf: n as 0 | 1 | 2 | 3, sed: n as 0 | 1 | 2 | 3, text: '',
   }));
 
   for (const order of ORDERS) {

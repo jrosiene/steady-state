@@ -23,14 +23,19 @@ const WATER_VAPOR_PRESSURE = 47;  // mmHg at 37°C
 /**
  * Alveolar PO2 from the simplified alveolar gas equation.
  *   PAO2 = FiO2 × (Patm − PH2O) − PaCO2 / RQ
+ *
+ * PaCO2 is the live arterial value (ventilation.ts), not a constant.
  */
 export function computeAlveolarPO2(
   fiO2: number,
   params: HemodynamicParams,
+  paCO2 = 40,
 ): number {
-  return (
+  // Floored at zero: an apneic patient on room air runs the equation negative,
+  // which is arithmetic, not an alveolar gas.
+  return Math.max(0,
     fiO2 * (ATMOSPHERIC_PRESSURE - WATER_VAPOR_PRESSURE) -
-    params.paCO2 / params.rq
+    paCO2 / params.rq,
   );
 }
 
@@ -80,7 +85,8 @@ export function computeSvO2(
   const o2DeliveryCapacity = co * params.hgb * 1.34 * 10; // mL O2/min at full saturation
   if (o2DeliveryCapacity <= 0) return 0.3; // extreme fallback
   const svO2 = saO2Ideal - params.vo2 / o2DeliveryCapacity;
-  return Math.min(saO2Ideal - 0.05, Math.max(0.1, svO2));
+  // Never negative: with no alveolar oxygen at all, saO2Ideal − 0.05 would be.
+  return Math.max(0, Math.min(saO2Ideal - 0.05, Math.max(0.1, svO2)));
 }
 
 /**
@@ -102,8 +108,14 @@ export function computeOxygenation(
   qsQt: number,
   co: number,
   params: HemodynamicParams,
+  /**
+   * Arterial PCO2. Hypoventilation lowers alveolar PO2 one-for-one with
+   * PaCO2/RQ, which is why an opioid-narcotized patient desaturates on room air
+   * and why supplemental oxygen conceals it.
+   */
+  paCO2 = 40,
 ): { spO2: number; paO2: number; svO2: number } {
-  const pAlvO2 = computeAlveolarPO2(fiO2, params);
+  const pAlvO2 = computeAlveolarPO2(fiO2, params, paCO2);
   const saO2Ideal = hillSaturation(pAlvO2, params);
   const svO2 = computeSvO2(co, saO2Ideal, params);
 

@@ -26,6 +26,8 @@ const STATE_KEYS: (keyof HemodynamicState)[] = [
   'rvEmax', 'pvr', 'rvedv', 'qsQt', 'fiO2',
   'noTone', 'et1Tone',
   'lactate',
+  'paCO2', 'ventDepression', 'deadSpace', 'ventSupport', 'respFatigue',
+  'afib', 'avBlock',
   'time',
 ];
 
@@ -111,6 +113,13 @@ export function clampEffective(
     noTone:  safeClamp(state.noTone,  0,    1.0,  0),
     et1Tone: safeClamp(state.et1Tone, 0,    1.0,  0),
     lactate: safeClamp(state.lactate, params.lactateMin, params.lactateMax, 1.0),
+    paCO2:   safeClamp(state.paCO2,   8,    150,  params.paCO2Setpoint),
+    ventDepression: safeClamp(state.ventDepression, 0, 1, 0),
+    deadSpace:      safeClamp(state.deadSpace,      0, 0.8, 0),
+    ventSupport:    safeClamp(state.ventSupport,    0, 1, 0),
+    respFatigue:    safeClamp(state.respFatigue,    0, 1, 0),
+    afib:           safeClamp(state.afib,           0, 1, 0),
+    avBlock:        safeClamp(state.avBlock,        0, 0.9, 0),
   };
 }
 
@@ -143,5 +152,14 @@ export function clampState(
     et1Tone: safeClamp(state.et1Tone, 0, 1.0, 0),
     // Acid-base
     lactate: safeClamp(state.lactate, params.lactateMin, params.lactateMax, 1.0),
+    // Ventilation
+    paCO2:          safeClamp(state.paCO2,          8, 150, params.paCO2Setpoint),
+    ventDepression: safeClamp(state.ventDepression, 0, 1,   0),
+    deadSpace:      safeClamp(state.deadSpace,      0, 0.8, 0),
+    ventSupport:    safeClamp(state.ventSupport,    0, 1,   0),
+    respFatigue:    safeClamp(state.respFatigue,    0, 1,   0),
+    // Rhythm
+    afib:           safeClamp(state.afib,           0, 1,   0),
+    avBlock:        safeClamp(state.avBlock,        0, 0.9, 0),
   };
 }
