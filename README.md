@@ -110,6 +110,13 @@ shows it. Opioids and sedatives act on breathing — more so in the old, the fra
 and anyone with sleep apnea — and naloxone wears off before most of what it
 reverses.
 
+**The same rhythm, three different answers.** New atrial fibrillation with a
+fast rate is modeled mechanistically — AV-nodal conduction driven by
+sympathetic tone, the lost atrial kick, short cycles that eject little, and
+blood backing up into the left atrium. Slowing the rate rescues a stiff
+ventricle, diltiazem drops a failing one into shock, and in sepsis the rate
+comes down when the sepsis is treated.
+
 **Most pages are not emergencies.** One patient asks for a sleeping tablet three
 times. The cost of treating every page as a crisis is paid by the patient down
 the hall — so the order set includes the ordinary night-float material (melatonin,
@@ -135,6 +142,7 @@ rather than recall what a given name did last time.
 | `pulmonary-embolism` | Routine post-op day 2 | Massive PE with RV failure |
 | `gi-bleed` | Stable GI bleed | Rebleeding ulcer → hemorrhagic shock |
 | `acs-cardiogenic` | Chest pain, troponins negative | Anterior STEMI → cardiogenic shock |
+| `af-rvr-sepsis` | UTI, day 1 | Urosepsis driving new AF. The page is about the rate; the rate is not the problem, and diltiazem makes it worse |
 | `opioid-oversedation` | Day 1 after a knee replacement, on a PCA | Opioid-induced hypoventilation in untreated sleep apnea, hidden by 2 L of oxygen. Naloxone wears off before the hydromorphone does |
 
 **Ward-level** — serious, and usually fixable:
@@ -146,6 +154,8 @@ rather than recall what a given name did last time.
 | `pneumothorax` | Pleural effusion, drained today | Post-procedural pneumothorax, enlarging |
 | `aspiration-event` | Stroke with dysphagia | Witnessed aspiration → chemical pneumonitis |
 | `end-of-life-pneumonia` | Aspiration pneumonia, DNR/DNI | Dying. The intervention is a conversation |
+| `af-rvr-hfpef` | Cellulitis, improving | New AF in a stiff ventricle. Here slowing the rate is the treatment |
+| `af-rvr-hfref` | Heart failure, diuresing | AF with an EF of 20%. Slow it — with amiodarone or digoxin, not diltiazem |
 | `copd-o2-narcosis` | COPD exacerbation, improving | A CO2 retainer the nurse put on a non-rebreather. The page is good news; the saturation is the trap |
 
 **Benign** — nothing is wrong, and the pages keep coming:
@@ -215,7 +225,7 @@ response; a severe one needs escalation and an inotrope, not just a diuretic.
 
 ### Comorbidities
 
-Ten background conditions, sampled one or two per patient and orthogonal to
+Eleven background conditions, sampled one or two per patient and orthogonal to
 whatever is acutely wrong. Each is a real physiologic modifier and a real clinical
 trap rather than a stat adjustment — a beta-blocked patient never mounts the
 tachycardia that normally announces a bleed, a patient with pulmonary
@@ -229,9 +239,9 @@ information is always available to a player who reads the chart.
 
 | Axis | Depth |
 |---|---|
-| Archetypes | 38 — 18 critical, 16 ward, 4 benign |
+| Archetypes | 41 — 19 critical, 18 ward, 4 benign |
 | Severity | continuous, with per-insult variation of ±0.16 around it |
-| Comorbidities | 10, zero to two per patient |
+| Comorbidities | 11, zero to two per patient |
 | Distinct archetype combinations | ~190 per 200 generated wards |
 
 On top of that: names, ages, pronouns, rooms, nurses, allergies, histories,
@@ -340,6 +350,18 @@ into cardiogenic shock; keying them to the base deficit left the calibrated shoc
 spiral exactly where it was, and lets hypercapnia kill the way it actually does —
 through narcosis, apnea and hypoxemia.
 
+### Rhythm
+In sinus rhythm the ventricles follow the baroreflex's chronotropic drive. In
+atrial fibrillation they follow the AV node: a per-patient resting response
+plus a sympathetic term (the same drive that would speed a sinus rhythm),
+reduced by AV-nodal blocking drugs and capped by nodal refractoriness. AF costs
+the atrial kick (more in a stiff ventricle), loses stroke output to short
+cycles as the rate rises (the pulse deficit, again worse when stiff), and holds
+volume in the left atrium, raising the wedge — which is why AF with a fast rate
+floods the lungs of an HFpEF patient and why rate control lowers it. The
+monitor and the chart show the conducted rate, marked irregular. Sinus rhythm
+is numerically unchanged by all of this.
+
 ### Vasoactive mediators
 Instantaneous reflexes (HPV, hypoxic vasodilation) plus ODE-integrated mediator
 tones (NO/PGI2, endothelin-1) that couple pulmonary hypertension and hypoxemia
@@ -374,6 +396,7 @@ src/engine/          Physiology. Pure functions, no UI, no game concepts.
   pulmonary.ts       PCWP, RV output, mPAP, TPG
   oxygenation.ts     Alveolar gas equation, Hill curve, Fick SvO2, shunt mixing
   ventilation.ts     Chemoreflex, breathing pattern, dead space, capacity, fatigue, CO2 balance
+  rhythm.ts          AF: conducted ventricular rate, kick loss, pulse deficit, LA backup
   vasoactive.ts      Layer A reflexes + Layer B mediator ODE targets
   hemodynamics.ts    derive() pipeline, overlayDerivative() — the one definition of
                      dState/dt, used by the bench, the ward and the tests
