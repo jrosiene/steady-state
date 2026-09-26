@@ -4148,9 +4148,9 @@ export const ARCHETYPES: CaseArchetype[] = [
       paramOverrides: {
         // A thick, stiff ventricle: high filling pressure for its volume, and
         // unusually dependent on atrial contraction to fill.
-        lvEdpvrStiffness: bySeverity(ctx, 0.28, 0.34),
-        atrialKickFraction: bySeverity(ctx, 0.26, 0.34),
-        afRestRate: bySeverity(ctx, 135, 165),
+        lvEdpvrStiffness: bySeverity(ctx, 0.26, 0.3),
+        atrialKickFraction: bySeverity(ctx, 0.25, 0.3),
+        afRestRate: bySeverity(ctx, 130, 150),
       },
       rrOffset: 1,
       tempOffset: 0.2,

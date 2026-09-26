@@ -48,7 +48,7 @@ describe('a stiff ventricle: slow it down', () => {
     expect(untreated.hr).toBeGreaterThan(150);
     expect(controlled.hr).toBeLessThan(untreated.hr - 30);
     expect(controlled.pcwp).toBeLessThan(untreated.pcwp - 4);
-    expect(controlled.spO2).toBeGreaterThan(untreated.spO2);
+    expect(controlled.co).toBeGreaterThan(untreated.co);
   });
 
   it('is not helped by a liter of fluid', () => {
