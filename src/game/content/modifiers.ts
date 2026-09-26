@@ -1,4 +1,5 @@
 import type { HemodynamicParams, HemodynamicState } from '../../engine/types';
+import { DEFAULT_PARAMS } from '../../engine/constants';
 import type { Rng } from './rng';
 
 /**
@@ -149,6 +150,11 @@ export const COMORBIDITIES: Comorbidity[] = [
       // rate climbs with the sympathetic drive and the short cycles cost more.
       t.state.afib = 1;
       t.params.afRestRate = rng.real(78, 92);
+      // Years in AF: resting vascular tone has reset around the smaller stroke
+      // volume, so their usual blood pressure is their usual blood pressure.
+      // Without this every patient drawn with it was handed over ~20% lower
+      // than the same patient in sinus rhythm.
+      t.state.svr = (t.state.svr ?? 17) / (1 - DEFAULT_PARAMS.atrialKickFraction);
     },
   },
   {
