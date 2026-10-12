@@ -181,7 +181,7 @@ describe('the chronic CO2 retainer', () => {
     const nrb = run({ ...EXACERBATION, fiO2: 0.85 }, RETAINER);
     expect(nrb.paCO2).toBeGreaterThan(lowFlow.paCO2 + 8);
     expect(nrb.pH).toBeLessThan(7.26);
-    expect(nrb.spO2).toBeGreaterThan(0.9);
+    expect(nrb.spO2).toBeGreaterThan(0.88);
   });
 
   it('is rescued by non-invasive ventilation', () => {

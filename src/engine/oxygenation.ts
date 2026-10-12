@@ -81,10 +81,27 @@ export function computeSvO2(
   co: number,
   saO2Ideal: number,
   params: HemodynamicParams,
+  /**
+   * Shunt fraction. Fick has to be solved with the arterial saturation the
+   * tissues actually receive, which the shunt itself lowers — and which in turn
+   * depends on SvO2. Under saturation-weighted mixing the two equations close:
+   *
+   *   SaO2 = SaIdeal·(1 − s) + SvO2·s        (shunt)
+   *   SvO2 = SaO2 − k,  k = VO2 / (CO·Hgb·13.4)   (Fick)
+   *   ⇒ SvO2 = SaIdeal − k / (1 − s)
+   *
+   * Using SaIdeal in Fick instead (the old approximation, documented as good
+   * below ~30% shunt) left a 57% shunt reading 84% on room air with an SvO2 of
+   * 73. The exact form gives about 64% — and makes severe shunt as hypoxemic,
+   * and as costly to the tissues, as it is.
+   */
+  qsQt = 0,
 ): number {
   const o2DeliveryCapacity = co * params.hgb * 1.34 * 10; // mL O2/min at full saturation
   if (o2DeliveryCapacity <= 0) return 0.3; // extreme fallback
-  const svO2 = saO2Ideal - params.vo2 / o2DeliveryCapacity;
+  const k = params.vo2 / o2DeliveryCapacity;
+  const s = Math.max(0, Math.min(0.95, qsQt));
+  const svO2 = saO2Ideal - k / (1 - s);
   // Never negative: with no alveolar oxygen at all, saO2Ideal − 0.05 would be.
   return Math.max(0, Math.min(saO2Ideal - 0.05, Math.max(0.1, svO2)));
 }
@@ -117,7 +134,7 @@ export function computeOxygenation(
 ): { spO2: number; paO2: number; svO2: number } {
   const pAlvO2 = computeAlveolarPO2(fiO2, params, paCO2);
   const saO2Ideal = hillSaturation(pAlvO2, params);
-  const svO2 = computeSvO2(co, saO2Ideal, params);
+  const svO2 = computeSvO2(co, saO2Ideal, params, qsQt);
 
   // Two-compartment shunt mixing (saturation-weighted)
   const spO2 = saO2Ideal * (1 - qsQt) + svO2 * qsQt;
