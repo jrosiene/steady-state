@@ -20,7 +20,7 @@ describe('obesity hypoventilation overnight', () => {
     const snap = snapOf(s);
     expect(snap.paCO2).toBeGreaterThan(47);
     expect(snap.pH).toBeGreaterThan(7.36);
-    expect(snap.atelectasis).toBeGreaterThan(0.04);
+    expect(snap.atelectasis).toBeGreaterThan(0.03);
     const bmp = s.patient.case.priorLabs.find((l) => l.panel === 'BMP')!;
     expect(bmp.values.find((v) => v.label === 'Bicarbonate')!.value).toBeGreaterThan(30);
   });

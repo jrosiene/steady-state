@@ -116,8 +116,8 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   consolidationComplianceGain: 2.0,
   consolidationShuntThreshold: 0.3,
   chestWallLoad: 0,
-  // Atelectatic shunt 0.1 → capacity ÷ 1.2.
-  atelectasisComplianceGain: 2.0,
+  // Atelectatic shunt 0.1 → capacity ÷ 1.1.
+  atelectasisComplianceGain: 1.0,
   // Not prone by default. Obesity: an awake, upright-ish patient on room air
   // carries a few percent of basal shunt; asleep, shallow and on high oxygen,
   // two to three times that. PEEP of 5 holds half of it open, 10 two-thirds.

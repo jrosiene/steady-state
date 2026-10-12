@@ -38,7 +38,7 @@ const on = (target: keyof HemodynamicState, delta: number, startTime = 0): Inter
 describe('who gets it', () => {
   it('never in a lean patient, whatever they are given', () => {
     const p = DEFAULT_PARAMS;
-    expect(atelectasisTarget(0.2, 2, 1, 1, 0, p)).toBe(0);
+    expect(atelectasisTarget(2, 1, 1, 0, p)).toBe(0);
     const sedated = run({}, [on('ventDepression', 0.5), on('fiO2', 0.79)]);
     expect(sedated.atelectasis).toBe(0);
   });
@@ -61,8 +61,7 @@ describe('what makes it worse', () => {
 
   it('high oxygen: absorption atelectasis', () => {
     const p = { ...DEFAULT_PARAMS, ...OBESE };
-    const vt = p.veRef / p.rrRef;
-    expect(atelectasisTarget(vt, p.veRef, 0, 1.0, 0, p)).toBeGreaterThan(atelectasisTarget(vt, p.veRef, 0, 0.3, 0, p) * 1.4);
+    expect(atelectasisTarget(p.veRef, 0, 1.0, 0, p)).toBeGreaterThan(atelectasisTarget(p.veRef, 0, 0.3, 0, p) * 1.4);
   });
 
   it('collapses slowly', () => {

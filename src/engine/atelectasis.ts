@@ -20,11 +20,6 @@ import type { HemodynamicParams } from './types';
  * fall; both enter as `peep`, in cmH2O, posture as its pressure equivalent.
  */
 
-/** Tidal volume of quiet breathing at rest (L): veRef / rrRef. */
-function restingVt(params: HemodynamicParams): number {
-  return params.veRef / params.rrRef;
-}
-
 /** Fraction of recruitable lung held open by an end-expiratory pressure. */
 export function recruitedFraction(peep: number, params: HemodynamicParams): number {
   const p = Math.max(0, peep);
@@ -38,7 +33,6 @@ export function recruitedFraction(peep: number, params: HemodynamicParams): numb
  * adult on an opioid breathes shallowly without losing their bases.
  */
 export function atelectasisTarget(
-  vt: number,
   ve: number,
   /** CNS depression or sleep, whichever is deeper: either abolishes sighs. */
   cnsDepression: number,
@@ -49,10 +43,12 @@ export function atelectasisTarget(
   if (params.atelectasisProne <= 0) return 0;
   // Sedation and sleep abolish the periodic sigh that reopens closing units.
   const sighs = params.atelectasisSighGain * Math.max(0, Math.min(1, cnsDepression));
-  // Small breaths, or few of them: rapid shallow breathing and an opioid's slow
-  // breathing both leave the bases less expanded than a resting adult's.
-  const shallow = params.atelectasisShallowGain
-    * Math.max(0, 1 - vt / restingVt(params), 1 - ve / params.veRef);
+  // Hypoventilation: less air moved per minute than a resting adult's leaves
+  // the bases less expanded. Read from minute ventilation, not tidal volume —
+  // the rapid shallow breathing of a wet or consolidated lung comes with a
+  // high minute ventilation and with sighs, and the units it loses are
+  // already counted as edema or consolidation shunt.
+  const shallow = params.atelectasisShallowGain * Math.max(0, 1 - ve / params.veRef);
   // Absorption: a closing unit full of oxygen empties itself into the blood.
   const absorption = params.atelectasisAbsorptionGain * Math.max(0, fiO2 - 0.5) / 0.5;
   const prone = params.atelectasisProne * (1 + sighs + shallow) * (1 + absorption);

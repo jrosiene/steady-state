@@ -344,7 +344,7 @@ export function withSteadyLungs(state: HemodynamicState, params: HemodynamicPara
   for (let i = 0; i < 4; i++) {
     const d = derive(s, params);
     s = withSteadyPaCO2(
-      { ...s, atelectasis: atelectasisTarget(d.vt, d.ve, Math.max(d.cnsDepression, s.sleep), s.fiO2, s.peep, params) },
+      { ...s, atelectasis: atelectasisTarget(d.ve, Math.max(d.cnsDepression, s.sleep), s.fiO2, s.peep, params) },
       params,
     );
   }
@@ -465,7 +465,7 @@ export function overlayDerivative(
   // sedative or a BiPAP mask is in the breath) and integrates on the base.
   const dAtelectasis = atelectasisDerivative(
     base.atelectasis,
-    atelectasisTarget(derived.vt, derived.ve, Math.max(derived.cnsDepression, effective.sleep), effective.fiO2, effective.peep, p),
+    atelectasisTarget(derived.ve, Math.max(derived.cnsDepression, effective.sleep), effective.fiO2, effective.peep, p),
     p,
   );
 

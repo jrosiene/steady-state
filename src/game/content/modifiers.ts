@@ -120,8 +120,8 @@ export const COMORBIDITIES: Comorbidity[] = [
       // Collapsed bases that come and go with posture, sleep, sedation and
       // oxygen (see atelectasis.ts), a heavy chest wall to breathe with, and a
       // higher metabolic demand.
-      t.params.atelectasisProne = rng.real(0.03, 0.05);
-      t.params.chestWallLoad = rng.real(0.1, 0.2);
+      t.params.atelectasisProne = rng.real(0.02, 0.04);
+      t.params.chestWallLoad = rng.real(0.05, 0.12);
       t.params.vo2 = (t.params.vo2 ?? 250) + rng.int(25, 60);
       // ...and the circulation that goes with it. Blood volume and resting
       // cardiac output scale with body size, so oxygen extraction at rest is
