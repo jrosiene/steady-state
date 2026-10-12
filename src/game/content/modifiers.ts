@@ -115,7 +115,7 @@ export const COMORBIDITIES: Comorbidity[] = [
     // their COPD — a different disease, not a background — and the extra CO2
     // production on a patient already at their ventilatory ceiling decided the
     // case outright at its severe end.
-    skipFor: ['copd-exacerbation', 'copd-o2-narcosis'],
+    skipFor: ['copd-exacerbation', 'copd-o2-narcosis', 'ohs-overnight'],
     apply(t, rng) {
       // Collapsed bases that come and go with posture, sleep, sedation and
       // oxygen (see atelectasis.ts), a heavy chest wall to breathe with, and a
@@ -181,7 +181,7 @@ export const COMORBIDITIES: Comorbidity[] = [
     weight: 1.5,
     minAge: 35,
     // Already in the case, and already the point of it.
-    skipFor: ['opioid-oversedation'],
+    skipFor: ['opioid-oversedation', 'ohs-overnight'],
     apply(t, rng) {
       // The airway collapses when the patient sleeps, and opioids make them
       // sleep: the same dose depresses ventilation considerably more. Harmless
