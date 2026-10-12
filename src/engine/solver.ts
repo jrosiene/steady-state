@@ -31,26 +31,15 @@ const STATE_KEYS: (keyof HemodynamicState)[] = [
   'time',
 ];
 
-/** Add two states element-wise: a + b. */
-function addStates(
-  a: HemodynamicState,
-  b: HemodynamicState,
+/** One RK4 stage: base + k × h, copying non-integrated fields from base. */
+function stage(
+  base: HemodynamicState,
+  k: HemodynamicState,
+  h: number,
 ): HemodynamicState {
-  const result = { ...a };
+  const result = { ...base };
   for (const key of STATE_KEYS) {
-    (result[key] as number) = (a[key] as number) + (b[key] as number);
-  }
-  return result;
-}
-
-/** Scale a state by a scalar: s × a. */
-function scaleState(
-  a: HemodynamicState,
-  s: number,
-): HemodynamicState {
-  const result = { ...a };
-  for (const key of STATE_KEYS) {
-    (result[key] as number) = (a[key] as number) * s;
+    (result[key] as number) = (base[key] as number) + (k[key] as number) * h;
   }
   return result;
 }
@@ -61,6 +50,9 @@ function scaleState(
  * Advances the state by one timestep `dt` using the classical RK4 method.
  * More stable than Euler for the same step size, important when baroreflex
  * gains are high.
+ *
+ * Each stage is built in a single pass: this runs every 0.25 s of game time
+ * for every patient, and the allocations were half its cost.
  */
 export function rk4Step(
   state: HemodynamicState,
@@ -69,20 +61,18 @@ export function rk4Step(
   derivFn: DerivativeFn,
 ): HemodynamicState {
   const k1 = derivFn(state, params);
-  const k2 = derivFn(addStates(state, scaleState(k1, dt / 2)), params);
-  const k3 = derivFn(addStates(state, scaleState(k2, dt / 2)), params);
-  const k4 = derivFn(addStates(state, scaleState(k3, dt)), params);
+  const k2 = derivFn(stage(state, k1, dt / 2), params);
+  const k3 = derivFn(stage(state, k2, dt / 2), params);
+  const k4 = derivFn(stage(state, k3, dt), params);
 
-  // weighted average: (k1 + 2*k2 + 2*k3 + k4) / 6
-  const weighted = scaleState(
-    addStates(
-      addStates(k1, scaleState(k2, 2)),
-      addStates(scaleState(k3, 2), k4),
-    ),
-    1 / 6,
-  );
-
-  return addStates(state, scaleState(weighted, dt));
+  // state + dt × (k1 + 2*k2 + 2*k3 + k4) / 6
+  const result = { ...state };
+  for (const key of STATE_KEYS) {
+    const weighted = (((k1[key] as number) + (k2[key] as number) * 2)
+      + ((k3[key] as number) * 2 + (k4[key] as number))) * (1 / 6);
+    (result[key] as number) = (state[key] as number) + weighted * dt;
+  }
+  return result;
 }
 
 /**
