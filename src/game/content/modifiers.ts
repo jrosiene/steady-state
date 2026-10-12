@@ -111,6 +111,11 @@ export const COMORBIDITIES: Comorbidity[] = [
     id: 'obesity',
     label: 'Obesity',
     weight: 2.5,
+    // A CO2 retainer who is also obese has obesity hypoventilation overlapping
+    // their COPD — a different disease, not a background — and the extra CO2
+    // production on a patient already at their ventilatory ceiling decided the
+    // case outright at its severe end.
+    skipFor: ['copd-exacerbation', 'copd-o2-narcosis'],
     apply(t, rng) {
       // Basal atelectasis plus a higher metabolic demand.
       t.state.qsQt = (t.state.qsQt ?? 0.02) + rng.real(0.02, 0.045);
@@ -119,10 +124,12 @@ export const COMORBIDITIES: Comorbidity[] = [
       // cardiac output scale with body size, so oxygen extraction at rest is
       // about normal. Raising the demand without the supply left obese patients
       // handed over with a mixed venous saturation near the anaerobic threshold.
-      t.state.edv = (t.state.edv ?? 120) * rng.real(1.07, 1.12);
+      if (!failingVentricle(t)) t.state.edv = (t.state.edv ?? 120) * rng.real(1.07, 1.12);
       t.state.hr = (t.state.hr ?? 70) + rng.int(3, 7);
-      // A heavy chest wall and a small FRC: less ventilatory reserve.
-      t.params.veMax = Math.min(t.params.veMax ?? 40, (t.params.veMax ?? 40) * rng.real(0.82, 0.9));
+      // The restrictive chest wall is not modeled as lost ventilatory capacity:
+      // on a case whose capacity is already the binding limit (a CO2 retainer)
+      // it stacked into a death the case was never about. The atelectasis above
+      // is the part of obese lungs that reaches the gas exchange.
     },
   },
   {
@@ -326,7 +333,19 @@ export function applyComorbidities(
  * and the anemia of chronic kidney disease, which arrive at the same place.
  */
 function compensateChronicAnemia(t: ModifierTarget, rng: Rng): void {
-  t.state.edv = (t.state.edv ?? 120) * rng.real(1.04, 1.08);
+  if (!failingVentricle(t)) t.state.edv = (t.state.edv ?? 120) * rng.real(1.04, 1.08);
   t.state.svr = (t.state.svr ?? 17) * rng.real(0.9, 0.95);
   t.state.hr = (t.state.hr ?? 70) + rng.int(4, 8);
+}
+
+/**
+ * A ventricle on the flat part of its Starling curve.
+ *
+ * More preload buys a failing ventricle almost no output and a great deal of
+ * wedge, so the volume expansion that compensates obesity and chronic anemia
+ * in a normal heart is withheld here: it turned a case's authored
+ * cardiomyopathy into decompensated failure at sign-out.
+ */
+function failingVentricle(t: ModifierTarget): boolean {
+  return (t.state.emax ?? 2) < 1.6;
 }
