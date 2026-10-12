@@ -103,6 +103,24 @@ export interface HemodynamicState {
    * the positive feedback by which a patient working hard to breathe tires.
    */
   respFatigue: number;
+  /**
+   * Shunt fraction from collapsed, recruitable lung (0–0.5). ODE: moves toward
+   * a target set by habitus, breathing pattern, FiO2, and end-expiratory
+   * pressure (see atelectasis.ts). Adds to the effective shunt.
+   */
+  atelectasis: number;
+  /**
+   * End-expiratory pressure holding the lung open (cmH2O): PEEP, CPAP, EPAP,
+   * plus upright posture as its pressure equivalent. Driven by overlays
+   * (derivative = 0).
+   */
+  peep: number;
+  /**
+   * Sleep, 0 (awake) to 1 (asleep). Lowers the chemoreflex drive by
+   * sleepDriveLoss and abolishes sighs; unlike sedation it is not reversed by
+   * an antagonist, and the patient is rousable. Driven by overlays.
+   */
+  sleep: number;
 
   // --- Rhythm (see rhythm.ts) ---
   /**
@@ -450,6 +468,36 @@ export interface HemodynamicParams {
   edemaComplianceGain: number;
   /** Capacity divisor per unit of shunt above consolidationShuntThreshold: a consolidated lung is stiff. */
   consolidationComplianceGain: number;
+  /**
+   * Elastic load of the chest wall and abdomen, as a capacity divisor term:
+   * capacity is divided by (1 + this). 0 in a normal adult; obesity.
+   */
+  chestWallLoad: number;
+  /** Capacity divisor per unit of atelectatic shunt: collapsed lung is stiff lung. */
+  atelectasisComplianceGain: number;
+  /**
+   * Atelectatic shunt this patient settles at breathing normally, awake, on
+   * room air, without PEEP. 0 = not prone (the default); obesity raises it.
+   */
+  atelectasisProne: number;
+  /** Fractional rise in the atelectasis target at full CNS depression (no sighs). */
+  atelectasisSighGain: number;
+  /** Fractional rise per unit fall of tidal volume below resting. */
+  atelectasisShallowGain: number;
+  /** Fractional rise at FiO2 1.0 (absorption atelectasis), linear from FiO2 0.5. */
+  atelectasisAbsorptionGain: number;
+  /**
+   * Fraction of chemoreflex drive lost asleep. ~0.15 in a normal adult (PaCO2
+   * rises 3–5 mmHg in sleep); far more with obesity hypoventilation, where REM
+   * hypoventilation and upper-airway obstruction add to it.
+   */
+  sleepDriveLoss: number;
+  /** End-expiratory pressure (cmH2O) that holds half the recruitable lung open. */
+  peepHalfRecruit: number;
+  /** Time constant for collapse (seconds). */
+  tauAtelectasisCollapse: number;
+  /** Time constant for recruitment (seconds). */
+  tauAtelectasisOpen: number;
   /** Shunt reachable by airway V/Q mismatch alone, above which it is counted as consolidation. */
   consolidationShuntThreshold: number;
   /** Capacity added at full ventilatory support (L/min). */

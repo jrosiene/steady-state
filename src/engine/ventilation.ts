@@ -56,6 +56,10 @@ export interface VentilationInputs {
   fiO2: number;
   /** Parenchymal shunt before edema/low-flow — the lung units that HPV was protecting. */
   qsQt: number;
+  /** Sleep, 0–1: lowers drive by sleepDriveLoss. */
+  sleep?: number;
+  /** Atelectatic shunt, 0–0.5: collapsed lung, stiff and also protected by HPV. */
+  atelectasis?: number;
 }
 
 export interface VentilationResult {
@@ -146,8 +150,9 @@ export function ventilatoryCapacity(
   respFatigue = 0,
   pcwp = 0,
   shunt = 0,
+  atelectasis = 0,
 ): number {
-  return ownCapacity(co, params, respFatigue, pcwp, shunt) + ventSupport * params.ventSupportCapacity;
+  return ownCapacity(co, params, respFatigue, pcwp, shunt, atelectasis) + ventSupport * params.ventSupportCapacity;
 }
 
 /**
@@ -165,6 +170,7 @@ function ownCapacity(
   respFatigue: number,
   pcwp: number,
   shunt = 0,
+  atelectasis = 0,
 ): number {
   const perfusion = Math.max(0, Math.min(1, co / params.ventFatigueCoRef));
   const fresh = 1 - params.fatigueCapacityGain * Math.max(0, Math.min(1, respFatigue));
@@ -173,7 +179,11 @@ function ownCapacity(
   // because qsQt stands for both and only one of them is a stiff lung.
   const stiffness = 1
     + params.edemaComplianceGain * Math.max(0, pcwp - params.edemaPcwpThreshold)
-    + params.consolidationComplianceGain * Math.max(0, shunt - params.consolidationShuntThreshold);
+    + params.consolidationComplianceGain * Math.max(0, shunt - params.consolidationShuntThreshold)
+    // Obesity twice over: a heavy chest wall and abdomen to move with every
+    // breath, and the collapsed bases that go with them.
+    + params.chestWallLoad
+    + params.atelectasisComplianceGain * Math.max(0, atelectasis);
   return (params.veMax * perfusion * fresh) / stiffness;
 }
 
@@ -200,7 +210,9 @@ export function fatigueRate(breathingLoad: number, respFatigue: number, params: 
 export function computeVentilation(inp: VentilationInputs, params: HemodynamicParams): VentilationResult {
   const drive = ventilatoryDemand(inp, params);
   const veDemand = params.veRef * drive;
-  const veCapacity = ventilatoryCapacity(inp.co, inp.ventSupport, params, inp.respFatigue, inp.pcwp, inp.qsQtEffective);
+  const atelectasis = Math.max(0, inp.atelectasis ?? 0);
+  const veCapacity = ventilatoryCapacity(
+    inp.co, inp.ventSupport, params, inp.respFatigue, inp.pcwp, inp.qsQtEffective, atelectasis);
 
   // Sedation acts on the controller; a ventilator does not care how sedated the
   // patient is, so support shields the drive from depression in proportion.
@@ -211,7 +223,11 @@ export function computeVentilation(inp: VentilationInputs, params: HemodynamicPa
     * Math.max(0, inp.paCO2 - params.paCO2Setpoint - params.narcosisThreshold);
   const sedation = Math.min(1, Math.max(0, inp.ventDepression) * params.sedativeSensitivity + narcosis);
   const depression = sedation * (1 - Math.max(0, Math.min(1, inp.ventSupport)));
-  const wanted = veDemand * (1 - depression);
+  // Sleep lowers the drive too, and support shields it in the same way; it
+  // does not take the ceiling away as a sedative does.
+  const asleep = params.sleepDriveLoss * Math.max(0, Math.min(1, inp.sleep ?? 0))
+    * (1 - Math.max(0, Math.min(1, inp.ventSupport)));
+  const wanted = veDemand * (1 - depression) * (1 - asleep);
 
   // Sedation also lowers the ceiling. A patient already breathing at their limit
   // is recruiting accessory muscles and holding their upper airway open by
@@ -240,7 +256,7 @@ export function computeVentilation(inp: VentilationInputs, params: HemodynamicPa
   // hypoxic vasoconstriction was protecting them: raise the FiO2, release the
   // HPV, and perfusion returns to units that are not ventilated.
   const o2DeadSpace = params.ventO2DeadSpaceGain
-    * Math.max(0, inp.qsQt - 0.05)
+    * Math.max(0, inp.qsQt + atelectasis - 0.05)
     * Math.max(0, inp.fiO2 - 0.21);
   const alveolarDs = Math.min(0.8, Math.max(0, inp.deadSpace) + o2DeadSpace);
   const anatomicVent = Math.min(ve, rr * params.vdAnatomic);
@@ -250,7 +266,7 @@ export function computeVentilation(inp: VentilationInputs, params: HemodynamicPa
   // Load on the patient's own muscles: support carries its share of the work,
   // measured against what they could do fresh, so fatigue feeds back on itself.
   const support = Math.max(0, Math.min(1, inp.ventSupport));
-  const fresh = ownCapacity(inp.co, params, 0, inp.pcwp, inp.qsQtEffective);
+  const fresh = ownCapacity(inp.co, params, 0, inp.pcwp, inp.qsQtEffective, atelectasis);
   const breathingLoad = fresh > 0 ? (ve * (1 - support)) / fresh : (ve > 0 ? 1 : 0);
 
   return { ve, veDemand, veCapacity: cappedCapacity, va, rr, vt, vdVt, breathingLoad };

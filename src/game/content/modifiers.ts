@@ -117,8 +117,11 @@ export const COMORBIDITIES: Comorbidity[] = [
     // case outright at its severe end.
     skipFor: ['copd-exacerbation', 'copd-o2-narcosis'],
     apply(t, rng) {
-      // Basal atelectasis plus a higher metabolic demand.
-      t.state.qsQt = (t.state.qsQt ?? 0.02) + rng.real(0.02, 0.045);
+      // Collapsed bases that come and go with posture, sleep, sedation and
+      // oxygen (see atelectasis.ts), a heavy chest wall to breathe with, and a
+      // higher metabolic demand.
+      t.params.atelectasisProne = rng.real(0.03, 0.05);
+      t.params.chestWallLoad = rng.real(0.1, 0.2);
       t.params.vo2 = (t.params.vo2 ?? 250) + rng.int(25, 60);
       // ...and the circulation that goes with it. Blood volume and resting
       // cardiac output scale with body size, so oxygen extraction at rest is
@@ -126,10 +129,9 @@ export const COMORBIDITIES: Comorbidity[] = [
       // handed over with a mixed venous saturation near the anaerobic threshold.
       if (!failingVentricle(t)) t.state.edv = (t.state.edv ?? 120) * rng.real(1.07, 1.12);
       t.state.hr = (t.state.hr ?? 70) + rng.int(3, 7);
-      // The restrictive chest wall is not modeled as lost ventilatory capacity:
-      // on a case whose capacity is already the binding limit (a CO2 retainer)
-      // it stacked into a death the case was never about. The atelectasis above
-      // is the part of obese lungs that reaches the gas exchange.
+      // Kept off CO2 retainers (skipFor): on a case whose capacity is already
+      // the binding limit, the chest wall stacked into a death the case was
+      // never about.
     },
   },
   {

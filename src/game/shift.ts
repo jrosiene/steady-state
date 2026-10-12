@@ -902,6 +902,7 @@ export class ShiftEngine {
       p.interventions.push(
         { label: `${O2_LABEL_PREFIX} Vent`, category: 'treatment', kind: 'infusion', target: 'fiO2', delta: 0.79, tauOn: 30, eliminationHalfLife: 600, startTime: t },
         { label: `${O2_LABEL_PREFIX} Vent recruitment`, category: 'treatment', kind: 'infusion', target: 'qsQt', delta: -0.1, tauOn: 120, eliminationHalfLife: 600, startTime: t },
+        { label: `${O2_LABEL_PREFIX} Vent PEEP`, category: 'treatment', kind: 'infusion', target: 'peep', delta: 5, tauOn: 30, eliminationHalfLife: 120, startTime: t },
         // Somebody is squeezing the bag: the patient's own drive no longer matters.
         { label: `${O2_LABEL_PREFIX} Vent ventilation`, category: 'treatment', kind: 'infusion', target: 'ventSupport', delta: 1, tauOn: 30, eliminationHalfLife: 300, startTime: t },
       );

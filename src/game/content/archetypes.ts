@@ -2,7 +2,7 @@ import type {
   CaseEvent, CodeStatus, HandoffSeverity, InheritedMed, InterventionSpec,
   LabValue, PriorLab, Setting,
 } from '../types';
-import type { Snapshot } from '../../engine/types';
+import type { HemodynamicParams, Snapshot } from '../../engine/types';
 import type { Rng } from './rng';
 import type { Voice } from './voice';
 import { AF_LABEL_PREFIX, O2_LABEL_PREFIX, OPIOID_LABEL_PREFIX } from '../orders';
@@ -192,6 +192,30 @@ function copdRetainer(ctx: ArchetypeContext): {
     ventCo2Gain: bySeverity(ctx, 0.15, 0.1),
     // FEV1 around a third of predicted leaves little room above resting demand.
     veMax: bySeverity(ctx, 11, 9),
+  };
+}
+
+/**
+ * Obesity hypoventilation: a chest wall too heavy to move enough air, a
+ * chemoreflex that has given up asking, and kidneys that have compensated.
+ * Awake they hold a PaCO2 in the fifties; asleep and flat they cannot.
+ */
+function ohsPhysiology(ctx: ArchetypeContext): Partial<HemodynamicParams> & {
+  paCO2Setpoint: number; hco3Baseline: number;
+} {
+  const paCO2Setpoint = bySeverity(ctx, 52, 58);
+  return {
+    paCO2Setpoint,
+    hco3Baseline: 24 + 0.4 * (paCO2Setpoint - 40),
+    ventCo2Gain: bySeverity(ctx, 0.3, 0.2),
+    // Mass loading: the chest wall alone halves the sustainable ventilation.
+    chestWallLoad: bySeverity(ctx, 0.5, 0.7),
+    veMax: 34,
+    atelectasisProne: bySeverity(ctx, 0.045, 0.06),
+    // REM hypoventilation and an obstructing upper airway on top of the
+    // ordinary fall in drive with sleep.
+    sleepDriveLoss: bySeverity(ctx, 0.6, 0.7),
+    vo2: 340,
   };
 }
 
@@ -4109,6 +4133,139 @@ export const ARCHETYPES: CaseArchetype[] = [
         : null,
     expectedOrders: ['o2-nc', 'lab-abg', 'bipap', 'duoneb'],
     contraindicatedOrders: ['lorazepam', 'morphine-comfort', 'hydromorphone', 'o2-nrb'],
+  },
+  {
+    id: 'ohs-overnight',
+    label: 'Obesity hypoventilation at night',
+    tier: 'ward',
+    ageRange: [42, 72],
+    span: 5 * HOUR,
+    admissionDx: 'Cellulitis, left leg',
+    hiddenDx:
+      'Obesity hypoventilation syndrome, unrecognized: chronic daytime hypercapnia that worsens to ' +
+      'acute-on-chronic respiratory acidosis asleep and flat, made worse by the oxygen given for it',
+    teachingPoint:
+      'In obesity hypoventilation, sleep is the stress test. Asleep and flat, the drive to breathe falls, ' +
+      'the bases collapse under the weight of the abdomen, and the saturation drops — and the reflex answer, ' +
+      'more oxygen, makes the CO2 worse while making the number better. A bicarbonate of 30-something on an ' +
+      'admission chemistry in a patient with a BMI over 40 and no lung disease is the clue. What fixes it is ' +
+      'pressure: BiPAP supplies ventilation the sleeping patient will not, and the expiratory pressure holds ' +
+      'the bases open. Sit them up, aim for 88–92%, and get a gas.',
+    history: (ctx) => [
+      `Obesity, BMI ${ctx.rng.int(48, 58)}`,
+      'Obstructive sleep apnea — CPAP prescribed, not using it',
+      ...ctx.rng.sample(['Type 2 diabetes', 'Hypertension', 'Chronic lower-extremity lymphedema', 'Depression'], 2),
+    ],
+    baseline: (ctx) => ({
+      stateOverrides: {
+        hr: ctx.rng.int(86, 96),
+        // A large body: big blood volume and output, low resistance.
+        svr: 12.5,
+        edv: ctx.rng.int(132, 142),
+        // Years of nocturnal hypoxemia: a pulmonary circulation that has
+        // remodeled and a right ventricle that has thickened to meet it.
+        pvr: bySeverity(ctx, 2.6, 3.4),
+        rvEmax: 0.65,
+        qsQt: 0.03,
+      },
+      paramOverrides: { ...ohsPhysiology(ctx), sedativeSensitivity: 1.5 },
+      rrOffset: 2,
+      tempOffset: 0.4,
+    }),
+    script: (ctx) => {
+      const v = ctx.voice;
+      return [
+        {
+          // The call that sets it up: a sleeping pill for someone whose
+          // breathing at night is already the problem.
+          at: ctx.declareAt - jitter(ctx, 50 * MIN, 10 * MIN),
+          page: `${ctx.room} can't get comfortable and can't sleep. ${v.Subj} ${v.verb('ask')} for something to help — ` +
+            `lorazepam or a sleeping pill. Is that OK?`,
+        },
+        {
+          // Lights out: the as-needed oxycodone for the leg, then lying flat,
+          // finally asleep. Either alone this patient survives most nights.
+          at: ctx.declareAt,
+          interventions: [
+            insult(ctx, {
+              label: 'Asleep, lying flat', category: 'scenario', kind: 'scenario',
+              target: 'sleep', delta: 1, tauOn: 15 * MIN, eliminationHalfLife: 10 * HOUR,
+            }),
+            insult(ctx, {
+              // One dose: peaks within the hour and is mostly gone by morning,
+              // leaving sleep to carry the rest.
+              label: `${OPIOID_LABEL_PREFIX} bedtime oxycodone`, category: 'scenario', kind: 'bolus',
+              target: 'ventDepression', delta: 0.3, tauOn: 20 * MIN, eliminationHalfLife: 3.5 * HOUR,
+            }),
+          ],
+        },
+        {
+          // The saturation falls and the oxygen goes up, which is what anyone
+          // would do — and is the second insult.
+          at: ctx.declareAt + jitter(ctx, 35 * MIN, 5 * MIN),
+          o2Device: '6L NC',
+          interventions: [
+            { label: `${O2_LABEL_PREFIX} 6L NC`, category: 'treatment', kind: 'infusion', target: 'fiO2', delta: 0.23, tauOn: 60, eliminationHalfLife: 120 },
+          ],
+          page: `FYI — ${ctx.name} is asleep and snoring really loudly, with pauses, and the sat keeps dipping into ` +
+            `the low 80s. I put ${v.obj} on 6 liters and it's better now. Do you want anything else?`,
+        },
+        {
+          at: ctx.declareAt + 50 * MIN,
+          pageWhen: { axis: 'sed', grade: 1, by: 4 * HOUR },
+          page: (g) => g.sed >= 3
+            ? `${ctx.name} won't wake up. ${v.Subj} only ${v.verb('groan')} to a sternal rub. Sat is OK on the 6 liters. ` +
+              `${v.Subj} ${v.verb('feel')} warm and ${v.poss} face is really flushed.`
+            : g.sed >= 2
+            ? `I can't keep ${ctx.name} awake — ${v.subj} ${v.verb('answer')} a question and ${v.verb('fall')} straight back ` +
+              `asleep mid-sentence. Sat is fine. Is ${v.subj} just tired?`
+            : `${ctx.name} is sound asleep and snoring — I didn't wake ${v.obj} for a full set. Sat is OK on the oxygen. ` +
+              `Should I let ${v.obj} sleep?`,
+        },
+      ];
+    },
+    handoff: (ctx) => ({
+      severityCall: 'stable',
+      summary:
+        'Left leg cellulitis, day 2 of cefazolin, redness receding from the marked line. ' +
+        `Large body habitus; ${ctx.voice.subj} ${ctx.voice.is} at ${ctx.voice.poss} baseline, satting 89–90% on room air.`,
+      todo: ['Cefazolin continues.', 'Elevate the leg.'],
+      contingencies: [
+        `Has sleep apnea — ${ctx.voice.subj} ${ctx.voice.does} not use CPAP at home.`,
+      ],
+      misleading: `If ${ctx.voice.subj} ${ctx.voice.verb('desaturate')} overnight, put ${ctx.voice.obj} on more oxygen.`,
+    }),
+    medications: () => [
+      { name: 'Cefazolin', detail: '2 g IV every 8 hours', since: 'day 2' },
+      { name: 'Oxycodone', detail: '5 mg orally every 4 hours as needed for leg pain', since: 'admission' },
+      { name: 'Enoxaparin', detail: '40 mg subcutaneously twice daily (weight-adjusted)', since: 'admission' },
+      { name: 'Metformin', detail: 'held while inpatient', since: 'home medication' },
+    ],
+    priorLabs: (ctx) => {
+      const { paCO2Setpoint, hco3Baseline } = ohsPhysiology(ctx);
+      return [
+        // The admission chemistry: a bicarbonate nobody has explained.
+        prior('BMP', 30 * 60, [
+          pv('Sodium', 139, 'mEq/L', 0, { low: 135, high: 145 }),
+          pv('Potassium', 4.3, 'mEq/L', 1, { low: 3.5, high: 5.0 }),
+          pv('Chloride', 97, 'mEq/L', 0, { low: 98, high: 107 }),
+          pv('Bicarbonate', hco3Baseline, 'mEq/L', 0, { low: 22, high: 29 }),
+          pv('Creatinine', 0.9, 'mg/dL', 1, { low: 0.6, high: 1.2 }),
+        ]),
+        priorVbg(26 * 60, paCO2Setpoint, hco3Baseline),
+        prior('CXR', 30 * 60, [],
+          'Low lung volumes with bibasilar atelectasis. Enlarged cardiac silhouette and prominent central ' +
+          'pulmonary arteries. No consolidation. Limited by body habitus.'),
+      ];
+    },
+    findings: () => (panel) =>
+      panel === 'CXR'
+        ? 'Low lung volumes, more bibasilar atelectasis than on admission. No consolidation or edema. Limited by habitus.'
+        : panel === 'EKG'
+        ? 'Sinus tachycardia. Right axis deviation; tall R in V1 — right ventricular hypertrophy. Low voltage.'
+        : null,
+    expectedOrders: ['bipap', 'lab-abg', 'sit-up', 'o2-nc'],
+    contraindicatedOrders: ['lorazepam', 'hydromorphone', 'o2-nrb'],
   },
 
   // ─── Rhythm ───────────────────────────────────────────────────────────────

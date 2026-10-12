@@ -6,7 +6,7 @@ import { makeCast } from './demographics';
 import { ARCHETYPES, ARCHETYPE_BY_ID, type ArchetypeContext, type CaseArchetype, type HandoffDraft } from './archetypes';
 import { bandOf, clampSeverity, sampleSeverity, type Severity } from './severity';
 import { DEFAULT_PARAMS, DEFAULT_STATE } from '../../engine/constants';
-import { snapshot as computeSnapshot, withSteadyPaCO2 } from '../../engine/hemodynamics';
+import { snapshot as computeSnapshot, withSteadyLungs } from '../../engine/hemodynamics';
 import { respiratoryDrive } from '../clinical';
 
 const MIN = 60;
@@ -181,12 +181,15 @@ export function generateWard(options: WardOptions = {}): GeneratedWard {
     };
     applyComorbidities(comorbidities, target, rng);
 
-    // Start the gas where this patient's breathing holds it, rather than at 40
-    // and drifting there over the first few minutes of the shift.
-    target.state.paCO2 = withSteadyPaCO2(
+    // Start the gas (and any collapsed lung) where this patient's breathing
+    // holds it, rather than at 40 and drifting there over the first few
+    // minutes of the shift.
+    const steady = withSteadyLungs(
       { ...DEFAULT_STATE, ...target.state },
       { ...DEFAULT_PARAMS, ...target.params },
-    ).paCO2;
+    );
+    target.state.paCO2 = steady.paCO2;
+    if (steady.atelectasis > 0) target.state.atelectasis = steady.atelectasis;
 
     // A patient who lives close to their ventilatory ceiling — severe COPD, a
     // chest wall that barely moves — has respiratory muscles adapted to that

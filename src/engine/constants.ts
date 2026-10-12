@@ -115,6 +115,21 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   // Shunt 0.5 → capacity ÷ 1.4.
   consolidationComplianceGain: 2.0,
   consolidationShuntThreshold: 0.3,
+  chestWallLoad: 0,
+  // Atelectatic shunt 0.1 → capacity ÷ 1.2.
+  atelectasisComplianceGain: 2.0,
+  // Not prone by default. Obesity: an awake, upright-ish patient on room air
+  // carries a few percent of basal shunt; asleep, shallow and on high oxygen,
+  // two to three times that. PEEP of 5 holds half of it open, 10 two-thirds.
+  atelectasisProne: 0,
+  atelectasisSighGain: 1.5,
+  atelectasisShallowGain: 1.5,
+  atelectasisAbsorptionGain: 0.6,
+  peepHalfRecruit: 5,
+  sleepDriveLoss: 0.15,
+  // Collapse over the better part of an hour; recruitment within ten minutes.
+  tauAtelectasisCollapse: 2400,
+  tauAtelectasisOpen: 600,
   // Sustained load above ~45% of capacity fatigues the diaphragm (the
   // tension-time threshold): at 80% of capacity, exhaustion in about an hour.
   // Recovery takes hours.
@@ -276,6 +291,9 @@ export const DEFAULT_STATE: HemodynamicState = {
   deadSpace: 0,
   ventSupport: 0,
   respFatigue: 0,
+  atelectasis: 0,
+  peep: 0,
+  sleep: 0,
 
   // Rhythm
   afib: 0,

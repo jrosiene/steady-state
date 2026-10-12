@@ -44,7 +44,7 @@ it(`probe ${CASE}`, () => {
         out.push(`  +${String(minute).padStart(4)}m  MAP ${s.map.toFixed(0).padStart(3)} HR ${s.hr.toFixed(0).padStart(3)} ` +
           `RR ${String(respiratoryRate(s, p.case.rrOffset)).padStart(2)} SpO2 ${(s.spO2 * 100).toFixed(0)} FiO2 ${s.fiO2.toFixed(2)} ` +
           `PaCO2 ${s.paCO2.toFixed(0).padStart(3)} pH ${s.pH.toFixed(2)} lac ${s.lactate.toFixed(1)} ` +
-          `cns ${s.cnsDepression.toFixed(2)} VE ${s.ve.toFixed(1)}/${s.veDemand.toFixed(1)}/${s.veCapacity.toFixed(1)} ` +
+          `cns ${s.cnsDepression.toFixed(2)} atel ${s.atelectasis.toFixed(3)} VE ${s.ve.toFixed(1)}/${s.veDemand.toFixed(1)}/${s.veCapacity.toFixed(1)} ` +
           `${s.cardiovascularStatus} ${p.o2Device} [${p.status}]`);
       }
     }

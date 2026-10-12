@@ -11,6 +11,7 @@ import { clampEffective } from './solver';
 import { computeBaroreflex } from './baroreflex';
 import { computePCWP, computeRVOutput, computeMPAP } from './pulmonary';
 import { computeOxygenation } from './oxygenation';
+import { atelectasisDerivative, atelectasisTarget } from './atelectasis';
 import { afStrokeLoss, fillingFraction, laBackupVolume, ventricularRate } from './rhythm';
 import { arterialPh, cnsDepression, computeVentilation, fatigueRate, paCO2Derivative } from './ventilation';
 import {
@@ -158,7 +159,10 @@ export function derive(
   const pcwp = Math.min(params.pcwpMax, computePCWP(edvEffective, emaxEffective, params) + laBackup);
   const edemaShunt = params.edemaQsQtGain * Math.max(0, pcwp - params.edemaPcwpThreshold);
 
-  const effectiveQsQt = Math.min(0.98, state.qsQt + lowFlowShunt + edemaShunt);
+  // Collapsed lung adds to it — the part of the shunt that PEEP and posture
+  // reopen (see atelectasis.ts).
+  const effectiveQsQt = Math.min(0.98,
+    state.qsQt + Math.max(0, state.atelectasis) + lowFlowShunt + edemaShunt);
 
   // Oxygenation is CO-dependent but not SVR/PVR-dependent
   const { spO2, paO2, svO2 } = computeOxygenation(state.fiO2, effectiveQsQt, co, params, state.paCO2);
@@ -267,6 +271,8 @@ export function derive(
     respFatigue: state.respFatigue,
     fiO2: state.fiO2,
     qsQt: state.qsQt,
+    atelectasis: state.atelectasis,
+    sleep: state.sleep,
   }, params);
 
   // ── Cardiovascular failure status ────────────────────────────────────────
@@ -326,6 +332,25 @@ export function withSteadyPaCO2(state: HemodynamicState, params: HemodynamicPara
   return state;
 }
 
+/**
+ * The same state with atelectasis and PaCO2 where this patient's breathing
+ * holds them. The two depend on each other — collapsed lung changes the gas,
+ * the gas changes the breathing that collapses it — so they are settled
+ * together by a few rounds of each.
+ */
+export function withSteadyLungs(state: HemodynamicState, params: HemodynamicParams): HemodynamicState {
+  let s = withSteadyPaCO2(state, params);
+  if (params.atelectasisProne <= 0) return s;
+  for (let i = 0; i < 4; i++) {
+    const d = derive(s, params);
+    s = withSteadyPaCO2(
+      { ...s, atelectasis: atelectasisTarget(d.vt, d.ve, Math.max(d.cnsDepression, s.sleep), s.fiO2, s.peep, params) },
+      params,
+    );
+  }
+  return s;
+}
+
 /** Build a full snapshot (state + derived) for the UI layer. */
 export function snapshot(
   state: HemodynamicState,
@@ -356,7 +381,7 @@ export function snapshot(
  *     shows: delta / (1 + gainSvr × CO) of a pressor survives.
  *
  * ODE variables: hr, svr (baroreflex); noTone, et1Tone (mediators); rvedv (RV
- * adaptation); lactate; paCO2 (CO2 mass balance); respFatigue. Everything else has zero
+ * adaptation); lactate; paCO2 (CO2 mass balance); respFatigue; atelectasis. Everything else has zero
  * derivative and is moved only by overlays.
  *
  * This used to exist three times — here, in the bench loop, and in the ward's
@@ -436,6 +461,14 @@ export function overlayDerivative(
   // task-failure curve, rather than settling at a partial level. See fatigueRate.
   const dFatigue = fatigueRate(derived.breathingLoad, base.respFatigue, p);
 
+  // Atelectasis follows how the patient is actually breathing (effective: a
+  // sedative or a BiPAP mask is in the breath) and integrates on the base.
+  const dAtelectasis = atelectasisDerivative(
+    base.atelectasis,
+    atelectasisTarget(derived.vt, derived.ve, Math.max(derived.cnsDepression, effective.sleep), effective.fiO2, effective.peep, p),
+    p,
+  );
+
   return {
     hr: dHr,
     svr: dSvr,
@@ -456,6 +489,9 @@ export function overlayDerivative(
     deadSpace: 0,
     ventSupport: 0,
     respFatigue: dFatigue,
+    atelectasis: dAtelectasis,
+    peep: 0,
+    sleep: 0,
     afib: 0,
     avBlock: 0,
     time: 1,

@@ -271,6 +271,7 @@ function EngineBench() {
             <BgRow label="RR"          value={snap.rr}      unit="/min"   color="#88ffcc" decimals={0} warn={snap.rr < 10 || snap.rr > 24} />
             <BgRow label="VE"          value={snap.ve}      unit="L/min"  color="#88ddff" warn={snap.veDemand > snap.veCapacity} />
             <BgRow label="Sedation"    value={snap.cnsDepression * 100} unit="%" color="#cc99ff" decimals={0} warn={snap.cnsDepression >= 0.35} />
+            <BgRow label="Atelectasis" value={snap.atelectasis * 100} unit="%" color="#88ccff" decimals={0} warn={snap.atelectasis >= 0.1} />
           </div>
         </div>
 

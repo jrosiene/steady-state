@@ -27,6 +27,7 @@ const STATE_KEYS: (keyof HemodynamicState)[] = [
   'noTone', 'et1Tone',
   'lactate',
   'paCO2', 'ventDepression', 'deadSpace', 'ventSupport', 'respFatigue',
+  'atelectasis', 'peep', 'sleep',
   'afib', 'avBlock',
   'time',
 ];
@@ -108,6 +109,9 @@ export function clampEffective(
     deadSpace:      safeClamp(state.deadSpace,      0, 0.8, 0),
     ventSupport:    safeClamp(state.ventSupport,    0, 1, 0),
     respFatigue:    safeClamp(state.respFatigue,    0, 1, 0),
+    atelectasis:    safeClamp(state.atelectasis,    0, 0.5, 0),
+    peep:           safeClamp(state.peep,           0, 25, 0),
+    sleep:          safeClamp(state.sleep,          0, 1, 0),
     afib:           safeClamp(state.afib,           0, 1, 0),
     avBlock:        safeClamp(state.avBlock,        0, 0.9, 0),
   };
@@ -148,6 +152,9 @@ export function clampState(
     deadSpace:      safeClamp(state.deadSpace,      0, 0.8, 0),
     ventSupport:    safeClamp(state.ventSupport,    0, 1,   0),
     respFatigue:    safeClamp(state.respFatigue,    0, 1,   0),
+    atelectasis:    safeClamp(state.atelectasis,    0, 0.5, 0),
+    peep:           safeClamp(state.peep,           0, 25,  0),
+    sleep:          safeClamp(state.sleep,          0, 1,   0),
     // Rhythm
     afib:           safeClamp(state.afib,           0, 1,   0),
     avBlock:        safeClamp(state.avBlock,        0, 0.9, 0),

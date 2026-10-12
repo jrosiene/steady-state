@@ -157,6 +157,7 @@ rather than recall what a given name did last time.
 | `af-rvr-hfpef` | Cellulitis, improving | New AF in a stiff ventricle. Here slowing the rate is the treatment |
 | `af-rvr-hfref` | Heart failure, diuresing | AF with an EF of 20%. Slow it — with amiodarone or digoxin, not diltiazem |
 | `copd-o2-narcosis` | COPD exacerbation, improving | A CO2 retainer the nurse put on a non-rebreather. The page is good news; the saturation is the trap |
+| `ohs-overnight` | Cellulitis, BMI over 50 | Unrecognized obesity hypoventilation. Asleep, flat, a bedtime oxycodone and 6 L of oxygen: the bicarbonate on the admission chemistry was the clue, and BiPAP is the answer |
 
 **Benign** — nothing is wrong, and the pages keep coming:
 
@@ -239,7 +240,7 @@ information is always available to a player who reads the chart.
 
 | Axis | Depth |
 |---|---|
-| Archetypes | 41 — 19 critical, 18 ward, 4 benign |
+| Archetypes | 42 — 19 critical, 19 ward, 4 benign |
 | Severity | continuous, with per-insult variation of ±0.16 around it |
 | Comorbidities | 11, zero to two per patient |
 | Distinct archetype combinations | ~190 per 200 generated wards |
@@ -340,6 +341,8 @@ steady state — PaCO2 simply climbs, about 4 mmHg a minute.
 - **Sedation.** Opioids and benzodiazepines scale the whole controller down, including its response to CO2, and take some of the accessory-muscle and upper-airway effort a loaded patient depends on. Sleep apnea, frailty and age raise sensitivity. Past about 40 mmHg above setpoint, CO2 narcosis depresses the controller further — the positive feedback by which hypercapnic failure ends
 - **Chronic retainers.** A reset CO2 setpoint, renally compensated bicarbonate, a blunted CO2 response and little ventilatory reserve. High-flow oxygen releases the hypoxic vasoconstriction that was matching perfusion to ventilation and removes hypoxic drive; the PaCO2 climbs with a saturation that looks excellent
 - **Support.** Non-invasive ventilation adds capacity and does part of the work; a ventilator replaces the drive entirely, so sedation and fatigue stop mattering
+- **Sleep.** Lowers the drive by a fraction — a few mmHg of CO2 in a normal adult, far more in obesity hypoventilation — and abolishes sighs. Unlike sedation it is not reversed by naloxone
+- **Atelectasis and the obese chest.** Collapsed but recruitable lung is its own shunt compartment, separate from consolidation and edema. It moves toward a target set by how prone the patient is (obesity), and how they are breathing: more asleep or sedated (no sighs), with small or few breaths, and on high FiO2 (absorption). Collapse takes most of an hour; end-expiratory pressure (HFNC, BiPAP, the ventilator) and sitting up, counted as a few cmH2O, reopen it within minutes. PEEP does nothing for consolidation. A heavy chest wall and collapsed bases both stiffen the respiratory system and lower ventilatory capacity
 
 The acidosis penalties (myocardial depression, vasoplegia, SA-node suppression)
 act on the *metabolic* component — the base deficit — plus only the part of a
@@ -396,6 +399,7 @@ src/engine/          Physiology. Pure functions, no UI, no game concepts.
   pulmonary.ts       PCWP, RV output, mPAP, TPG
   oxygenation.ts     Alveolar gas equation, Hill curve, Fick SvO2, shunt mixing
   ventilation.ts     Chemoreflex, breathing pattern, dead space, capacity, fatigue, CO2 balance
+  atelectasis.ts     Recruitable shunt: collapse with sleep, shallow breaths and O2; PEEP reopens
   rhythm.ts          AF: conducted ventricular rate, kick loss, pulse deficit, LA backup
   vasoactive.ts      Layer A reflexes + Layer B mediator ODE targets
   hemodynamics.ts    derive() pipeline, overlayDerivative() — the one definition of

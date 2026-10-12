@@ -365,6 +365,7 @@ export const ORDERS: OrderDef[] = [
       { label: `${O2_LABEL_PREFIX} HFNC`, category: 'treatment', kind: 'infusion', target: 'fiO2', delta: 0.79, tauOn: 300, eliminationHalfLife: 600 },
       // A few centimetres of PEEP: less than BiPAP, more than a mask.
       { label: `${O2_LABEL_PREFIX} HFNC recruitment`, category: 'treatment', kind: 'infusion', target: 'qsQt', delta: -0.05, tauOn: 900, eliminationHalfLife: 1800 },
+      { label: `${O2_LABEL_PREFIX} HFNC PEEP`, category: 'treatment', kind: 'infusion', target: 'peep', delta: 3, tauOn: 120, eliminationHalfLife: 300 },
       // Flow flushes the nasopharynx of expired gas: a little less dead space.
       { label: `${O2_LABEL_PREFIX} HFNC washout`, category: 'treatment', kind: 'infusion', target: 'deadSpace', delta: -0.04, tauOn: 300, eliminationHalfLife: 600 },
     ],
@@ -383,6 +384,8 @@ export const ORDERS: OrderDef[] = [
       { label: `${O2_LABEL_PREFIX} BiPAP`, category: 'treatment', kind: 'infusion', target: 'fiO2', delta: 0.29, tauOn: 120, eliminationHalfLife: 180 },
       // PEEP recruits flooded alveoli — the mechanism that makes NIV work in edema.
       { label: `${O2_LABEL_PREFIX} BiPAP recruitment`, category: 'treatment', kind: 'infusion', target: 'qsQt', delta: -0.08, tauOn: 300, eliminationHalfLife: 300 },
+      // EPAP: holds collapsed bases open, which is most of what it does in obesity.
+      { label: `${O2_LABEL_PREFIX} BiPAP EPAP`, category: 'treatment', kind: 'infusion', target: 'peep', delta: 8, tauOn: 60, eliminationHalfLife: 120 },
       // Raised intrathoracic pressure reduces venous return.
       { label: `${O2_LABEL_PREFIX} BiPAP preload↓`, category: 'treatment', kind: 'infusion', target: 'edv', delta: -12, tauOn: 300, eliminationHalfLife: 300 },
       // Inspiratory pressure does part of the work of breathing: the reason NIV
@@ -403,6 +406,7 @@ export const ORDERS: OrderDef[] = [
     interventions: [
       { label: `${O2_LABEL_PREFIX} Vent`, category: 'treatment', kind: 'infusion', target: 'fiO2', delta: 0.79, tauOn: 120, eliminationHalfLife: 300 },
       { label: `${O2_LABEL_PREFIX} Vent recruitment`, category: 'treatment', kind: 'infusion', target: 'qsQt', delta: -0.10, tauOn: 300, eliminationHalfLife: 600 },
+      { label: `${O2_LABEL_PREFIX} Vent PEEP`, category: 'treatment', kind: 'infusion', target: 'peep', delta: 10, tauOn: 60, eliminationHalfLife: 120 },
       // The ventilator breathes: sedation and a tiring diaphragm stop mattering.
       { label: `${O2_LABEL_PREFIX} Vent ventilation`, category: 'treatment', kind: 'infusion', target: 'ventSupport', delta: 1, tauOn: 120, eliminationHalfLife: 300 },
       // Peri-intubation hypotension: sedation vasodilates, PPV drops venous return.
@@ -766,6 +770,9 @@ export const ORDERS: OrderDef[] = [
     ack: (v) => `Sat ${v.obj} all the way up.`,
     interventions: [
       { label: 'Upright positioning', category: 'treatment', kind: 'infusion', target: 'qsQt', delta: -0.03, tauOn: 300, eliminationHalfLife: 1800 },
+      // The diaphragm falls when the abdomen is no longer pushing it up: worth a
+      // few cmH2O of PEEP to collapsed bases, and more the heavier the patient.
+      { label: 'Upright positioning (lung volume)', category: 'treatment', kind: 'infusion', target: 'peep', delta: 4, tauOn: 120, eliminationHalfLife: 1800 },
     ],
   },
 
