@@ -398,12 +398,22 @@ export function overlayDerivative(
   const dRvedv = (rvedvTarget - base.rvedv) / p.tauRvAdaptation;
 
   // Lactate: type A (SvO2 deficit, low perfusion pressure) + type B (inflammatory
-  // tone, from the effective state so sepsis overlays count). Septic lactate does
-  // not track SvO2 the way hemorrhagic lactate does, and this is why.
+  // tone). Septic lactate does not track SvO2 the way hemorrhagic lactate does,
+  // and this is why.
+  //
+  // Type B reads only the INFLAMMATORY part of the tone — the overlay, which is
+  // how sepsis and its treatments act — and not the part the base ODE builds up
+  // in response to hypoxemia. The two share a variable because both dilate
+  // vessels; they do not share a mechanism for lactate. Reading the whole tone
+  // gave every patient at a saturation of 87% about 2 mmol/L of "septic"
+  // lactate with a normal SvO2, which is not what a hypoxemic COPD or
+  // pneumothorax patient does, and which pushed anyone with a narrow
+  // oxygen-delivery margin (obesity with anemia) into the acidosis spiral.
+  const inflammatoryTone = Math.max(0, effective.noTone - base.noTone);
   const lactateTarget = 1
     + p.lactateSvO2Gain * Math.max(0, p.lactateSvO2Threshold - derived.svO2)
     + p.lactateMAPGain * Math.max(0, p.lactateMAPThreshold - derived.map)
-    + p.lactateNoToneGain * effective.noTone;
+    + p.lactateNoToneGain * inflammatoryTone;
   const tauLactate = lactateTarget > base.lactate ? p.tauLactateRise : p.tauLactateClear;
   const dLactate = (lactateTarget - base.lactate) / tauLactate;
 

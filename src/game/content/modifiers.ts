@@ -114,6 +114,14 @@ export const COMORBIDITIES: Comorbidity[] = [
       // Basal atelectasis plus a higher metabolic demand.
       t.state.qsQt = (t.state.qsQt ?? 0.02) + rng.real(0.02, 0.045);
       t.params.vo2 = (t.params.vo2 ?? 250) + rng.int(25, 60);
+      // ...and the circulation that goes with it. Blood volume and resting
+      // cardiac output scale with body size, so oxygen extraction at rest is
+      // about normal. Raising the demand without the supply left obese patients
+      // handed over with a mixed venous saturation near the anaerobic threshold.
+      t.state.edv = (t.state.edv ?? 120) * rng.real(1.07, 1.12);
+      t.state.hr = (t.state.hr ?? 70) + rng.int(3, 7);
+      // A heavy chest wall and a small FRC: less ventilatory reserve.
+      t.params.veMax = Math.min(t.params.veMax ?? 40, (t.params.veMax ?? 40) * rng.real(0.82, 0.9));
     },
   },
   {
@@ -218,6 +226,14 @@ export const COMORBIDITIES: Comorbidity[] = [
       // own right — a stem cell transplant at day +8, a sickle cell crisis — and
       // produced hemoglobins of 2, which is not a comorbidity, it is a corpse.
       t.params.hgb = Math.min(t.params.hgb ?? 15, rng.real(9.2, 10.8));
+      // Chronic anemia is compensated: an expanded plasma volume, a lower
+      // systemic resistance (less viscous blood, chronically dilated beds) and
+      // a faster resting heart rate raise cardiac output enough to hold oxygen
+      // extraction near normal. Lowering the hemoglobin alone modeled acute
+      // blood loss in someone who had somehow been at Hgb 10 for years.
+      t.state.edv = (t.state.edv ?? 120) * rng.real(1.04, 1.08);
+      t.state.svr = (t.state.svr ?? 17) * rng.real(0.9, 0.95);
+      t.state.hr = (t.state.hr ?? 70) + rng.int(4, 8);
     },
   },
   {
