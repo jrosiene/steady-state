@@ -112,6 +112,9 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
   ventSupportCapacity: 40,
   // Wedge 30 (12 over threshold) → capacity ÷ 1.36.
   edemaComplianceGain: 0.03,
+  // Shunt 0.5 → capacity ÷ 1.4.
+  consolidationComplianceGain: 2.0,
+  consolidationShuntThreshold: 0.3,
   // Sustained load above ~45% of capacity fatigues the diaphragm (the
   // tension-time threshold): at 80% of capacity, exhaustion in about an hour.
   // Recovery takes hours.
@@ -191,11 +194,16 @@ export const DEFAULT_PARAMS: HemodynamicParams = {
                                 // linear scaling: pH=7.0 → ceiling ~147; pH=6.9 → ceiling ~73
   lowFlowCoThreshold: 2.0,     // L/min: below this, pulmonary hypoperfusion adds effective shunt
   // Cardiogenic pulmonary edema → shunt.
-  // PCWP=25 → +0.126 shunt (SpO2 ~88% on room air); PCWP=32 → +0.252 (SpO2 ~80%).
+  // PCWP=25 → +0.095 shunt; PCWP=32 → +0.19.
   // Reversing preload (nitrates, diuresis, PEEP) lowers PCWP and un-floods alveoli,
   // which is why oxygenation improves within minutes of effective offloading.
+  //
+  // Re-derived when SvO2 began to be solved exactly with the shunt: the same
+  // shunt now desaturates more, and the gain was always a means to a saturation
+  // at a given wedge, not an end. An old shunt s maps to s/(1+s); around the
+  // clinically relevant wedge of ~32 that is 0.0135 per mmHg instead of 0.018.
   edemaPcwpThreshold: 18,
-  edemaQsQtGain: 0.018,
+  edemaQsQtGain: 0.0135,
 
   lowFlowQsQtGain: 0.4,        // at CO=0.04 → extra_shunt = 0.4×(2.0−0.04) = 0.78
                                 // → effective qsQt ≈ 0.80 → SpO2 ≈ 27% (deeply cyanotic arrest) ✓

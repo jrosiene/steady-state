@@ -7,6 +7,7 @@ import type {
   Snapshot,
 } from './types';
 import { computeSV } from './frank-starling';
+import { clampEffective } from './solver';
 import { computeBaroreflex } from './baroreflex';
 import { computePCWP, computeRVOutput, computeMPAP } from './pulmonary';
 import { computeOxygenation } from './oxygenation';
@@ -366,6 +367,12 @@ export function overlayDerivative(
   base: HemodynamicState,
   effective: HemodynamicState,
   p: HemodynamicParams,
+  /**
+   * The interventions' own contribution to NO tone, measured before clamping.
+   * Defaults to effective − base, which is only right while the sum stays
+   * under the clamp; `interventionDerivative` supplies it exactly.
+   */
+  inflammatoryTone = Math.max(0, effective.noTone - base.noTone),
 ): HemodynamicState {
   const derived = derive(effective, p);
 
@@ -409,7 +416,11 @@ export function overlayDerivative(
   // lactate with a normal SvO2, which is not what a hypoxemic COPD or
   // pneumothorax patient does, and which pushed anyone with a narrow
   // oxygen-delivery margin (obesity with anemia) into the acidosis spiral.
-  const inflammatoryTone = Math.max(0, effective.noTone - base.noTone);
+  //
+  // It has to be measured before the effective state is clamped: noTone is
+  // capped at 1, so a severely hypoxemic patient's base tone would otherwise
+  // crowd out the sepsis overlay, and the sicker they got the less
+  // inflammatory lactate they made.
   const lactateTarget = 1
     + p.lactateSvO2Gain * Math.max(0, p.lactateSvO2Threshold - derived.svO2)
     + p.lactateMAPGain * Math.max(0, p.lactateMAPThreshold - derived.map)
@@ -449,6 +460,23 @@ export function overlayDerivative(
     avBlock: 0,
     time: 1,
   };
+}
+
+/**
+ * dState/dt with interventions applied: the entry point every integrator uses.
+ *
+ * Applies the overlays, measures what they contribute to inflammatory tone
+ * before the clamp can hide it, clamps, and hands both states to
+ * overlayDerivative.
+ */
+export function interventionDerivative(
+  base: HemodynamicState,
+  interventions: Intervention[],
+  p: HemodynamicParams,
+): HemodynamicState {
+  const raw = applyInterventions(base, interventions);
+  const inflammatoryTone = Math.max(0, raw.noTone - base.noTone);
+  return overlayDerivative(base, clampEffective(raw, p), p, inflammatoryTone);
 }
 
 /**

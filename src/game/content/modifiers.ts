@@ -92,6 +92,7 @@ export const COMORBIDITIES: Comorbidity[] = [
       // anaerobic threshold at sign-out, so the patient was in a lactate spiral
       // from minute zero and the case had been decided before it started.
       t.params.hgb = Math.min(t.params.hgb ?? 15, rng.real(9.4, 11.2));
+      compensateChronicAnemia(t, rng);
     },
   },
   {
@@ -226,14 +227,7 @@ export const COMORBIDITIES: Comorbidity[] = [
       // own right — a stem cell transplant at day +8, a sickle cell crisis — and
       // produced hemoglobins of 2, which is not a comorbidity, it is a corpse.
       t.params.hgb = Math.min(t.params.hgb ?? 15, rng.real(9.2, 10.8));
-      // Chronic anemia is compensated: an expanded plasma volume, a lower
-      // systemic resistance (less viscous blood, chronically dilated beds) and
-      // a faster resting heart rate raise cardiac output enough to hold oxygen
-      // extraction near normal. Lowering the hemoglobin alone modeled acute
-      // blood loss in someone who had somehow been at Hgb 10 for years.
-      t.state.edv = (t.state.edv ?? 120) * rng.real(1.04, 1.08);
-      t.state.svr = (t.state.svr ?? 17) * rng.real(0.9, 0.95);
-      t.state.hr = (t.state.hr ?? 70) + rng.int(4, 8);
+      compensateChronicAnemia(t, rng);
     },
   },
   {
@@ -319,4 +313,20 @@ export function applyComorbidities(
   if (target.params.hgb !== undefined) {
     target.params.hgb = Math.max(6.0, target.params.hgb);
   }
+}
+
+/**
+ * The circulation that goes with a hemoglobin that has been low for years.
+ *
+ * Chronic anemia is compensated: an expanded plasma volume, a lower systemic
+ * resistance (less viscous blood, chronically dilated beds) and a faster
+ * resting heart rate raise cardiac output enough to hold oxygen extraction
+ * near normal. Lowering the hemoglobin alone modeled acute blood loss in
+ * someone who had somehow been at Hgb 10 for years. Shared by chronic anemia
+ * and the anemia of chronic kidney disease, which arrive at the same place.
+ */
+function compensateChronicAnemia(t: ModifierTarget, rng: Rng): void {
+  t.state.edv = (t.state.edv ?? 120) * rng.real(1.04, 1.08);
+  t.state.svr = (t.state.svr ?? 17) * rng.real(0.9, 0.95);
+  t.state.hr = (t.state.hr ?? 70) + rng.int(4, 8);
 }

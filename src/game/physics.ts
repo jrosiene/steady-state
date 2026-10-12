@@ -1,6 +1,6 @@
 import type { HemodynamicState, HemodynamicParams, Intervention } from '../engine/types';
-import { applyInterventions, overlayDerivative } from '../engine/hemodynamics';
-import { rk4Step, clampState, clampEffective } from '../engine/solver';
+import { interventionDerivative } from '../engine/hemodynamics';
+import { rk4Step, clampState } from '../engine/solver';
 
 /**
  * Fixed physics timestep in sim-seconds for the single-patient test bench.
@@ -39,7 +39,7 @@ export function stepPhysics(
   dt: number,
 ): HemodynamicState {
   const derivWithOverlay = (state: HemodynamicState, p: HemodynamicParams): HemodynamicState =>
-    overlayDerivative(state, clampEffective(applyInterventions(state, interventions), p), p);
+    interventionDerivative(state, interventions, p);
 
   return clampState(rk4Step(base, params, dt, derivWithOverlay), params);
 }

@@ -448,6 +448,10 @@ export interface HemodynamicParams {
    * capacity is divided by (1 + this × excess). A wet lung is a stiff lung.
    */
   edemaComplianceGain: number;
+  /** Capacity divisor per unit of shunt above consolidationShuntThreshold: a consolidated lung is stiff. */
+  consolidationComplianceGain: number;
+  /** Shunt reachable by airway V/Q mismatch alone, above which it is counted as consolidation. */
+  consolidationShuntThreshold: number;
   /** Capacity added at full ventilatory support (L/min). */
   ventSupportCapacity: number;
   /**

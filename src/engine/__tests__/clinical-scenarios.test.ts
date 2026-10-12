@@ -19,7 +19,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { rk4Step, clampState, clampEffective } from '../solver';
-import { derive, applyInterventions, overlayDerivative } from '../hemodynamics';
+import { derive, applyInterventions, interventionDerivative } from '../hemodynamics';
 import { DEFAULT_PARAMS, DEFAULT_STATE } from '../constants';
 import type { HemodynamicState, Intervention } from '../types';
 
@@ -35,7 +35,7 @@ function simulate(
   let state = { ...initial };
   const steps = Math.floor(duration / DT);
   for (let i = 0; i < steps; i++) {
-    const derivFn = (s: HemodynamicState) => overlayDerivative(s, clampEffective(applyInterventions(s, interventions), p), p);
+    const derivFn = (s: HemodynamicState) => interventionDerivative(s, interventions, p);
     state = clampState(rk4Step(state, p, DT, derivFn), p);
     state = { ...state, time: state.time + DT };
   }

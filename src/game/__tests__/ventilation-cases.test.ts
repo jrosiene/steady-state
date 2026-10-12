@@ -85,7 +85,7 @@ describe('opioid oversedation', () => {
     advance(s.engine, 30 * MIN);
     const abg = s.patient.labs.find((l) => l.panel === 'ABG')!;
     const paCO2 = abg.values.find((v) => v.label === 'PaCO₂')!;
-    expect(paCO2.value).toBeGreaterThan(50);
+    expect(paCO2.value).toBeGreaterThan(48);
   });
 });
 

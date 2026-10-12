@@ -145,8 +145,9 @@ export function ventilatoryCapacity(
   params: HemodynamicParams,
   respFatigue = 0,
   pcwp = 0,
+  shunt = 0,
 ): number {
-  return ownCapacity(co, params, respFatigue, pcwp) + ventSupport * params.ventSupportCapacity;
+  return ownCapacity(co, params, respFatigue, pcwp, shunt) + ventSupport * params.ventSupportCapacity;
 }
 
 /**
@@ -158,10 +159,21 @@ export function ventilatoryCapacity(
  * sustainable — the reason a patient in pulmonary edema tires, and the reason
  * offloading the preload makes breathing easier as well as oxygenation better.
  */
-function ownCapacity(co: number, params: HemodynamicParams, respFatigue: number, pcwp: number): number {
+function ownCapacity(
+  co: number,
+  params: HemodynamicParams,
+  respFatigue: number,
+  pcwp: number,
+  shunt = 0,
+): number {
   const perfusion = Math.max(0, Math.min(1, co / params.ventFatigueCoRef));
   const fresh = 1 - params.fatigueCapacityGain * Math.max(0, Math.min(1, respFatigue));
-  const stiffness = 1 + params.edemaComplianceGain * Math.max(0, pcwp - params.edemaPcwpThreshold);
+  // Consolidation stiffens the lung as edema does. Counted only above the
+  // shunt that airway V/Q mismatch reaches on its own (COPD stays below ~0.3),
+  // because qsQt stands for both and only one of them is a stiff lung.
+  const stiffness = 1
+    + params.edemaComplianceGain * Math.max(0, pcwp - params.edemaPcwpThreshold)
+    + params.consolidationComplianceGain * Math.max(0, shunt - params.consolidationShuntThreshold);
   return (params.veMax * perfusion * fresh) / stiffness;
 }
 
@@ -188,7 +200,7 @@ export function fatigueRate(breathingLoad: number, respFatigue: number, params: 
 export function computeVentilation(inp: VentilationInputs, params: HemodynamicParams): VentilationResult {
   const drive = ventilatoryDemand(inp, params);
   const veDemand = params.veRef * drive;
-  const veCapacity = ventilatoryCapacity(inp.co, inp.ventSupport, params, inp.respFatigue, inp.pcwp);
+  const veCapacity = ventilatoryCapacity(inp.co, inp.ventSupport, params, inp.respFatigue, inp.pcwp, inp.qsQtEffective);
 
   // Sedation acts on the controller; a ventilator does not care how sedated the
   // patient is, so support shields the drive from depression in proportion.
@@ -238,7 +250,7 @@ export function computeVentilation(inp: VentilationInputs, params: HemodynamicPa
   // Load on the patient's own muscles: support carries its share of the work,
   // measured against what they could do fresh, so fatigue feeds back on itself.
   const support = Math.max(0, Math.min(1, inp.ventSupport));
-  const fresh = ownCapacity(inp.co, params, 0, inp.pcwp);
+  const fresh = ownCapacity(inp.co, params, 0, inp.pcwp, inp.qsQtEffective);
   const breathingLoad = fresh > 0 ? (ve * (1 - support)) / fresh : (ve > 0 ? 1 : 0);
 
   return { ve, veDemand, veCapacity: cappedCapacity, va, rr, vt, vdVt, breathingLoad };
